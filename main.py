@@ -4,6 +4,7 @@ from tabulate import tabulate
 from data_loader import load_portfolio_holdings
 from market_data import get_current_prices
 from analysis import calculate_metrics, analyze_restructuring
+from visualize import plot_portfolio_allocation, plot_cagr_performance
 
 # Constants
 CSV_PATH = "/Users/mingli/Documents/Ming/Investment/Yahoo/portfolio.csv"
@@ -75,6 +76,11 @@ def main():
 
     # --- Restructuring Analysis ---
     analyze_restructuring(df, TARGET_CAGR)
+
+    # --- Visualization ---
+    print("\nGenerating charts...")
+    plot_portfolio_allocation(df)
+    plot_cagr_performance(df, TARGET_CAGR)
 
 if __name__ == "__main__":
     main()
