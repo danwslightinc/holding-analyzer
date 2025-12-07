@@ -166,6 +166,7 @@ def analyze_pnl(df):
     """
     Analyzes portfolio P&L (Profit & Loss) showing absolute dollar gains/losses.
     Excludes CASH.TO from analysis.
+    Returns a formatted summary string for email reports.
     """
     print("\n" + "="*50)
     print("P&L ANALYSIS (Profit & Loss)")
@@ -176,7 +177,7 @@ def analyze_pnl(df):
     
     if equity_df.empty:
         print("No equity holdings found (non-CASH.TO).")
-        return
+        return ""
 
     # Calculate simple return percentage
     equity_df['Return %'] = (equity_df['P&L'] / equity_df['Cost Basis']) * 100
@@ -187,6 +188,10 @@ def analyze_pnl(df):
     # Winners and Losers
     winners = equity_df_sorted[equity_df_sorted['P&L'] > 0].copy()
     losers = equity_df_sorted[equity_df_sorted['P&L'] < 0].copy()
+    
+    # Build email summary
+    email_summary = "\n💰 P&L SUMMARY\n"
+    email_summary += "-" * 30 + "\n"
     
     print(f"\n💰 WINNERS (Profitable Positions)")
     print("-" * 50)
@@ -200,6 +205,11 @@ def analyze_pnl(df):
         
         total_gains = winners['P&L'].sum()
         print(f"\nTotal Gains: ${total_gains:,.2f}")
+        
+        # Add top 3 winners to email
+        email_summary += "Top Winners:\n"
+        for idx, (_, row) in enumerate(winners.head(3).iterrows(), 1):
+            email_summary += f"  {idx}. {row['Symbol']}: ${row['P&L']:,.2f} ({row['Return %']:.1f}%)\n"
     else:
         print("No profitable positions.")
     
@@ -215,6 +225,11 @@ def analyze_pnl(df):
         
         total_losses = losers['P&L'].sum()
         print(f"\nTotal Losses: ${total_losses:,.2f}")
+        
+        # Add top 3 losers to email
+        email_summary += "\nTop Losers:\n"
+        for idx, (_, row) in enumerate(losers.head(3).iterrows(), 1):
+            email_summary += f"  {idx}. {row['Symbol']}: ${row['P&L']:,.2f} ({row['Return %']:.1f}%)\n"
     else:
         print("No loss positions.")
     
@@ -230,4 +245,10 @@ def analyze_pnl(df):
     print(f"Total Market Value:  ${total_value:,.2f}")
     print(f"Total P&L:           ${total_pnl:,.2f}")
     print(f"Overall Return:      {overall_return:.2f}%")
+    
+    # Add overall to email
+    email_summary += f"\nOverall P&L: ${total_pnl:,.2f} ({overall_return:.1f}%)\n"
+    
+    return email_summary
+
 
