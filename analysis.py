@@ -5,6 +5,7 @@ from tabulate import tabulate
 def calculate_metrics(df, target_cagr=0.10):
     """
     Calculates P&L, Market Value, Days Held, and CAGR for the dataframe.
+    Uses transaction dates from CSV.
     """
     # Cost Basis = (Purchase Price * Quantity) + Commission
     df['Cost Basis'] = (df['Purchase Price'] * df['Quantity']) + df['Commission']
@@ -160,3 +161,73 @@ def get_market_summary(indices_dict):
         summary += f"  {icon} {name}: {change:+.2%}\n"
         
     return summary
+
+def analyze_pnl(df):
+    """
+    Analyzes portfolio P&L (Profit & Loss) showing absolute dollar gains/losses.
+    Excludes CASH.TO from analysis.
+    """
+    print("\n" + "="*50)
+    print("P&L ANALYSIS (Profit & Loss)")
+    print("="*50)
+
+    # Filter out CASH.TO
+    equity_df = df[~df['Symbol'].str.contains('CASH.TO', case=False, na=False)].copy()
+    
+    if equity_df.empty:
+        print("No equity holdings found (non-CASH.TO).")
+        return
+
+    # Calculate simple return percentage
+    equity_df['Return %'] = (equity_df['P&L'] / equity_df['Cost Basis']) * 100
+    
+    # Sort by P&L (highest to lowest)
+    equity_df_sorted = equity_df.sort_values('P&L', ascending=False)
+    
+    # Winners and Losers
+    winners = equity_df_sorted[equity_df_sorted['P&L'] > 0].copy()
+    losers = equity_df_sorted[equity_df_sorted['P&L'] < 0].copy()
+    
+    print(f"\n💰 WINNERS (Profitable Positions)")
+    print("-" * 50)
+    if not winners.empty:
+        winners_summary = winners[['Symbol', 'Cost Basis', 'Market Value', 'P&L', 'Return %']].copy()
+        winners_summary['Cost Basis'] = winners_summary['Cost Basis'].apply(lambda x: f"${x:,.2f}")
+        winners_summary['Market Value'] = winners_summary['Market Value'].apply(lambda x: f"${x:,.2f}")
+        winners_summary['P&L'] = winners_summary['P&L'].apply(lambda x: f"${x:,.2f}")
+        winners_summary['Return %'] = winners_summary['Return %'].apply(lambda x: f"{x:.2f}%")
+        print(tabulate(winners_summary, headers='keys', tablefmt='psql', showindex=False))
+        
+        total_gains = winners['P&L'].sum()
+        print(f"\nTotal Gains: ${total_gains:,.2f}")
+    else:
+        print("No profitable positions.")
+    
+    print(f"\n📉 LOSERS (Loss Positions)")
+    print("-" * 50)
+    if not losers.empty:
+        losers_summary = losers[['Symbol', 'Cost Basis', 'Market Value', 'P&L', 'Return %']].copy()
+        losers_summary['Cost Basis'] = losers_summary['Cost Basis'].apply(lambda x: f"${x:,.2f}")
+        losers_summary['Market Value'] = losers_summary['Market Value'].apply(lambda x: f"${x:,.2f}")
+        losers_summary['P&L'] = losers_summary['P&L'].apply(lambda x: f"${x:,.2f}")
+        losers_summary['Return %'] = losers_summary['Return %'].apply(lambda x: f"{x:.2f}%")
+        print(tabulate(losers_summary, headers='keys', tablefmt='psql', showindex=False))
+        
+        total_losses = losers['P&L'].sum()
+        print(f"\nTotal Losses: ${total_losses:,.2f}")
+    else:
+        print("No loss positions.")
+    
+    # Overall Summary
+    total_pnl = equity_df['P&L'].sum()
+    total_cost = equity_df['Cost Basis'].sum()
+    total_value = equity_df['Market Value'].sum()
+    overall_return = (total_pnl / total_cost) * 100 if total_cost > 0 else 0
+    
+    print(f"\n📊 OVERALL P&L SUMMARY")
+    print("-" * 50)
+    print(f"Total Cost Basis:    ${total_cost:,.2f}")
+    print(f"Total Market Value:  ${total_value:,.2f}")
+    print(f"Total P&L:           ${total_pnl:,.2f}")
+    print(f"Overall Return:      {overall_return:.2f}%")
+
