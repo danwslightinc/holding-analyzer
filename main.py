@@ -3,7 +3,7 @@ from datetime import datetime
 from tabulate import tabulate
 from data_loader import load_portfolio_holdings
 from market_data import get_current_prices, get_weekly_changes, get_usd_to_cad_rate, get_market_indices_change
-from analysis import calculate_metrics, analyze_restructuring, get_top_movers, get_market_summary
+from analysis import calculate_metrics, analyze_restructuring, analyze_pnl, get_top_movers, get_market_summary
 from visualize import generate_dashboard, generate_static_preview
 
 # Constants
@@ -117,6 +117,9 @@ def main():
     
     # --- Restructuring Analysis ---
     analyze_restructuring(df, TARGET_CAGR)
+    
+    # --- P&L Analysis ---
+    analyze_pnl(df)
 
     # --- Visualization ---
     print("\nGenerating interactive dashboard...")

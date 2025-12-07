@@ -1,4 +1,80 @@
 import yfinance as yf
+from datetime import datetime, timedelta
+import pandas as pd
+
+def find_purchase_date_from_price(symbol, purchase_price, tolerance=0.05, min_days_ago=30):
+    """
+    Finds the most recent date when a stock was at or below the purchase price.
+    Prefers dates that are at least min_days_ago in the past to avoid unrealistic short-term gains.
+    
+    Args:
+        symbol: Stock ticker symbol
+        purchase_price: The price paid for the stock
+        tolerance: Price tolerance (5% by default) to account for price fluctuations
+        min_days_ago: Minimum days ago to consider (default 30 days)
+    
+    Returns:
+        datetime object of estimated purchase date, or None if not found
+    """
+    try:
+        # Skip special symbols that don't have meaningful historical data
+        if symbol in ['CAD=X', 'CASH.TO']:
+            return None
+            
+        # Fetch maximum available historical data (typically 20-30 years for most stocks)
+        ticker = yf.Ticker(symbol)
+        hist = ticker.history(period="max")
+        
+        if hist.empty:
+            print(f"  ⚠️  No historical data for {symbol}, using CSV date")
+            return None
+        
+        # Calculate price range with tolerance
+        # We look for when the stock was at or below purchase price (plus tolerance)
+        max_price = purchase_price * (1 + tolerance)
+        
+        # Calculate cutoff date (must be at least min_days_ago in the past)
+        cutoff_date = datetime.now() - timedelta(days=min_days_ago)
+        
+        # Filter for dates where Close price was <= max_price AND before cutoff
+        matching_dates = hist[hist['Close'] <= max_price]
+        
+        # Convert index to naive datetimes for comparison
+        matching_dates_naive = matching_dates.copy()
+        matching_dates_naive.index = matching_dates_naive.index.tz_localize(None) if matching_dates_naive.index.tz else matching_dates_naive.index
+        
+        # Filter to only dates before cutoff
+        old_matches = matching_dates_naive[matching_dates_naive.index < cutoff_date]
+        
+        if not old_matches.empty:
+            # Prefer the most recent date that's still older than min_days_ago
+            purchase_date = old_matches.index[-1]
+        elif not matching_dates.empty:
+            # If no old matches, but there are recent matches, use CSV date instead
+            # This avoids unrealistic short-term CAGRs
+            print(f"  ⚠️  {symbol} only at ${purchase_price:.2f} in last {min_days_ago} days, using CSV date")
+            return None
+        else:
+            # Stock never traded at or below this price in available history
+            print(f"  ⚠️  {symbol} never at ${purchase_price:.2f} in available history, using CSV date")
+            return None
+        
+        # Convert to naive datetime
+        if hasattr(purchase_date, 'to_pydatetime'):
+            purchase_date = purchase_date.to_pydatetime()
+        if hasattr(purchase_date, 'replace'):
+            purchase_date = purchase_date.replace(tzinfo=None)
+        
+        # Sanity check: date shouldn't be in the future
+        if purchase_date > datetime.now():
+            print(f"  ⚠️  {symbol} calculated date is in future, using CSV date")
+            return None
+            
+        return purchase_date
+        
+    except Exception as e:
+        print(f"  ⚠️  Error finding purchase date for {symbol}: {e}")
+        return None
 
 def get_current_prices(symbols):
     """
