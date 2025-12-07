@@ -7,7 +7,7 @@ from analysis import calculate_metrics, analyze_restructuring, get_top_movers
 from visualize import generate_dashboard, generate_static_preview
 
 # Constants
-CSV_PATH = "/Users/mingli/Documents/Ming/Investment/Yahoo/portfolio.csv"
+CSV_PATH = "portfolio.csv"
 TARGET_CAGR = 0.10
 
 def main():
