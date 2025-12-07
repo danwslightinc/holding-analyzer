@@ -2,8 +2,8 @@ import pandas as pd
 from datetime import datetime
 from tabulate import tabulate
 from data_loader import load_portfolio_holdings
-from market_data import get_current_prices, get_weekly_changes, get_usd_to_cad_rate
-from analysis import calculate_metrics, analyze_restructuring, get_top_movers
+from market_data import get_current_prices, get_weekly_changes, get_usd_to_cad_rate, get_market_indices_change
+from analysis import calculate_metrics, analyze_restructuring, get_top_movers, get_market_summary
 from visualize import generate_dashboard, generate_static_preview
 
 # Constants
@@ -107,6 +107,12 @@ def main():
     movers_summary = get_top_movers(weekly_changes)
     print(movers_summary)
     
+    # --- Market Benchmarks ---
+    print("Fetching Market Benchmarks...")
+    indices_changes = get_market_indices_change()
+    market_summary = get_market_summary(indices_changes)
+    print(market_summary)
+
     # Update restructuring analysis to output CAD context explicitly if needed, but since df values are now CAD, it should just work.
     
     # --- Restructuring Analysis ---
@@ -118,7 +124,7 @@ def main():
     generate_dashboard(df, TARGET_CAGR)
     generate_static_preview(df, TARGET_CAGR)
     
-    return movers_summary
+    return movers_summary + "\n" + market_summary
 
 if __name__ == "__main__":
     main()

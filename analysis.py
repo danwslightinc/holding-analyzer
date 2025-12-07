@@ -147,3 +147,16 @@ def get_top_movers(changes_dict):
         summary += f"  🔴 {sym}: {change:+.2%}\n"
         
     return summary
+
+def get_market_summary(indices_dict):
+    """
+    Returns a formatted string for market indices.
+    """
+    if not indices_dict: return ""
+    
+    summary = "\n🌍 Market Benchmarks (Weekly):\n"
+    for name, change in indices_dict.items():
+        icon = "🟢" if change >= 0 else "🔴"
+        summary += f"  {icon} {name}: {change:+.2%}\n"
+        
+    return summary

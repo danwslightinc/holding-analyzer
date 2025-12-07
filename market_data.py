@@ -129,3 +129,36 @@ def get_usd_to_cad_rate():
     except Exception as e:
         print(f"Error fetching exchange rate: {e}")
         return 1.40
+
+def get_market_indices_change():
+    """
+    Fetches 5-day % change for S&P 500, NASDAQ, and TSX.
+    Returns dict: {Index Name: percent_change_float}
+    """
+    indices = {
+        '^GSPC': '🇺🇸 S&P 500',
+        '^IXIC': '🇺🇸 NASDAQ',
+        '^GSPTSE': '🇨🇦 TSX'
+    }
+    
+    tickers_str = " ".join(indices.keys())
+    try:
+        data = yf.download(tickers_str, period="5d", progress=False)
+        closes = data['Close']
+        
+        changes = {}
+        closes = closes.ffill()
+        
+        for symbol, name in indices.items():
+            if symbol in closes:
+                series = closes[symbol].dropna()
+                if len(series) >= 2:
+                    start = float(series.iloc[0])
+                    end = float(series.iloc[-1])
+                    changes[name] = (end - start) / start
+                else:
+                    changes[name] = 0.0
+        return changes
+    except Exception as e:
+        print(f"Error fetching indices: {e}")
+        return {}
