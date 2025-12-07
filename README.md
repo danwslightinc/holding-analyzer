@@ -5,13 +5,18 @@ A powerful Python-based portfolio analyzer that tracks your performance, identif
 ## 🚀 Key Features
 
 *   **Portfolio Import**: Reads your holdings from a local CSV file.
+*   **Smart Aggregation**: Automatically combines duplicate symbol entries with weighted average costs for accurate returns.
 *   **Live Market Data**: Fetches real-time prices via `yfinance`.
 *   **Currency Support**: Automatically converts USD holdings (e.g., NVDA, MSFT) to **CAD** for accurate total portfolio value.
-*   **Performance Metrics**: Calculates P&L, Market Value, and CAGR for each position.
+*   **Performance Metrics**: 
+    *   **CAGR Analysis**: Time-adjusted returns to compare holdings with different purchase dates.
+    *   **P&L Analysis**: Absolute dollar gains/losses and simple percentage returns (matches broker statements).
 *   **Risk Analysis ("Fishy Stock" Scan)**: Identifies broken trends, crashes (>15% drop), and extreme volatility.
 *   **Restructuring Suggestions**: Highlights "Dead Money" (underperformers) and calculates potential gains from reallocating.
 *   **Visualization**:
-    *   **Interactive Dashboard**: HTML dashboard with Zoomable Bar Charts and Pie Charts (powered by Plotly).
+    *   **Interactive Dashboard**: 2-row HTML dashboard with:
+        *   Top Row: Portfolio Allocation (Pie) | CAGR Performance (Bar)
+        *   Bottom Row: P&L Performance (Horizontal Bar)
     *   **Email Reports**: Weekly email with embedded metric summaries and static charts.
 
 ## 🛠️ Installation
@@ -44,8 +49,10 @@ Run the main analysis script to see the table output and generate the dashboard:
 python main.py
 ```
 This will:
-*   Print a summary table to the console.
+*   Print a portfolio summary table to the console.
 *   Print the "Weekly Top Gainers/Losers".
+*   Print CAGR-based restructuring analysis.
+*   Print P&L analysis (winners/losers by dollar amount).
 *   Generate `portfolio_dashboard.html` (interactive).
 *   Generate `dashboard_preview.png` (static).
 
@@ -62,15 +69,17 @@ python analyze_risk.py
 ```
 
 ### 📧 Weekly Email Automation
-To automate the report (runs every Friday at 5 PM), use the setup script:
-```bash
-./setup_cron.sh
-```
-*   This sets up a cron job on your Mac.
-*   The email includes:
-    *   **Inline Chart**: A snapshot of your allocation and performance.
-    *   **Weekly Movers**: Top 3 Gainers & Losers text summary.
-    *   **Attachment**: The full interactive HTML dashboard.
+To automate the report (runs every Friday at 5 PM EST), use GitHub Actions:
+*   Configure secrets in your GitHub repository settings:
+    *   `SENDER_EMAIL`: Your Gmail address
+    *   `SENDER_PASSWORD`: Gmail app password
+    *   `RECIPIENT_EMAIL`: Email to receive reports
+*   The workflow (`.github/workflows/weekly_report.yml`) will:
+    *   Run analysis automatically every Friday
+    *   Send email with:
+        *   **Inline Chart**: A snapshot of your allocation and performance.
+        *   **Weekly Movers**: Top 3 Gainers & Losers text summary.
+        *   **Attachment**: The full interactive HTML dashboard.
 
 ## 📂 Project Structure
 
