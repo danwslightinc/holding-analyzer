@@ -119,7 +119,7 @@ def main():
     analyze_restructuring(df, TARGET_CAGR)
     
     # --- P&L Analysis ---
-    analyze_pnl(df)
+    pnl_summary = analyze_pnl(df)
 
     # --- Visualization ---
     print("\nGenerating interactive dashboard...")
@@ -127,7 +127,7 @@ def main():
     generate_dashboard(df, TARGET_CAGR)
     generate_static_preview(df, TARGET_CAGR)
     
-    return movers_summary + "\n" + market_summary
+    return movers_summary + "\n" + market_summary + "\n" + pnl_summary
 
 if __name__ == "__main__":
     main()

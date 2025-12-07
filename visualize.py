@@ -6,6 +6,7 @@ import pandas as pd
 def generate_static_preview(df, target_cagr, save_path='dashboard_preview.png'):
     """
     Generates a static PNG summary for email embedding (since HTML/JS is blocked in emails).
+    Includes: Allocation (pie), CAGR (bar), and P&L (horizontal bar).
     """
     if df.empty: return
 
@@ -15,23 +16,41 @@ def generate_static_preview(df, target_cagr, save_path='dashboard_preview.png'):
     # CAGR Data
     cagr_df = df.copy()
     cagr_df['CAGR_Visual'] = cagr_df['CAGR'].clip(upper=3.0, lower=-1.0)
-    colors = ['green' if x >= target_cagr else 'red' for x in cagr_df['CAGR']]
+    cagr_colors = ['green' if x >= target_cagr else 'red' for x in cagr_df['CAGR']]
+    
+    # P&L Data
+    pnl_df = df.copy()
+    pnl_df['Return %'] = (pnl_df['P&L'] / pnl_df['Cost Basis']) * 100
+    pnl_df = pnl_df.sort_values('P&L', ascending=True)
+    pnl_colors = ['green' if x > 0 else 'red' for x in pnl_df['P&L']]
 
-    # Plot
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    # Create 2x2 grid: Row 1 (Pie, CAGR), Row 2 (P&L spanning full width)
+    fig = plt.figure(figsize=(16, 10))
+    gs = fig.add_gridspec(2, 2, height_ratios=[1, 1], hspace=0.3, wspace=0.3)
     
-    # 1. Pie
+    # Row 1, Col 1: Pie Chart
+    ax1 = fig.add_subplot(gs[0, 0])
     ax1.pie(alloc_df, labels=alloc_df.index, autopct='%1.1f%%', startangle=140)
-    ax1.set_title('Portfolio Allocation')
+    ax1.set_title('Portfolio Allocation', fontsize=14, fontweight='bold')
     
-    # 2. Bar
-    ax2.bar(cagr_df['Symbol'], cagr_df['CAGR_Visual'], color=colors)
-    ax2.axhline(y=target_cagr, color='blue', linestyle='--', label='Target')
-    ax2.set_title('CAGR vs Target (Capped)')
+    # Row 1, Col 2: CAGR Bar Chart
+    ax2 = fig.add_subplot(gs[0, 1])
+    ax2.bar(cagr_df['Symbol'], cagr_df['CAGR_Visual'], color=cagr_colors)
+    ax2.axhline(y=target_cagr, color='blue', linestyle='--', label=f'Target {target_cagr:.0%}')
+    ax2.set_title('CAGR vs Target (Capped)', fontsize=14, fontweight='bold')
     ax2.tick_params(axis='x', rotation=45)
+    ax2.legend()
+    
+    # Row 2: P&L Horizontal Bar Chart (spanning both columns)
+    ax3 = fig.add_subplot(gs[1, :])
+    ax3.barh(pnl_df['Symbol'], pnl_df['P&L'], color=pnl_colors)
+    ax3.axvline(x=0, color='black', linestyle='-', linewidth=0.8)
+    ax3.set_title('P&L by Holding ($)', fontsize=14, fontweight='bold')
+    ax3.set_xlabel('P&L ($)')
+    ax3.grid(axis='x', alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig(save_path)
+    plt.savefig(save_path, dpi=100, bbox_inches='tight')
     plt.close()
     print(f"Static preview saved to: {save_path}")
 
