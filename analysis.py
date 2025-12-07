@@ -123,3 +123,27 @@ def analyze_restructuring(df, target_cagr=0.10):
     print("\nRecommendation:")
     print("Consider liquidating the underperformers listed above and re-allocating")
     print("to your winning positions or an index fund tracking your target.")
+
+def get_top_movers(changes_dict):
+    """
+    Returns a formatted string summarizing Top 3 Gainers and Losers.
+    """
+    if not changes_dict: return ""
+
+    sorted_changes = sorted(changes_dict.items(), key=lambda x: x[1], reverse=True)
+    
+    # Top 3 Gainers
+    gainers = sorted_changes[:3]
+    # Top 3 Losers (reverse end)
+    losers = sorted_changes[-3:]
+    losers.reverse() # Sort worst first
+    
+    summary = "\nWeekly Top Gainers:\n"
+    for sym, change in gainers:
+        summary += f"  🟢 {sym}: {change:+.2%}\n"
+        
+    summary += "\nWeekly Top Losers:\n"
+    for sym, change in losers:
+        summary += f"  🔴 {sym}: {change:+.2%}\n"
+        
+    return summary

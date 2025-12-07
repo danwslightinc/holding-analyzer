@@ -1,93 +1,83 @@
-# Stock Holding Analysis
+# Stock Holding Analysis Tool
 
-A Python-based tool to analyze your stock portfolio holdings. It reads your transaction history from a CSV file, fetches real-time market prices, and calculates key performance metrics such as Profit & Loss (P&L) and Compound Annual Growth Rate (CAGR).
+A powerful Python-based portfolio analyzer that tracks your performance, identifies underperforming assets, and automates weekly reporting.
 
-## Features
+## 🚀 Key Features
 
-*   **Portfolio Import**: Reads holdings from a local CSV file.
-*   **Live Market Data**: Fetches real-time stock prices using `yfinance` (Yahoo Finance).
-*   **Performance Metrics**:
-    *   **Cost Basis**: Function of Purchase Price, Quantity, and Commission.
-    *   **Market Value**: Current value of holdings.
-    *   **P&L**: Absolute gain/loss per holding and total portfolio.
-    *   **CAGR**: Annualized return rate for each holding.
-    *   **Goal Tracking**: Visual indicators checking if holdings meet a 10% target CAGR.
-*   **Detailed Output**: Displays a formatted table with analysis and a portfolio summary.
+*   **Portfolio Import**: Reads your holdings from a local CSV file.
+*   **Live Market Data**: Fetches real-time prices via `yfinance`.
+*   **Currency Support**: Automatically converts USD holdings (e.g., NVDA, MSFT) to **CAD** for accurate total portfolio value.
+*   **Performance Metrics**: Calculates P&L, Market Value, and CAGR for each position.
+*   **Risk Analysis ("Fishy Stock" Scan)**: Identifies broken trends, crashes (>15% drop), and extreme volatility.
+*   **Restructuring Suggestions**: Highlights "Dead Money" (underperformers) and calculates potential gains from reallocating.
+*   **Visualization**:
+    *   **Interactive Dashboard**: HTML dashboard with Zoomable Bar Charts and Pie Charts (powered by Plotly).
+    *   **Email Reports**: Weekly email with embedded metric summaries and static charts.
 
-## Prerequisites
+## 🛠️ Installation
 
-*   Python 3.8 or higher
-*   Internet connection (for fetching market data)
-
-## Installation
-
-1.  **Clone the repository** (or navigate to the project directory):
+1.  **Clone & Setup**:
     ```bash
-    cd /path/to/stock_analysis
-    ```
-
-2.  **Create a virtual environment** (recommended):
-    ```bash
+    git clone https://github.com/your-repo/stock_analysis.git
+    cd stock_analysis
     python3 -m venv venv
-    source venv/bin/activate  # On Windows: venv\Scripts\activate
-    ```
-
-3.  **Install dependencies**:
-    ```bash
+    source venv/bin/activate
     pip install -r requirements.txt
     ```
 
-## Configuration
-
-1.  **Prepare your Portfolio CSV**:
-    Create a CSV file (e.g., `portfolio.csv`) with the following headers:
-    *   `Symbol`: Ticker symbol (e.g., AAPL, MSFT, VOO).
-    *   `Trade Date`: Date of purchase in `YYYYMMDD` format (e.g., 20230115).
-    *   `Purchase Price`: Price per share at time of purchase.
-    *   `Quantity`: Number of shares bought.
-    *   `Commission`: Transaction fees (optional, defaults to 0).
-
-    **Example CSV (`portfolio.csv`):**
-    ```csv
-    Symbol,Trade Date,Purchase Price,Quantity,Commission
-    AAPL,20230115,135.00,10,0.0
-    MSFT,20230220,250.50,5,4.95
-    VOO,20220610,350.00,2,0.0
+2.  **Configuration (.env)**:
+    Create a `.env` file for email capability (required for weekly reports):
+    ```bash
+    cp .env.example .env
+    # Edit .env and add your Gmail App Password
     ```
 
-2.  **Update File Path**:
-    Open `main.py` and update the `CSV_PATH` variable to point to your CSV file:
-    ```python
-    CSV_PATH = "/path/to/your/portfolio.csv"
-    ```
+3.  **Data Setup**:
+    Ensure your `portfolio.csv` follows the format:
+    `Symbol, Trade Date, Purchase Price, Quantity, Commission`
 
-## Usage
+## 🖥️ Usage
 
-Run the main script:
+### Manual Run
+Run the main analysis script to see the table output and generate the dashboard:
 ```bash
 python main.py
 ```
+This will:
+*   Print a summary table to the console.
+*   Print the "Weekly Top Gainers/Losers".
+*   Generate `portfolio_dashboard.html` (interactive).
+*   Generate `dashboard_preview.png` (static).
 
-### Output Example
-
-```text
-Portfolio Summary:
-+----------+--------------+------------+--------------+----------------+-----------+--------+----------+
-| Symbol   | Trade Date   |   Quantity | Cost Basis   | Market Value   | P&L       | CAGR   | Status   |
-|----------+--------------+------------+--------------+----------------+-----------+--------+----------|
-| AAPL     | 2023-01-15   |         10 | $1,350.00    | $1,750.00      | $400.00   | 25.10% | ✅       |
-...
-Total Portfolio Value: $10,500.00
-Total P&L: $2,500.00
+### Detailed Stock Deep Dives
+Analyze a specific ticker (fundamentals, moving averages, analyst ratings):
+```bash
+python analyze_stock_detail.py MSFT
 ```
 
-## Project Structure
+### Risk Scan
+Quickly scan for "Fishy" stocks (crashing or broken trends):
+```bash
+python analyze_risk.py
+```
 
-*   `main.py`: Entry point. Orchestrates data loading, price fetching, and analysis.
-*   `data_loader.py`: Handles CSV reading and data cleaning.
-*   `market_data.py`: Interacts with the `yfinance` API to retrieve stock prices.
-*   `requirements.txt`: List of Python dependencies.
+### 📧 Weekly Email Automation
+To automate the report (runs every Friday at 5 PM), use the setup script:
+```bash
+./setup_cron.sh
+```
+*   This sets up a cron job on your Mac.
+*   The email includes:
+    *   **Inline Chart**: A snapshot of your allocation and performance.
+    *   **Weekly Movers**: Top 3 Gainers & Losers text summary.
+    *   **Attachment**: The full interactive HTML dashboard.
 
-## License
+## 📂 Project Structure
 
-This project is for personal use. Market data is provided by Yahoo Finance and may be delayed.
+*   `main.py`: Core logic for data loading, calculation, and reporting.
+*   `market_data.py`: Handles `yfinance` API calls and currency conversion.
+*   `analysis.py`: Logic for CAGR, restructuring, and top movers.
+*   `visualize.py`: Generates Plotly (HTML) and Matplotlib (PNG) charts.
+*   `email_report.py`: Handles email composition and sending.
+*   `analyze_stock_detail.py`: Standalone script for deep-dive analysis.
+*   `analyze_risk.py`: Standalone script for risk scanning.

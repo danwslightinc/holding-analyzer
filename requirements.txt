@@ -1,4 +1,5 @@
 pandas
 yfinance
 tabulate
-matplotlib
+plotly
+python-dotenv

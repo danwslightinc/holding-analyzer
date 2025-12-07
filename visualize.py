@@ -1,80 +1,113 @@
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import matplotlib.pyplot as plt
 import pandas as pd
-import os
 
-def plot_portfolio_allocation(df, save_path='portfolio_allocation.png'):
+def generate_static_preview(df, target_cagr, save_path='dashboard_preview.png'):
     """
-    Generates a pie chart of the portfolio allocation by Market Value.
-    """
-    if df.empty: return
-
-    # Aggregate by Symbol
-    allocation = df.groupby('Symbol')['Market Value'].sum()
-    
-    # Filter out very small positions for cleaner chart
-    total_val = allocation.sum()
-    if total_val == 0: return
-
-    # Sort and keep top N, group others?
-    # For now, just plot all.
-    
-    plt.figure(figsize=(10, 8))
-    plt.pie(allocation, labels=allocation.index, autopct='%1.1f%%', startangle=140)
-    plt.title(f'Portfolio Allocation (Total: ${total_val:,.2f})')
-    plt.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
-    
-    plt.savefig(save_path)
-    plt.close()
-    print(f"Saved allocation chart to {save_path}")
-
-def plot_cagr_performance(df, target_cagr, save_path='cagr_performance.png'):
-    """
-    Generates a bar chart comparing asset CAGR to the target.
+    Generates a static PNG summary for email embedding (since HTML/JS is blocked in emails).
     """
     if df.empty: return
 
-    # Filter out CASH.TO or weird outliers if requested? 
-    # Let's keep everything but cap visual range if needed.
-    # Group by Symbol? (Simpler if we assume one row per symbol for this chart)
-    # The main DF might have multiple rows per symbol if loaded that way, 
-    # but our current analysis tends to keep lots separate. 
-    # Let's aggregate weighted CAGR or just plot individual lots.
-    # To be safe, let's plot individual lots with Date info if needed, 
-    # OR better: Plot by Symbol (taking weighted avg if multiple).
+    # Allocation Data
+    alloc_df = df.groupby('Symbol')['Market Value'].sum()
     
-    # Let's just plot the DataFrame rows directly, labeled by Symbol + Date maybe?
-    # Or just Symbol if unique.
+    # CAGR Data
+    cagr_df = df.copy()
+    cagr_df['CAGR_Visual'] = cagr_df['CAGR'].clip(upper=3.0, lower=-1.0)
+    colors = ['green' if x >= target_cagr else 'red' for x in cagr_df['CAGR']]
+
+    # Plot
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
     
-    plot_data = df.copy()
-    plot_data['Label'] = plot_data['Symbol'] # + " (" + plot_data['Trade Date'].dt.strftime('%Y-%m') + ")"
+    # 1. Pie
+    ax1.pie(alloc_df, labels=alloc_df.index, autopct='%1.1f%%', startangle=140)
+    ax1.set_title('Portfolio Allocation')
     
-    # Clamp extreme CAGRs for visualization (e.g. BTC's huge number)
-    # Maybe limit to [-100%, +200%] for readability?
-    # Let's just plot raw for now, user can see the craziness.
-    # Actually, huge outliers break charts. 
-    # Let's filter out anything > 500% or < -100% just for the chart scaling?
-    # Or use log scale?
-    # Let's just apply a cap for the visual.
+    # 2. Bar
+    ax2.bar(cagr_df['Symbol'], cagr_df['CAGR_Visual'], color=colors)
+    ax2.axhline(y=target_cagr, color='blue', linestyle='--', label='Target')
+    ax2.set_title('CAGR vs Target (Capped)')
+    ax2.tick_params(axis='x', rotation=45)
     
-    cap = 5.0 # 500%
-    plot_data['CAGR_Visual'] = plot_data['CAGR'].clip(upper=cap, lower=-1.0)
-    
-    plt.figure(figsize=(12, 6))
-    
-    colors = ['green' if x >= target_cagr else 'red' for x in plot_data['CAGR']]
-    
-    plt.bar(plot_data['Label'], plot_data['CAGR_Visual'], color=colors)
-    
-    # Add target line
-    plt.axhline(y=target_cagr, color='blue', linestyle='--', label=f'Target ({target_cagr:.0%})')
-    
-    plt.title('Asset CAGR vs Target (Capped at 500% for visibility)')
-    plt.xlabel('Asset')
-    plt.ylabel('CAGR')
-    plt.xticks(rotation=45)
-    plt.legend()
     plt.tight_layout()
-    
     plt.savefig(save_path)
     plt.close()
-    print(f"Saved performance chart to {save_path}")
+    print(f"Static preview saved to: {save_path}")
+
+def generate_dashboard(df, target_cagr, save_path='portfolio_dashboard.html'):
+    """
+    Generates an interactive HTML dashboard with:
+    1. Portfolio Allocation (Pie)
+    2. CAGR Performance (Bar)
+    """
+    if df.empty: return
+
+    # --- Prepare Data ---
+    
+    # Allocation Data
+    alloc_df = df.groupby('Symbol')['Market Value'].sum().reset_index()
+    total_val = alloc_df['Market Value'].sum()
+    
+    # CAGR Data (Cleaned)
+    cagr_df = df.copy()
+    # Cap visual outliers for the chart so it doesn't break
+    cagr_df['CAGR_Visual'] = cagr_df['CAGR'].clip(upper=3.0, lower=-1.0) 
+    cagr_df['Color'] = cagr_df['CAGR'].apply(lambda x: 'green' if x >= target_cagr else 'red')
+    
+    # --- Create Subplots ---
+    # Row 1, Col 1: Pie Chart
+    # Row 1, Col 2: Bar Chart
+    
+    fig = make_subplots(
+        rows=1, cols=2,
+        specs=[[{"type": "domain"}, {"type": "xy"}]],
+        subplot_titles=(f"Portfolio Allocation (Total: ${total_val:,.0f})", f"CAGR Performance (Target: {target_cagr:.0%})")
+    )
+    
+    # 1. Pie Chart
+    fig.add_trace(
+        go.Pie(
+            labels=alloc_df['Symbol'], 
+            values=alloc_df['Market Value'],
+            name="Allocation",
+            hole=0.4,
+            hoverinfo="label+percent+value"
+        ),
+        row=1, col=1
+    )
+    
+    # 2. Bar Chart
+    # We color bars individually based on target
+    fig.add_trace(
+        go.Bar(
+            x=cagr_df['Symbol'],
+            y=cagr_df['CAGR_Visual'],
+            text=cagr_df['CAGR'].apply(lambda x: f"{x:.1%}"),
+            marker_color=cagr_df['Color'],
+            name="CAGR",
+            hovertemplate="<b>%{x}</b><br>CAGR: %{text}<extra></extra>"
+        ),
+        row=1, col=2
+    )
+
+    # Add Target Line to Bar Chart
+    fig.add_shape(
+        type="line",
+        x0=-0.5, x1=len(cagr_df)-0.5,
+        y0=target_cagr, y1=target_cagr,
+        line=dict(color="blue", width=2, dash="dash"),
+        row=1, col=2
+    )
+
+    # --- Layout / Styling ---
+    fig.update_layout(
+        title_text="Stock Portfolio Analysis Dashboard",
+        template="plotly_dark",
+        height=600,
+        showlegend=True
+    )
+    
+    # Save
+    fig.write_html(save_path)
+    print(f"Interactive dashboard saved to: {save_path}")

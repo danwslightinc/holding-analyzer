@@ -77,3 +77,55 @@ def get_current_prices(symbols):
     except Exception as e:
         print(f"Error fetching prices: {e}")
         return {}
+
+def get_weekly_changes(symbols):
+    """
+    Fetches 5-day history and calculates % change.
+    Returns dict: {Symbol: percent_change_float}
+    """
+    if not symbols: return {}
+    
+    tickers_str = " ".join(symbols)
+    try:
+        data = yf.download(tickers_str, period="5d", progress=False)
+        closes = data['Close']
+        
+        changes = {}
+        
+        if len(symbols) == 1:
+            # Series case
+            if len(closes) >= 2:
+                start = float(closes.iloc[0])
+                end = float(closes.iloc[-1])
+                changes[symbols[0]] = (end - start) / start
+        else:
+            # DataFrame case
+            closes = closes.ffill() # Fill missing
+            for sym in symbols:
+                if sym in closes:
+                    series = closes[sym].dropna()
+                    if len(series) >= 2:
+                        start = float(series.iloc[0])
+                        end = float(series.iloc[-1])
+                        changes[sym] = (end - start) / start
+                    else:
+                        changes[sym] = 0.0
+        return changes
+                        
+    except Exception as e:
+        print(f"Error fetching weekly changes: {e}")
+        return {}
+
+def get_usd_to_cad_rate():
+    """
+    Fetches the current USD to CAD exchange rate.
+    Uses 'CAD=X' from Yahoo Finance.
+    """
+    try:
+        data = yf.download("CAD=X", period="1d", progress=False)
+        if not data.empty:
+            return float(data['Close'].iloc[-1])
+        return 1.40 # Fallback estimate if API fails
+    except Exception as e:
+        print(f"Error fetching exchange rate: {e}")
+        return 1.40
