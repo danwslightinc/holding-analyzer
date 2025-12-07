@@ -3,3 +3,4 @@ yfinance
 tabulate
 plotly
 python-dotenv
+matplotlib
