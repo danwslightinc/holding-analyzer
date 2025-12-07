@@ -24,6 +24,10 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
+    - name: Create portfolio.csv from secret
+      run: |
+        echo "${{ secrets.PORTFOLIO_CSV }}" > portfolio.csv
+    
     - name: Run Analysis and Send Email
       env:
         SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
