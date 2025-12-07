@@ -3,3 +3,12 @@ __pycache__/
 *.pyc
 .DS_Store
 .env
+
+# Private portfolio data
+portfolio.csv
+
+# Generated output files
+portfolio_dashboard.html
+dashboard_preview.png
+portfolio_allocation.png
+cagr_performance.png
