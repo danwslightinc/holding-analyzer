@@ -62,6 +62,16 @@ Analyze a specific ticker (fundamentals, moving averages, analyst ratings):
 python analyze_stock_detail.py MSFT
 ```
 
+### Sector Distribution
+View your portfolio's sector allocation and diversification analysis:
+```bash
+python analyze_sectors.py
+```
+This generates:
+*   Console output showing sector breakdown by market value and percentage
+*   `sector_distribution.png` pie chart visualization
+*   Diversification analysis with concentration risk warnings
+
 ### Risk Scan
 Quickly scan for "Fishy" stocks (crashing or broken trends):
 ```bash
