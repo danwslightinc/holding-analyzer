@@ -182,12 +182,12 @@ def analyze_pnl(df):
     # Calculate simple return percentage
     equity_df['Return %'] = (equity_df['P&L'] / equity_df['Cost Basis']) * 100
     
-    # Sort by P&L (highest to lowest)
-    equity_df_sorted = equity_df.sort_values('P&L', ascending=False)
+    # Sort by Return % for ranking
+    equity_df_sorted = equity_df.sort_values('Return %', ascending=False)
     
     # Winners and Losers
     winners = equity_df_sorted[equity_df_sorted['P&L'] > 0].copy()
-    losers = equity_df_sorted[equity_df_sorted['P&L'] < 0].copy()
+    losers = equity_df_sorted[equity_df_sorted['P&L'] < 0].sort_values('Return %', ascending=True).copy()
     
     # Build email summary
     email_summary = "\n💰 P&L SUMMARY\n"
