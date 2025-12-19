@@ -49,7 +49,7 @@ def generate_static_preview(df, target_cagr, save_path='dashboard_preview.png'):
     ax3.set_xlabel('P&L ($)')
     ax3.grid(axis='x', alpha=0.3)
     
-    plt.tight_layout()
+    # plt.tight_layout() # Caused UserWarning with GridSpec spanning
     plt.savefig(save_path, dpi=100, bbox_inches='tight')
     plt.close()
     print(f"Static preview saved to: {save_path}")
