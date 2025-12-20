@@ -22,11 +22,16 @@ def calculate_metrics(df, target_cagr=0.10):
     # Avoid division by zero or negative days
     df['Days Held'] = df['Days Held'].apply(lambda x: max(x, 1))
     
-    # CAGR
-    # Formula: (End / Start) ^ (365 / Days) - 1
+    # CAGR vs Simple Return
+    # If held < 1 year, return Simple Return to avoid extreme annualized volatility.
+    # Otherwise, return CAGR.
     def calculate_cagr_row(row):
         if row['Cost Basis'] <= 0: return 0.0
         if row['Market Value'] <= 0: return -1.0 
+        
+        if row['Days Held'] < 365:
+            return (row['Market Value'] / row['Cost Basis']) - 1
+            
         return (row['Market Value'] / row['Cost Basis']) ** (365.0 / row['Days Held']) - 1
 
     df['CAGR'] = df.apply(calculate_cagr_row, axis=1)
