@@ -397,14 +397,47 @@ def get_fundamental_data(symbols):
                 ex_div = datetime.fromtimestamp(ex_div).strftime('%Y-%m-%d')
             
             # 3. Next Earnings (Only for equities)
+            # 3. Next Earnings (Only for equities)
             next_earnings = 'N/A'
             try:
                 if quote_type == 'EQUITY': 
+                    dates = []
+                    now = datetime.now()
+                    
+                    # approach 1: calendar property
                     cal = ticker.calendar
-                    if cal and 'Earnings Date' in cal:
-                        dates = cal['Earnings Date']
-                        if dates:
-                            next_earnings = dates[0].strftime('%Y-%m-%d')
+                    if cal is not None:
+                        if isinstance(cal, dict) and 'Earnings Date' in cal:
+                            dates = cal['Earnings Date']
+                        elif hasattr(cal, 'get'):
+                            dates = cal.get('Earnings Date', [])
+                    
+                    # approach 2: get_earnings_dates() dataframe
+                    if not dates:
+                        edt = ticker.get_earnings_dates(limit=6)
+                        if edt is not None and not edt.empty:
+                            dates = edt.index.tolist()
+                            
+                    # Clean and Filter
+                    valid_dates = []
+                    now_date = datetime.now().date()
+                    
+                    for d in dates:
+                        # Handle Timestamp (pandas) -> datetime
+                        if hasattr(d, 'to_pydatetime'):
+                            d = d.to_pydatetime()
+                        
+                        # Convert datetime -> date
+                        current_date = d
+                        if isinstance(d, datetime):
+                            current_date = d.date()
+                        
+                        # Check strictly future
+                        if current_date > now_date:
+                            valid_dates.append(current_date)
+                            
+                    if valid_dates:
+                        next_earnings = min(valid_dates).strftime('%Y-%m-%d')
             except Exception:
                 pass
 
