@@ -130,36 +130,70 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, save
     alloc_df = df.groupby('Symbol')['Market Value'].sum().reset_index()
     total_val = alloc_df['Market Value'].sum()
 
-    # Sector Allocation Data
+    # --- Treemap Data Preparation (Look-Through) ---
     if fundamentals:
-        # Look-Through Sector Analysis
-        sector_map = {}
+        tm_ids = ["Portfolio"]
+        tm_labels = ["Portfolio"]
+        tm_parents = [""]
+        tm_values = [total_val]
+        tm_text = ["Total Value"]
+        
+        # 1. Aggregate Value by Sector for Parents
+        # We need this to ensure parent values match sum of children (Plotly requirement)
+        # Re-using sector_map logic from static generation or recalculating here
+        
+        # We need to build the list of children first to sum them up perfectly?
+        # Actually Plotly can sum children if branchvalues='total'.
+        # Let's generate the detailed list of fragments first.
+        
+        fragments = [] # list of (Sector, Label, Value)
+        
         for _, row in df.iterrows():
             sym = row['Symbol']
             val = row['Market Value']
-            # Get base sector from fundamentals
-            base_sector = fundamentals.get(sym, {}).get('Sector', 'Unknown')
+            base_sector = fundamentals.get(sym, {}).get('Sector', 'Other')
+            if not base_sector: base_sector = 'Other'
             
             if sym in ETF_SECTOR_WEIGHTS:
-                # Distribute value for known ETFs
+                # Split ETF
                 weights = ETF_SECTOR_WEIGHTS[sym]
                 remaining_weight = 1.0
                 for sec, w in weights.items():
                     amount = val * w
-                    sector_map[sec] = sector_map.get(sec, 0) + amount
+                    fragments.append((sec, f"{sym} ({sec[:4]})", amount))
                     remaining_weight -= w
                 
                 if remaining_weight > 0.001:
-                    sector_map['Other'] = sector_map.get('Other', 0) + (val * remaining_weight)
+                    amount = val * remaining_weight
+                    fragments.append(('Other', f"{sym} (Other)", amount))
             else:
-                # Standard Stock or Unmapped ETF
-                sector_map[base_sector] = sector_map.get(base_sector, 0) + val
-                
-        sector_df = pd.DataFrame(list(sector_map.items()), columns=['Sector', 'Market Value'])
-        sector_df = sector_df.sort_values('Market Value', ascending=False)
-    else:
-        sector_df = pd.DataFrame({'Sector': ['Unknown'], 'Market Value': [total_val]})
-    
+                # Single Stock
+                fragments.append((base_sector, sym, val))
+        
+        # Convert to DataFrame to group by Sector
+        frag_df = pd.DataFrame(fragments, columns=['Sector', 'Label', 'Value'])
+        frag_df = frag_df[frag_df['Value'] > 0.01] # Filter noise
+        
+        # Add Sectors (Parents)
+        sector_group = frag_df.groupby('Sector')['Value'].sum()
+        for sector, val in sector_group.items():
+            tm_ids.append(sector)
+            tm_labels.append(sector)
+            tm_parents.append("Portfolio")
+            tm_values.append(val)
+            tm_text.append(f"{val:,.0f}")
+            
+        # Add Holdings (Children)
+        for _, row in frag_df.iterrows():
+            # ID must be unique. Label can be same.
+            # ID: Sector + Label to be unique (e.g. Technology - VOO (Tech))
+            unique_id = f"{row['Sector']} - {row['Label']}"
+            tm_ids.append(unique_id)
+            tm_labels.append(row['Label']) # Visible Label
+            tm_parents.append(row['Sector'])
+            tm_values.append(row['Value'])
+            tm_text.append(f"${row['Value']:,.0f}")
+            
     # CAGR Data (Cleaned)
     cagr_df = df.copy()
     cagr_df['CAGR_Visual'] = cagr_df['CAGR'].clip(upper=3.0, lower=-1.0) 
@@ -170,6 +204,7 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, save
     pnl_df['Return %'] = (pnl_df['P&L'] / pnl_df['Cost Basis']) * 100
     pnl_df['PnL_Color'] = pnl_df['P&L'].apply(lambda x: 'green' if x > 0 else 'red')
     pnl_df = pnl_df.sort_values('P&L', ascending=True)
+    pnl_df['Text'] = pnl_df.apply(lambda x: f"${x['P&L']:,.0f} ({x['Return %']:.1f}%)", axis=1)
     
     # Quant-Mental Table Data
     table_rows = []
@@ -229,23 +264,23 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, save
     
     # --- Create Subplots ---
     # We use a cleaner 2-row layout for charts. The table will be external HTML.
+    # --- Create Subplots ---
     rows_count = 2 
     
     if fundamentals:
         # Layout:
-        # Row 1: Holdings Pie | Sector Pie
-        # Row 2: CAGR Bar     | P&L Bar
+        # Row 1: Holdings Pie | CAGR Bar
+        # Row 2: Treemap      | P&L Bar
         specs = [
-            [{"type": "domain"}, {"type": "domain"}],
-            [{"type": "xy"}, {"type": "xy"}]
+            [{"type": "domain"}, {"type": "xy"}],
+            [{"type": "treemap"}, {"type": "xy"}]
         ]
         titles = (
             f"Holdings (Total: ${total_val:,.0f})", 
-            "Sector Allocation",
             f"CAGR Performance (Target: {target_cagr:.0%})",
+            "Sector Exposure (Look-Through)",
             "P&L by Holding"
         )
-        row_heights = [0.45, 0.55]
     else:
         specs = [
             [{"type": "domain"}, {"type": "xy"}],
@@ -256,14 +291,13 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, save
             f"CAGR Performance (Target: {target_cagr:.0%})",
             "P&L by Holding"
         )
-        row_heights = [0.5, 0.5]
 
     fig = make_subplots(
         rows=rows_count, cols=2,
         specs=specs,
         subplot_titles=titles,
-        row_heights=row_heights,
-        vertical_spacing=0.1
+        vertical_spacing=0.12,
+        horizontal_spacing=0.1
     )
     
     # 1. Pie Chart (Holdings) - (Row 1, Col 1)
@@ -273,28 +307,15 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, save
             values=alloc_df['Market Value'],
             name="Holdings",
             hole=0.4,
-            hoverinfo="label+percent+value"
+            hoverinfo="label+percent+value",
+            showlegend=False
         ),
         row=1, col=1
     )
     
-    # 2. Sector Pie Chart - (Row 1, Col 2) [New]
-    if fundamentals:
-        fig.add_trace(
-            go.Pie(
-                labels=sector_df['Sector'], 
-                values=sector_df['Market Value'],
-                name="Sector",
-                hole=0.4,
-                hoverinfo="label+percent+value",
-                textinfo="percent+label"
-            ),
-            row=1, col=2
-        )
-
-    # 3. CAGR Bar Chart - (Row 2, Col 1)
-    cagr_row = 2 if fundamentals else 1
-    cagr_col = 1 if fundamentals else 2
+    # 2. CAGR Bar Chart - (Row 1, Col 2)
+    cagr_row = 1
+    cagr_col = 2
     
     fig.add_trace(
         go.Bar(
@@ -316,6 +337,23 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, save
         row=cagr_row, col=cagr_col
     )
     
+    # 3. Sector Treemap - (Row 2, Col 1)
+    if fundamentals:
+        fig.add_trace(
+            go.Treemap(
+                ids=tm_ids,
+                labels=tm_labels,
+                parents=tm_parents,
+                values=tm_values,
+                text=tm_text,
+                textinfo="label+text+percent parent",
+                branchvalues="total",
+                marker=dict(colorscale='Blues'), # Professional Blue theme
+                hovertemplate='<b>%{label}</b><br>Value: $%{value:,.2f}<br>Share: %{percentParent:.1%}<extra></extra>'
+            ),
+            row=2, col=1
+        )
+
     # 4. P&L Bar Chart - (Row 2, Col 2)
     pnl_row = 2
     pnl_col = 2 if fundamentals else 1
@@ -333,21 +371,8 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, save
         row=pnl_row, col=pnl_col
     )
     
-    fig.add_shape(
-        type="line",
-        y0=-0.5, y1=len(pnl_df)-0.5,
-        x0=0, x1=0,
-        line=dict(color="white", width=1, dash="dot"),
-        row=pnl_row, col=pnl_col
-    )
-    
     # --- Layout / Styling ---
     # Update axes labels
-    cagr_row = 2 if fundamentals else 1
-    cagr_col = 1 if fundamentals else 2
-    pnl_row = 2
-    pnl_col = 2 if fundamentals else 1
-    
     fig.update_xaxes(title_text="Symbol", row=cagr_row, col=cagr_col)
     fig.update_yaxes(title_text="CAGR", row=cagr_row, col=cagr_col)
     fig.update_xaxes(title_text="P&L ($)", row=pnl_row, col=pnl_col)
@@ -355,8 +380,8 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, save
     fig.update_layout(
         title_text="Stock Portfolio Analysis",
         template="plotly_dark",
-        height=800, 
-        showlegend=True,
+        height=900, 
+        showlegend=False,
         margin=dict(l=50, r=50, t=80, b=50)
     )
 
