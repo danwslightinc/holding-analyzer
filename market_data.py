@@ -309,20 +309,29 @@ def get_latest_news(symbols):
             if items and isinstance(items, list) and len(items) > 0:
                 # Get most recent
                 top_story = items[0]
-                # Key structure varies slightly, usually 'content' -> 'title' or just 'title'
-                title = top_story.get('title')
-                if not title:
-                    # Generic case handling
-                    title = top_story.get('content', {}).get('title', 'No Title')
+                content = top_story.get('content', top_story)
+                title = content.get('title', 'No Title')
                 
-                # Truncate if too long (max 80 chars)
+                # Extract Link
+                link = content.get('link')
+                if not link:
+                    click = content.get('clickThroughUrl')
+                    if click: link = click.get('url')
+                if not link:
+                    canon = content.get('canonicalUrl')
+                    if canon: link = canon.get('url')
+                
+                if not link:
+                    link = f"https://finance.yahoo.com/quote/{sym}"
+                
+                # Truncate title if too long (max 80 chars)
                 if len(title) > 80:
                     title = title[:77] + "..."
                     
-                return sym, f"📰 {title}"
+                return sym, {'headline': f"📰 {title}", 'link': link}
         except Exception:
             pass
-        return sym, ""
+        return sym, None
 
     # Use ThreadPool to fetch parallelly (I/O bound)
     import concurrent.futures
