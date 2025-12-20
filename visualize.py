@@ -27,15 +27,40 @@ ETF_SECTOR_WEIGHTS = {
     }
 }
 
-def generate_static_preview(df, target_cagr, save_path='dashboard_preview.png'):
+def generate_static_preview(df, target_cagr, fundamentals=None, save_path='dashboard_preview.png'):
     """
-    Generates a static PNG summary for email embedding (since HTML/JS is blocked in emails).
-    Includes: Allocation (pie), CAGR (bar), and P&L (horizontal bar).
+    Generates a static PNG summary for email embedding.
+    Includes: Sector Allocation (H-Bar), CAGR (bar, excl BTC), and P&L (H-Bar).
     """
     if df.empty: return
 
-    # Allocation Data (Sorted for Bar Chart)
-    alloc_s = df.groupby('Symbol')['Market Value'].sum().sort_values(ascending=True)
+    # Sector Allocation Data (Look-Through) or Fallback
+    if fundamentals:
+        sector_map = {}
+        for _, row in df.iterrows():
+            sym = row['Symbol']
+            val = row['Market Value']
+            base_sector = fundamentals.get(sym, {}).get('Sector', 'Other')
+            if not base_sector: base_sector = 'Other'
+            
+            if sym in ETF_SECTOR_WEIGHTS:
+                weights = ETF_SECTOR_WEIGHTS[sym]
+                remaining_weight = 1.0
+                for sec, w in weights.items():
+                    amount = val * w
+                    sector_map[sec] = sector_map.get(sec, 0) + amount
+                    remaining_weight -= w
+                if remaining_weight > 0.001:
+                    sector_map['Other'] = sector_map.get('Other', 0) + (val * remaining_weight)
+            else:
+                sector_map[base_sector] = sector_map.get(base_sector, 0) + val
+        
+        plot_data = pd.Series(sector_map).sort_values(ascending=False)
+        title_text = 'Sector Exposure (Look-Through)'
+    else:
+        # Fallback to Holdings if no fundamentals
+        plot_data = df.groupby('Symbol')['Market Value'].sum().sort_values(ascending=False)
+        title_text = 'Portfolio Allocation (Holdings)'
     
     # CAGR Data (Filter out Crypto/BTC to fix scaling)
     # Using case-insensitive check for 'BTC'
@@ -53,12 +78,20 @@ def generate_static_preview(df, target_cagr, save_path='dashboard_preview.png'):
     fig = plt.figure(figsize=(16, 12))  # Taller figure
     gs = fig.add_gridspec(2, 2, height_ratios=[1, 1], hspace=0.3, wspace=0.3)
     
-    # Row 1, Col 1: Allocation (Horizontal Bar) - Improved Readability
+    # Row 1, Col 1: Sector/Allocation (Pie Chart)
     ax1 = fig.add_subplot(gs[0, 0])
-    ax1.barh(alloc_s.index, alloc_s.values, color='#4facfe')
-    ax1.set_title('Portfolio Allocation ($)', fontsize=14, fontweight='bold')
-    ax1.set_xlabel('Market Value')
-    ax1.grid(axis='x', alpha=0.3, linestyle='--')
+    wedges, texts, autotexts = ax1.pie(plot_data, labels=plot_data.index, autopct='%1.1f%%', startangle=90, pctdistance=0.85)
+    
+    # Styling for readability
+    plt.setp(texts, size=8)
+    plt.setp(autotexts, size=8, weight="bold")
+    
+    # Donut Style
+    centre_circle = plt.Circle((0,0),0.70,fc='white')
+    ax1.add_artist(centre_circle)
+    
+    ax1.set_title(title_text, fontsize=14, fontweight='bold')
+    ax1.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
     
     # Row 1, Col 2: CAGR Bar Chart (No BTC)
     ax2 = fig.add_subplot(gs[0, 1])

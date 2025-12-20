@@ -132,7 +132,7 @@ def main():
     print("\nGenerating interactive dashboard with Quant-Mental view...")
     from visualize import generate_dashboard, generate_static_preview
     generate_dashboard(df, TARGET_CAGR, fundamentals=fundamentals, technicals=technicals)
-    generate_static_preview(df, TARGET_CAGR)
+    generate_static_preview(df, TARGET_CAGR, fundamentals)
     
     return movers_summary + "\n" + market_summary + "\n" + pnl_summary + "\n" + sector_summary
 
