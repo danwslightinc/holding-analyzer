@@ -78,19 +78,31 @@ def generate_static_preview(df, target_cagr, fundamentals=None, save_path='dashb
 
     # Create grid
     fig = plt.figure(figsize=(16, 12))
-    gs = fig.add_gridspec(2, 2, height_ratios=[0.4, 0.6], hspace=0.3, wspace=0.3)
+    gs = fig.add_gridspec(2, 2, height_ratios=[1, 1], hspace=0.3, wspace=0.3)
     
-    # Row 1: CAGR Bar Chart (Full Width)
-    ax1 = fig.add_subplot(gs[0, :])
-    ax1.bar(cagr_df['Symbol'], cagr_df['CAGR_Visual'], color=cagr_colors)
-    ax1.axhline(y=target_cagr, color='blue', linestyle='--', label=f'Target {target_cagr:.0%}')
-    ax1.set_title('CAGR vs Target (Excl. BTC)', fontsize=14, fontweight='bold')
-    ax1.tick_params(axis='x', rotation=45)
-    ax1.legend()
-    ax1.grid(axis='y', alpha=0.3)
+    # Row 1, Col 1: Sector Donut Chart
+    ax1 = fig.add_subplot(gs[0, 0])
+    # Re-use plot_data (Sector Series)
+    wedges, texts, autotexts = ax1.pie(plot_data, labels=plot_data.index, autopct='%1.1f%%', startangle=90, pctdistance=0.85)
+    plt.setp(texts, size=8)
+    plt.setp(autotexts, size=8, weight="bold")
+    # Donut Circle
+    centre_circle = plt.Circle((0,0),0.70,fc='white')
+    ax1.add_artist(centre_circle)
+    ax1.set_title("Sector Allocation", fontsize=14, fontweight='bold')
+    ax1.axis('equal')
+
+    # Row 1, Col 2: CAGR Bar Chart
+    ax2 = fig.add_subplot(gs[0, 1])
+    ax2.bar(cagr_df['Symbol'], cagr_df['CAGR_Visual'], color=cagr_colors)
+    ax2.axhline(y=target_cagr, color='blue', linestyle='--', label=f'Target {target_cagr:.0%}')
+    ax2.set_title('CAGR vs Target (Excl. BTC)', fontsize=14, fontweight='bold')
+    ax2.tick_params(axis='x', rotation=45)
+    ax2.legend()
+    ax2.grid(axis='y', alpha=0.3)
     
     # Row 2, Col 1: Sector/Allocation (Treemap)
-    ax2 = fig.add_subplot(gs[1, 0])
+    ax3 = fig.add_subplot(gs[1, 0])
     
     # Generate colors (Blue gradient)
     colors = plt.cm.Blues(np.linspace(0.4, 0.9, len(plot_data)))
@@ -101,22 +113,22 @@ def generate_static_preview(df, target_cagr, fundamentals=None, save_path='dashb
     
     try:
         squarify.plot(sizes=plot_data.values, label=labels, 
-                      color=colors, alpha=0.8, ax=ax2, 
+                      color=colors, alpha=0.8, ax=ax3, 
                       text_kwargs={'fontsize':9, 'weight':'bold', 'color':'white'})
     except Exception as e:
         print(f"Treemap error: {e}")
-        ax2.text(0.5, 0.5, "Treemap Error", ha='center')
+        ax3.text(0.5, 0.5, "Treemap Error", ha='center')
         
-    ax2.set_title(title_text, fontsize=14, fontweight='bold')
-    ax2.axis('off')
+    ax3.set_title('Sector Look-Through (Treemap)', fontsize=14, fontweight='bold')
+    ax3.axis('off')
     
     # Row 2, Col 2: P&L (Horizontal Bar)
-    ax3 = fig.add_subplot(gs[1, 1])
-    ax3.barh(pnl_df['Symbol'], pnl_df['P&L'], color=pnl_colors)
-    ax3.axvline(x=0, color='black', linestyle='-', linewidth=0.8)
-    ax3.set_title('P&L by Holding ($)', fontsize=14, fontweight='bold')
-    ax3.set_xlabel('P&L ($)')
-    ax3.grid(axis='x', alpha=0.3)
+    ax4 = fig.add_subplot(gs[1, 1])
+    ax4.barh(pnl_df['Symbol'], pnl_df['P&L'], color=pnl_colors)
+    ax4.axvline(x=0, color='black', linestyle='-', linewidth=0.8)
+    ax4.set_title('P&L by Holding ($)', fontsize=14, fontweight='bold')
+    ax4.set_xlabel('P&L ($)')
+    ax4.grid(axis='x', alpha=0.3)
     
     plt.tight_layout()
     plt.savefig(save_path, dpi=100, bbox_inches='tight')
