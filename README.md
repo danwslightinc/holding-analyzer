@@ -38,7 +38,8 @@ A powerful Python-based portfolio analyzer that tracks your performance, identif
     ```
 
 3.  **Data Setup**:
-    Ensure your `portfolio.csv` follows the format:
+    
+    Create `portfolio.csv` manually with the format:
     `Symbol, Trade Date, Purchase Price, Quantity, Commission`
 
 ## 🖥️ Usage
@@ -79,17 +80,18 @@ python analyze_risk.py
 ```
 
 ### 📧 Weekly Email Automation
-To automate the report (runs every Friday at 5 PM EST), use GitHub Actions:
-*   Configure secrets in your GitHub repository settings:
-    *   `SENDER_EMAIL`: Your Gmail address
-    *   `SENDER_PASSWORD`: Gmail app password
-    *   `RECIPIENT_EMAIL`: Email to receive reports
-*   The workflow (`.github/workflows/weekly_report.yml`) will:
-    *   Run analysis automatically every Friday
-    *   Send email with:
-        *   **Inline Chart**: A snapshot of your allocation and performance.
-        *   **Weekly Movers**: Top 3 Gainers & Losers text summary.
-        *   **Attachment**: The full interactive HTML dashboard.
+
+**Every Friday at 5:00 PM EST:**
+1. Loads `portfolio.csv`
+2. Runs analysis and generates visualizations
+3. Sends email report
+
+**Email Report Includes:**
+- **Inline Chart**: Snapshot of allocation and performance
+- **Weekly Movers**: Top 3 Gainers & Losers summary
+- **Attachment**: Full interactive HTML dashboard- **Inline Chart**: Snapshot of allocation and performance
+- **Weekly Movers**: Top 3 Gainers & Losers summary
+- **Attachment**: Full interactive HTML dashboard
 
 ## 📂 Project Structure
 
