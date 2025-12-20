@@ -252,7 +252,11 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
             theses.append(row.get('Thesis', ''))
             cat_val = row.get('Catalyst', '')
             if not cat_val and news and sym in news:
-                cat_val = news[sym]
+                n = news[sym]
+                if isinstance(n, dict) and 'link' in n:
+                    cat_val = f"<a href='{n['link']}' target='_blank' style='color: inherit; text-decoration: underline;'>{n['headline']}</a>"
+                else:
+                    cat_val = str(n)
             catalysts.append(cat_val)
             kill_switches.append(row.get('Kill Switch', ''))
             convictions.append(row.get('Conviction', ''))
@@ -420,7 +424,7 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
          for i, col_name in enumerate(table_headers):
              qm_display_df[col_name] = table_data[i]
              
-         qm_html = qm_display_df.to_html(index=False, classes="fl-table", border=0)
+         qm_html = qm_display_df.to_html(index=False, classes="fl-table", border=0, escape=False)
 
     # 3. Full Template (Rich Aesthetics)
     html_template = f"""
