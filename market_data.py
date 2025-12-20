@@ -262,7 +262,7 @@ def get_technical_data(symbols):
     tickers_str = " ".join(symbols)
     
     try:
-        data = yf.download(tickers_str, start=start_date, progress=False)
+        data = yf.download(tickers_str, start=start_date, progress=False, auto_adjust=False)
         closes = data['Close']
         
         if len(symbols) == 1:
