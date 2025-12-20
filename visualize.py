@@ -135,7 +135,7 @@ def generate_static_preview(df, target_cagr, fundamentals=None, save_path='dashb
     plt.close()
     print(f"Static preview saved to: {save_path}")
 
-def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, save_path='portfolio_dashboard.html'):
+def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news=None, save_path='portfolio_dashboard.html'):
     """
     Generates an interactive HTML dashboard with:
     1. Portfolio Allocation (Pie) and CAGR Performance (Bar) - Top Row
@@ -250,7 +250,10 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, save
             sym = row['Symbol']
             symbols.append(sym)
             theses.append(row.get('Thesis', ''))
-            catalysts.append(row.get('Catalyst', ''))
+            cat_val = row.get('Catalyst', '')
+            if not cat_val and news and sym in news:
+                cat_val = news[sym]
+            catalysts.append(cat_val)
             kill_switches.append(row.get('Kill Switch', ''))
             convictions.append(row.get('Conviction', ''))
             timeframes.append(row.get('Timeframe', ''))

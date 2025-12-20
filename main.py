@@ -2,7 +2,7 @@ import pandas as pd
 from datetime import datetime
 from tabulate import tabulate
 from data_loader import load_portfolio_holdings
-from market_data import get_current_prices, get_weekly_changes, get_usd_to_cad_rate, get_market_indices_change, get_fundamental_data, get_technical_data
+from market_data import get_current_prices, get_weekly_changes, get_usd_to_cad_rate, get_market_indices_change, get_fundamental_data, get_technical_data, get_latest_news
 from analysis import calculate_metrics, analyze_restructuring, analyze_pnl, get_top_movers, get_market_summary, analyze_sector_exposure
 from visualize import generate_dashboard, generate_static_preview
 
@@ -29,6 +29,7 @@ def main():
     # Fetch Fundamentals (Quant-Mental)
     fundamentals = get_fundamental_data(symbols)
     technicals = get_technical_data(symbols)
+    news = get_latest_news(symbols)
 
     # Add Current Price to DataFrame
     df['Current Price'] = df['Symbol'].map(prices)
@@ -131,7 +132,7 @@ def main():
     # --- Visualization ---
     print("\nGenerating interactive dashboard with Quant-Mental view...")
     from visualize import generate_dashboard, generate_static_preview
-    generate_dashboard(df, TARGET_CAGR, fundamentals=fundamentals, technicals=technicals)
+    generate_dashboard(df, TARGET_CAGR, fundamentals=fundamentals, technicals=technicals, news=news)
     generate_static_preview(df, TARGET_CAGR, fundamentals)
     
     return movers_summary + "\n" + market_summary + "\n" + pnl_summary + "\n" + sector_summary

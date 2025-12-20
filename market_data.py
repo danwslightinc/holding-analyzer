@@ -292,6 +292,49 @@ def get_technical_data(symbols):
         
     return technical_data
 
+def get_latest_news(symbols):
+    """
+    Fetches the latest news headline for each symbol.
+    Returns dict: {Symbol: 'News: Headline'}
+    """
+    if not symbols: return {}
+
+    print(f"Fetching latest news for {len(symbols)} symbols...")
+    news_map = {}
+    
+    def fetch_news(sym):
+        try:
+            # yfinance news
+            items = yf.Ticker(sym).news
+            if items and isinstance(items, list) and len(items) > 0:
+                # Get most recent
+                top_story = items[0]
+                # Key structure varies slightly, usually 'content' -> 'title' or just 'title'
+                title = top_story.get('title')
+                if not title:
+                    # Generic case handling
+                    title = top_story.get('content', {}).get('title', 'No Title')
+                
+                # Truncate if too long (max 80 chars)
+                if len(title) > 80:
+                    title = title[:77] + "..."
+                    
+                return sym, f"📰 {title}"
+        except Exception:
+            pass
+        return sym, ""
+
+    # Use ThreadPool to fetch parallelly (I/O bound)
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_sym = {executor.submit(fetch_news, sym): sym for sym in symbols}
+        for future in concurrent.futures.as_completed(future_to_sym):
+            sym, headline = future.result()
+            if headline:
+                news_map[sym] = headline
+                
+    return news_map
+
 def get_fundamental_data(symbols):
     """
     Fetches fundamental data for a list of symbols.
