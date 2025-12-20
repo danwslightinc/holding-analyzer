@@ -1,6 +1,30 @@
 import yfinance as yf
 from datetime import datetime, timedelta
 import pandas as pd
+import numpy as np
+
+# ETF Look-Through Weights (Approximate)
+ETF_SECTOR_WEIGHTS = {
+    'VOO': {
+        'Technology': 0.31, 'Financial Services': 0.13, 'Healthcare': 0.12, 
+        'Consumer Cyclical': 0.10, 'Communication Services': 0.09, 'Industrials': 0.08, 
+        'Consumer Defensive': 0.06, 'Energy': 0.04, 'Real Estate': 0.02, 'Basic Materials': 0.02, 'Utilities': 0.03
+    },
+    'XQQ.TO': {
+        'Technology': 0.51, 'Communication Services': 0.16, 'Consumer Cyclical': 0.13, 
+        'Healthcare': 0.06, 'Consumer Defensive': 0.04, 'Industrials': 0.04, 'Utilities': 0.01,
+        'Financial Services': 0.01
+    },
+    'XIU.TO': {
+        'Financial Services': 0.35, 'Energy': 0.18, 'Industrials': 0.12, 
+        'Basic Materials': 0.12, 'Technology': 0.09, 'Utilities': 0.05, 
+        'Communication Services': 0.05, 'Consumer Defensive': 0.03, 'Consumer Cyclical': 0.01
+    },
+    'XEI.TO': {
+        'Energy': 0.30, 'Financial Services': 0.30, 'Utilities': 0.15, 
+        'Communication Services': 0.10, 'Real Estate': 0.05, 'Basic Materials': 0.05, 'Industrials': 0.05
+    }
+}
 
 def find_purchase_date_from_price(symbol, purchase_price, tolerance=0.05, min_days_ago=30):
     """
@@ -93,46 +117,13 @@ def get_current_prices(symbols):
     try:
         data = yf.download(tickers_str, period="5d", progress=False)
         
-        # 'data' is a DataFrame. We need the latest 'Close' price.
-        # If single symbol, structure is different than multiple.
-        # Actually yf.download returns a MultiIndex columns if multiple symbols.
-        
         prices = {}
-        
-        # Handle case where only 1 symbol is requested
-        if len(symbols) == 1:
-            symbol = symbols[0]
-            # yfinance returns different shape if 1 symbol. 
-            # Columns are just Open, High, Low, Close...
-            # But wait, yf.download in recent versions might still be complex.
-            # Safest is to use Ticker if just one, but download is faster for batch.
-            
-            # Let's try to access the last row's 'Close'
-            # Check if 'Close' is in columns
-            if 'Close' in data.columns:
-                 # It's a Series if single symbol, or DF if multi.
-                 # Actually, usually for single symbol it returns a DF with Index Date.
-                 current_price = data['Close'].iloc[-1]
-                 # If it's a scalar it's float, if Series (multi-index?)
-                 # Let's handle the complexity by checking type or just using Ticker for simplicity for now?
-                 # Batch download is nicer. 
-                 
-                 # .iloc[-1] gives the last row (latest date).
-                 # If MultiIndex columns (Price, Ticker), we iterate.
-                 pass
-        
-        # Let's use Tickers module for easier dict access if download is tricky with shapes
-        # But download is faster.
-        # Alternative: data['Close'] returns a DF with columns as Tickers.
         
         if len(symbols) == 1:
              # Single symbol case
              # data['Close'] is a Series or DataFrame depending on yfinance version
-             # If Series, ffill().iloc[-1] works
-             # If DataFrame (it shouldn't be for 1 ticker usually?), check columns
              closes = data['Close']
              if isinstance(closes, pd.DataFrame):
-                 # This happens if multi-level index or something weird
                  val = closes.ffill().iloc[-1].iloc[0] # Take first col
              else:
                  val = closes.ffill().iloc[-1]
@@ -238,3 +229,157 @@ def get_market_indices_change():
     except Exception as e:
         print(f"Error fetching indices: {e}")
         return {}
+
+def calculate_rsi(series, period=14):
+    """
+    Calculates the RSI of a price series.
+    Returns the latest RSI value (float).
+    """
+    delta = series.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi.iloc[-1]
+
+def get_technical_data(symbols):
+    """
+    Fetches 3-month history and calculates RSI.
+    Returns dict: {Symbol: {'RSI': float_val}}
+    """
+    if not symbols: return {}
+
+    technical_data = {}
+    print(f"Fetching technical data (RSI) for {len(symbols)} symbols...")
+    
+    # We need enough days for 14-day rolling window
+    start_date = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
+    tickers_str = " ".join(symbols)
+    
+    try:
+        data = yf.download(tickers_str, start=start_date, progress=False)
+        closes = data['Close']
+        
+        if len(symbols) == 1:
+            # Single symbol
+            # closes is typically a Series or single-col DF
+            if isinstance(closes, pd.DataFrame):
+                 series = closes.iloc[:, 0]
+            else:
+                 series = closes
+            
+            rsi = calculate_rsi(series)
+            technical_data[symbols[0]] = {'RSI': rsi}
+            
+        else:
+            # Multi symbol
+            # closes is a DF with tickers as columns
+            for sym in symbols:
+                if sym in closes:
+                    series = closes[sym].dropna()
+                    if len(series) > 14:
+                        rsi = calculate_rsi(series)
+                        technical_data[sym] = {'RSI': rsi}
+                    else:
+                         technical_data[sym] = {'RSI': 'N/A'}
+    except Exception as e:
+        print(f"Error calculating technicals: {e}")
+        
+    return technical_data
+
+def get_fundamental_data(symbols):
+    """
+    Fetches fundamental data for a list of symbols.
+    Returns a dict: {Symbol: { 'pe_ratio': val, 'revenue_growth': val, ... } }
+    """
+    if not symbols: return {}
+    
+    fundamentals = {}
+    print(f"Fetching fundamentals for {len(symbols)} symbols...")
+    
+    # Custom mappings for ETFs/Crypto that don't have standard sectors
+    custom_sectors = {
+        'VOO': 'US Broad Market',
+        'XQQ.TO': 'US Technology',
+        'XEI.TO': 'Canadian Dividends',
+        'XIU.TO': 'Canadian Broad Market',
+        'XEF.TO': 'International Developed',
+        'XEC.TO': 'Emerging Markets',
+        'SLV': 'Commodities',
+        'BTC-USD': 'Crypto',
+        'ETH-USD': 'Crypto',
+        'CAD=X': 'Currency',
+        'CASH.TO': 'Cash & Equivalents'
+    }
+
+    for sym in symbols:
+        try:
+            # Skip CAD=X if not needed, or classify it
+            if '=' in sym and sym not in custom_sectors:
+                continue
+                
+            ticker = yf.Ticker(sym)
+            info = ticker.info
+            
+            # Determine Sector
+            sector = info.get('sector', 'N/A')
+            quote_type = info.get('quoteType', 'N/A')
+            
+            # Use custom mapping if available, otherwise fallback to Yahoo data
+            if sym in custom_sectors:
+                normalized_sector = custom_sectors[sym]
+            elif quote_type == 'ETF':
+                # Try to use category, or fallback to 'Other ETF'
+                cat = info.get('category', 'N/A')
+                normalized_sector = cat if cat != 'N/A' else 'Other ETF'
+            elif quote_type == 'CRYPTOCURRENCY':
+                normalized_sector = 'Crypto'
+            else:
+                # Use standard sector for equities
+                normalized_sector = sector
+                
+            # Extract Catalyst Data
+            # 1. Dividend Yield
+            div_yield = info.get('dividendYield', 0)
+            yield_str = f"{div_yield*100:.2f}%" if div_yield else "0.00%"
+            
+            # 2. Ex-Dividend Date
+            ex_div = info.get('exDividendDate', 'N/A')
+            if isinstance(ex_div, (int, float)):
+                ex_div = datetime.fromtimestamp(ex_div).strftime('%Y-%m-%d')
+            
+            # 3. Next Earnings (Only for equities)
+            next_earnings = 'N/A'
+            try:
+                if quote_type == 'EQUITY': 
+                    cal = ticker.calendar
+                    if cal and 'Earnings Date' in cal:
+                        dates = cal['Earnings Date']
+                        if dates:
+                            next_earnings = dates[0].strftime('%Y-%m-%d')
+            except Exception:
+                pass
+
+            # Extract key metrics
+            f_data = {
+                'Market Cap': info.get('marketCap', 'N/A'),
+                'Trailing P/E': info.get('trailingPE', 'N/A'),
+                'Forward P/E': info.get('forwardPE', 'N/A'),
+                'PEG Ratio': info.get('pegRatio', 'N/A'),
+                'Rev Growth': info.get('revenueGrowth', 'N/A'), # yoy
+                'Profit Margin': info.get('profitMargins', 'N/A'),
+                '52w High': info.get('fiftyTwoWeekHigh', 'N/A'),
+                'Recommendation': info.get('recommendationKey', 'N/A').replace('_', ' ').title(),
+                'Sector': normalized_sector,
+                'Yield': yield_str,
+                'Ex-Dividend': str(ex_div),
+                'Next Earnings': str(next_earnings)
+            }
+            fundamentals[sym] = f_data
+            
+        except Exception as e:
+            print(f"Error fetching fundamentals for {sym}: {e}")
+            fundamentals[sym] = {'Error': str(e), 'Sector': 'Unknown'}
+            
+    return fundamentals

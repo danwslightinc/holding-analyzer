@@ -1,23 +1,30 @@
 # Stock Holding Analysis Tool
 
-A powerful Python-based portfolio analyzer that tracks your performance, identifies underperforming assets, and automates weekly reporting.
+A powerful "Quant-Mental" portfolio analyzer that combines quantitative metrics (CAGR, P&L, RSI) with qualitative insights (Thesis, Conviction) to automate your investment decision-making.
 
 ## 🚀 Key Features
 
-*   **Portfolio Import**: Reads your holdings from a local CSV file.
-*   **Smart Aggregation**: Automatically combines duplicate symbol entries with weighted average costs for accurate returns.
-*   **Live Market Data**: Fetches real-time prices via `yfinance`.
-*   **Currency Support**: Automatically converts USD holdings (e.g., NVDA, MSFT) to **CAD** for accurate total portfolio value.
-*   **Performance Metrics**: 
-    *   **CAGR Analysis**: Time-adjusted returns to compare holdings with different purchase dates.
-    *   **P&L Analysis**: Absolute dollar gains/losses and simple percentage returns (matches broker statements).
-*   **Risk Analysis ("Fishy Stock" Scan)**: Identifies broken trends, crashes (>15% drop), and extreme volatility.
-*   **Restructuring Suggestions**: Highlights "Dead Money" (underperformers) and calculates potential gains from reallocating.
-*   **Visualization**:
-    *   **Interactive Dashboard**: 2-row HTML dashboard with:
-        *   Top Row: Portfolio Allocation (Pie) | CAGR Performance (Bar)
-        *   Bottom Row: P&L Performance (Horizontal Bar)
-    *   **Email Reports**: Weekly email with embedded metric summaries and static charts.
+### 📊 Advanced Analytics
+*   **Look-Through Sector Analysis**: Mathematically unbundles ETFs (like VOO or XQQ) into their underlying sectors to reveal your *true* portfolio exposure.
+*   **Catalyst Calendar**: Automatically tracks **Next Earnings**, **Ex-Dividend Dates**, and **Yields** for all holdings.
+*   **Performance Metrics**:
+    *   **CAGR Analysis**: Time-adjusted returns to compare long-term holdings.
+    *   **P&L Analysis**: Absolute dollar gains/losses with currency normalization (USD -> CAD).
+    *   **Momentum**: Tracks RSI (14-day) to identify overbought/oversold conditions.
+
+### 🧠 Quant-Mental Framework
+*   **Three-Column Thesis**: Track your rationale for every trade structure:
+    *   **Thesis**: Why did you buy?
+    *   **Catalyst**: What event will unlock value?
+    *   **Kill Switch**: When should you abort?
+*   **Persistent Metadata**: Your notes (Thesis, Conviction) are saved in `thesis.json` and automatically merged with your weekly CSV updates.
+
+### 📈 Visualization
+*   **Interactive Dashboard**: A premium 2x2 grid layout + Data Table:
+    *   **Holdings & Sector Pies**: Visualizes visible vs look-through allocation.
+    *   **Performance Bars**: Benchmarks CAGR and realized P&L.
+    *   **Sortable Analysis Table**: A glassmorphism-styled table to rank stocks by RSI, P/E, Conviction, or Yield.
+*   **Weekly Reports**: Automated email summaries with embedded charts and "Weekly Top Movers".
 
 ## 🛠️ Installation
 
@@ -38,67 +45,33 @@ A powerful Python-based portfolio analyzer that tracks your performance, identif
     ```
 
 3.  **Data Setup**:
-    
-    Create `portfolio.csv` manually with the format:
-    `Symbol, Trade Date, Purchase Price, Quantity, Commission`
+    *   **CSV**: Place your `portfolio.csv` in the root (Exported from Yahoo Finance or broker).
+    *   **Metadata**: The first time you run the tool, logic can extract notes. Subsequently, manage your notes in `thesis.json` or update your CSV—the system syncs them.
 
 ## 🖥️ Usage
 
-### Manual Run
-Run the main analysis script to see the table output and generate the dashboard:
+### Dashboard Generation
+Run the master script to generate the full analysis:
 ```bash
 python main.py
 ```
 This will:
-*   Print a portfolio summary table to the console.
-*   Print the "Weekly Top Gainers/Losers".
-*   Print CAGR-based restructuring analysis.
-*   Print P&L analysis (winners/losers by dollar amount).
-*   Generate `portfolio_dashboard.html` (interactive).
-*   Generate `dashboard_preview.png` (static).
+*   Print a **Look-Through Sector Exposure** table.
+*   Identify **Restructuring Opportunities** (Dead Money).
+*   Generate `portfolio_dashboard.html` (Interactive).
+*   Generate `dashboard_preview.png` (Static).
 
-### Detailed Stock Deep Dives
-Analyze a specific ticker (fundamentals, moving averages, analyst ratings):
-```bash
-python analyze_stock_detail.py MSFT
-```
-
-### Sector Distribution
-View your portfolio's sector allocation and diversification analysis:
-```bash
-python analyze_sectors.py
-```
-This generates:
-*   Console output showing sector breakdown by market value and percentage
-*   `sector_distribution.png` pie chart visualization
-*   Diversification analysis with concentration risk warnings
-
-### Risk Scan
-Quickly scan for "Fishy" stocks (crashing or broken trends):
-```bash
-python analyze_risk.py
-```
-
-### 📧 Weekly Email Automation
-
-**Every Friday at 5:00 PM EST:**
-1. Loads `portfolio.csv`
-2. Runs analysis and generates visualizations
-3. Sends email report
-
-**Email Report Includes:**
-- **Inline Chart**: Snapshot of allocation and performance
-- **Weekly Movers**: Top 3 Gainers & Losers summary
-- **Attachment**: Full interactive HTML dashboard- **Inline Chart**: Snapshot of allocation and performance
-- **Weekly Movers**: Top 3 Gainers & Losers summary
-- **Attachment**: Full interactive HTML dashboard
+### Automated Reporting
+The system is designed to run via **GitHub Actions** every Friday at 5:00 PM EST.
+*   It fetches fresh prices.
+*   It merges your persistent notes.
+*   It emails you a PDF-quality report.
 
 ## 📂 Project Structure
 
-*   `main.py`: Core logic for data loading, calculation, and reporting.
-*   `market_data.py`: Handles `yfinance` API calls and currency conversion.
-*   `analysis.py`: Logic for CAGR, restructuring, and top movers.
-*   `visualize.py`: Generates Plotly (HTML) and Matplotlib (PNG) charts.
-*   `email_report.py`: Handles email composition and sending.
-*   `analyze_stock_detail.py`: Standalone script for deep-dive analysis.
-*   `analyze_risk.py`: Standalone script for risk scanning.
+*   `main.py`: Orchestrator for data loading, analysis, and reporting.
+*   `market_data.py`: Fetches prices, fundamentals, catalyst dates, and ETF look-through weights.
+*   `data_loader.py`: Handles CSV loading and intelligent JSON metadata merging.
+*   `analysis.py`: Logic for Rebalancing, CAGR, and P&L.
+*   `visualize.py`: Generates the HTML5 Interactive Dashboard.
+*   `thesis.json`: Storage for your qualitative investment notes.

@@ -4,8 +4,11 @@ __pycache__/
 .DS_Store
 .env
 
-# Private portfolio data
+# Personal Data (Do not commit)
 portfolio.csv
+thesis.json
+portfolio_backup.csv
+portfolio copy.csv
 
 # Generated output files
 portfolio_dashboard.html
