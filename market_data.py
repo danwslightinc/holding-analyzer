@@ -389,7 +389,7 @@ def get_fundamental_data(symbols):
             # Extract Catalyst Data
             # 1. Dividend Yield
             div_yield = info.get('dividendYield', 0)
-            yield_str = f"{div_yield*100:.2f}%" if div_yield else "0.00%"
+            yield_str = f"{div_yield:.2f}%" if div_yield else "0.00%"
             
             # 2. Ex-Dividend Date
             ex_div = info.get('exDividendDate', 'N/A')
