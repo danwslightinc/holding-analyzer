@@ -257,3 +257,61 @@ def analyze_pnl(df):
     return email_summary
 
 
+from market_data import ETF_SECTOR_WEIGHTS
+
+def analyze_sector_exposure(df, fundamentals):
+    """
+    Calculates look-through sector exposure and prints a summary table.
+    Helps identifying rebalancing needs.
+    """
+    print("\n" + "="*50)
+    print("SECTOR EXPOSURE ANALYSIS (Look-Through)")
+    print("="*50)
+    
+    if not fundamentals:
+        print("No fundamentals data available.")
+        return
+
+    sector_map = {}
+    total_val = df['Market Value'].sum()
+    
+    for _, row in df.iterrows():
+        sym = row['Symbol']
+        val = row['Market Value']
+        base_sector = fundamentals.get(sym, {}).get('Sector', 'Unknown')
+        
+        if sym in ETF_SECTOR_WEIGHTS:
+            weights = ETF_SECTOR_WEIGHTS[sym]
+            remaining_weight = 1.0
+            for sec, w in weights.items():
+                amt = val * w
+                sector_map[sec] = sector_map.get(sec, 0) + amt
+                remaining_weight -= w
+            
+            if remaining_weight > 0.001:
+                 sector_map['Other'] = sector_map.get('Other', 0) + (val * remaining_weight)
+        else:
+            sector_map[base_sector] = sector_map.get(base_sector, 0) + val
+            
+    # Convert to DF
+    sector_df = pd.DataFrame(list(sector_map.items()), columns=['Sector', 'Market Value'])
+    sector_df['Allocation %'] = (sector_df['Market Value'] / total_val) * 100
+    sector_df = sector_df.sort_values('Market Value', ascending=False)
+    
+    # Format for printing
+    print_df = sector_df.copy()
+    print_df['Market Value'] = print_df['Market Value'].apply(lambda x: f"${x:,.2f}")
+    print_df['Allocation %'] = print_df['Allocation %'].apply(lambda x: f"{x:.1f}%")
+    
+    output_str = "\n" + "="*50 + "\nSECTOR EXPOSURE ANALYSIS (Look-Through)\n" + "="*50 + "\n"
+    output_str += tabulate(print_df, headers='keys', tablefmt='psql', showindex=False)
+    
+    # Rebalancing Alerts
+    if not sector_df.empty:
+        top_sector = sector_df.iloc[0]
+        if top_sector['Allocation %'] > 30:
+            output_str += f"\n\n⚠️ Concentration Alert: {top_sector['Sector']} is {top_sector['Allocation %']:.1f}% of portfolio."
+            output_str += "\nAction: Consider trimming winners in this sector if > target."
+
+    print(output_str)
+    return sector_df, output_str
