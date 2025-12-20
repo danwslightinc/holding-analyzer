@@ -115,7 +115,7 @@ def get_current_prices(symbols):
     print(f"Fetching prices for: {tickers_str}...")
     
     try:
-        data = yf.download(tickers_str, period="5d", progress=False)
+        data = yf.download(tickers_str, period="5d", progress=False, auto_adjust=False)
         
         prices = {}
         
@@ -154,7 +154,7 @@ def get_weekly_changes(symbols):
     
     tickers_str = " ".join(symbols)
     try:
-        data = yf.download(tickers_str, period="5d", progress=False)
+        data = yf.download(tickers_str, period="5d", progress=False, auto_adjust=False)
         closes = data['Close']
         
         changes = {}
@@ -189,9 +189,13 @@ def get_usd_to_cad_rate():
     Uses 'CAD=X' from Yahoo Finance.
     """
     try:
-        data = yf.download("CAD=X", period="1d", progress=False)
+        data = yf.download("CAD=X", period="1d", progress=False, auto_adjust=False)
         if not data.empty:
-            return float(data['Close'].iloc[-1])
+            closing_data = data['Close'].iloc[-1]
+            # Handle case where result is a Series (future yfinance/pandas behavior)
+            if hasattr(closing_data, 'iloc'):
+                return float(closing_data.iloc[0])
+            return float(closing_data)
         return 1.40 # Fallback estimate if API fails
     except Exception as e:
         print(f"Error fetching exchange rate: {e}")
@@ -210,7 +214,7 @@ def get_market_indices_change():
     
     tickers_str = " ".join(indices.keys())
     try:
-        data = yf.download(tickers_str, period="5d", progress=False)
+        data = yf.download(tickers_str, period="5d", progress=False, auto_adjust=False)
         closes = data['Close']
         
         changes = {}
