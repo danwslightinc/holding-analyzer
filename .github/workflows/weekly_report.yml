@@ -24,9 +24,10 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Create portfolio.csv from secret
+    - name: Create Data Files from Secrets
       run: |
         echo "${{ secrets.PORTFOLIO_CSV }}" > portfolio.csv
+        echo "${{ secrets.THESIS_JSON }}" > thesis.json
     
     - name: Run Analysis and Send Email
       env:
