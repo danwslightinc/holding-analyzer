@@ -215,7 +215,7 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
             tm_text.append(f"${row['Value']:,.0f}")
             
     # CAGR Data (Cleaned)
-    cagr_df = df.copy()
+    cagr_df = df[~df['Symbol'].str.contains('BTC', case=False, na=False)].copy()
     cagr_df['CAGR_Visual'] = cagr_df['CAGR'].clip(upper=3.0, lower=-1.0) 
     cagr_df['Color'] = cagr_df['CAGR'].apply(lambda x: 'green' if x >= target_cagr else 'red')
     
