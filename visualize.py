@@ -276,7 +276,11 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
             earnings.append(fund.get('Next Earnings', 'N/A'))
             ex_divs.append(fund.get('Ex-Dividend', 'N/A'))
             yields.append(fund.get('Yield', 'N/A'))
-            pes.append(fund.get('Trailing P/E', 'N/A'))
+            peg = fund.get('PEG Ratio', 'N/A')
+            if isinstance(peg, (int, float)):
+                pes.append(f"{peg:.2f}")
+            else:
+                pes.append(peg)
             
             g = fund.get('Rev Growth', 'N/A')
             if isinstance(g, (int, float)):
@@ -287,7 +291,7 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
             recs.append(fund.get('Recommendation', 'N/A'))
             
         table_data = [symbols, theses, catalysts, kill_switches, convictions, rsis, earnings, ex_divs, yields, timeframes, pes, growths, recs]
-        table_headers = ["Symbol", "Thesis", "Catalyst", "Kill Switch", "Conviction", "RSI", "Next Earnings", "Ex-Div", "Yield", "Timeframe", "P/E", "Growth", "Rec"]
+        table_headers = ["Symbol", "Thesis", "Catalyst", "Kill Switch", "Conviction", "RSI", "Next Earnings", "Ex-Div", "Yield", "Timeframe", "PEG Ratio", "Growth", "Rec"]
     
     # --- Create Subplots ---
     # We use a cleaner 2-row layout for charts. The table will be external HTML.
@@ -506,7 +510,7 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
                 {fig_html}
             </div>
             
-            {'<div class="chart-card"><h2>Quant-Mental Analysis</h2><div class="table-wrapper">' + qm_html + '</div></div>' if qm_html else ''}
+            {'<div class="chart-card"><h2>Quant-Mental Analysis</h2><div class="table-wrapper">' + qm_html + '</div><p style="margin-top: 10px; font-size: 0.9em; color: #888;">* <strong>PEG Ratio</strong>: Price/Earnings-to-Growth Ratio. A crude rule of thumb: < 1.0 suggests a stock may be undervalued given its growth; 1.0 - 2.0 is often considered fair/reasonable; > 2.0 may suggest overvalue or high-expectations.</p></div>' if qm_html else ''}
         </div>
         
         <script>

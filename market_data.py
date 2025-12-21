@@ -450,12 +450,38 @@ def get_fundamental_data(symbols):
             except Exception:
                 pass
 
+            # Extract PEG (Official or Fallback)
+            peg = info.get('pegRatio') or info.get('trailingPegRatio')
+            
+            # Fallback: Calculate Synthetic PEG if missing (common for TSX stocks)
+            if peg is None and quote_type == 'EQUITY':
+                try:
+                    # Fetch growth estimates (Next Year)
+                    estimates = ticker.growth_estimates
+                    if estimates is not None and not estimates.empty:
+                        # Prioritize +1y (Next Year) or +5y (LTG)
+                        # Index is typically: 0q, +1q, 0y, +1y, +5y, LTG
+                        growth_rate = None
+                        
+                        if '+1y' in estimates.index:
+                            growth_rate = estimates.loc['+1y', 'stockTrend']
+                        elif 'LTG' in estimates.index:
+                            growth_rate = estimates.loc['LTG', 'stockTrend']
+                            
+                        # If we found a valid positive growth rate
+                        if growth_rate and growth_rate > 0:
+                            pe_val = info.get('forwardPE') or info.get('trailingPE')
+                            if pe_val:
+                                peg = pe_val / (growth_rate * 100)
+                except Exception:
+                    pass # Fail silently and keep it None/N/A
+
             # Extract key metrics
             f_data = {
                 'Market Cap': info.get('marketCap', 'N/A'),
                 'Trailing P/E': info.get('trailingPE', 'N/A'),
                 'Forward P/E': info.get('forwardPE', 'N/A'),
-                'PEG Ratio': info.get('pegRatio', 'N/A'),
+                'PEG Ratio': peg if peg is not None else 'N/A',
                 'Rev Growth': info.get('revenueGrowth', 'N/A'), # yoy
                 'Profit Margin': info.get('profitMargins', 'N/A'),
                 '52w High': info.get('fiftyTwoWeekHigh', 'N/A'),
