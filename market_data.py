@@ -247,46 +247,84 @@ def calculate_rsi(series, period=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi.iloc[-1]
 
+def calculate_sma(series, window):
+    return series.rolling(window=window).mean()
+
 def get_technical_data(symbols):
     """
-    Fetches 3-month history and calculates RSI.
-    Returns dict: {Symbol: {'RSI': float_val}}
+    Fetches 1-year history and calculates RSI and Moving Averages.
+    Returns dict: {Symbol: {'RSI': float, 'Signal': str}}
     """
     if not symbols: return {}
 
     technical_data = {}
-    print(f"Fetching technical data (RSI) for {len(symbols)} symbols...")
+    print(f"Fetching technical data (RSI & Patterns) for {len(symbols)} symbols...")
     
-    # We need enough days for 14-day rolling window
-    start_date = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
+    # We need enough days for SMA 200 (approx 200 trading days, so 365 calendar days is safe)
+    start_date = (datetime.now() - timedelta(days=400)).strftime('%Y-%m-%d')
     tickers_str = " ".join(symbols)
     
     try:
         data = yf.download(tickers_str, start=start_date, progress=False, auto_adjust=False)
         closes = data['Close']
         
+        # Helper to process a single series
+        def process_symbol(sym, series):
+            series = series.dropna()
+            if len(series) < 14:
+                return {'RSI': 'N/A', 'Signal': 'N/A'}
+            
+            # RSI
+            rsi = calculate_rsi(series)
+            
+            # Moving Averages
+            sma_50 = calculate_sma(series, 50).iloc[-1] if len(series) >= 50 else None
+            sma_200 = calculate_sma(series, 200).iloc[-1] if len(series) >= 200 else None
+            current_price = series.iloc[-1]
+            
+            # Pattern Detection
+            signal = "Neutral"
+            
+            if sma_50 and sma_200:
+                # Golden/Death Cross (Look at last 5 days to catch recent crosses)
+                sma_50_prev = calculate_sma(series, 50).iloc[-5]
+                sma_200_prev = calculate_sma(series, 200).iloc[-5]
+                
+                # Check for crossover
+                if sma_50_prev < sma_200_prev and sma_50 > sma_200:
+                    signal = "🌟 Golden Cross"
+                elif sma_50_prev > sma_200_prev and sma_50 < sma_200:
+                    signal = "💀 Death Cross"
+                # Trend Check
+                elif current_price > sma_50 > sma_200:
+                    signal = "📈 Strong Uptrend"
+                elif current_price < sma_50 < sma_200:
+                    signal = "📉 Downtrend"
+                elif current_price > sma_200 and current_price < sma_50:
+                    signal = "⚠️ Below SMA50"
+                elif current_price < sma_200 and current_price > sma_50:
+                    signal = "🔄 Recovery?"
+            elif sma_50:
+                if current_price > sma_50:
+                    signal = "Above SMA50"
+                else:
+                    signal = "Below SMA50"
+                    
+            return {'RSI': rsi, 'Signal': signal}
+
         if len(symbols) == 1:
-            # Single symbol
-            # closes is typically a Series or single-col DF
             if isinstance(closes, pd.DataFrame):
                  series = closes.iloc[:, 0]
             else:
                  series = closes
-            
-            rsi = calculate_rsi(series)
-            technical_data[symbols[0]] = {'RSI': rsi}
-            
+            technical_data[symbols[0]] = process_symbol(symbols[0], series)
         else:
-            # Multi symbol
-            # closes is a DF with tickers as columns
             for sym in symbols:
                 if sym in closes:
-                    series = closes[sym].dropna()
-                    if len(series) > 14:
-                        rsi = calculate_rsi(series)
-                        technical_data[sym] = {'RSI': rsi}
-                    else:
-                         technical_data[sym] = {'RSI': 'N/A'}
+                    technical_data[sym] = process_symbol(sym, closes[sym])
+                else:
+                    technical_data[sym] = {'RSI': 'N/A', 'Signal': 'N/A'}
+                    
     except Exception as e:
         print(f"Error calculating technicals: {e}")
         

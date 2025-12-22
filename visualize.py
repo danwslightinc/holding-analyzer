@@ -245,6 +245,7 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
         pes = []
         growths = []
         recs = []
+        patterns = []
         
         for _, row in qm_df.iterrows():
             sym = row['Symbol']
@@ -264,13 +265,20 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
             
             # Technicals
             if technicals and sym in technicals:
-                rsi_val = technicals[sym].get('RSI', 'N/A')
+                t_data = technicals[sym]
+                
+                # RSI
+                rsi_val = t_data.get('RSI', 'N/A')
                 if isinstance(rsi_val, (int, float)):
                     rsis.append(f"{rsi_val:.1f}")
                 else:
                     rsis.append(str(rsi_val))
+                    
+                # Pattern
+                patterns.append(t_data.get('Signal', 'Neutral'))
             else:
                 rsis.append('N/A')
+                patterns.append('N/A')
             
             fund = fundamentals.get(sym, {})
             earnings.append(fund.get('Next Earnings', 'N/A'))
@@ -290,8 +298,8 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
                 
             recs.append(fund.get('Recommendation', 'N/A'))
             
-        table_data = [symbols, theses, catalysts, kill_switches, convictions, rsis, earnings, ex_divs, yields, timeframes, pes, growths, recs]
-        table_headers = ["Symbol", "Thesis", "Catalyst", "Kill Switch", "Conviction", "RSI", "Next Earnings", "Ex-Div", "Yield", "Timeframe", "PEG Ratio", "Growth", "Rec"]
+        table_data = [symbols, theses, catalysts, kill_switches, convictions, rsis, patterns, earnings, ex_divs, yields, timeframes, pes, growths, recs]
+        table_headers = ["Symbol", "Thesis", "Catalyst", "Kill Switch", "Conviction", "RSI", "Pattern", "Next Earnings", "Ex-Div", "Yield", "Timeframe", "PEG Ratio", "Growth", "Rec"]
     
     # --- Create Subplots ---
     # We use a cleaner 2-row layout for charts. The table will be external HTML.
