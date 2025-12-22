@@ -266,69 +266,165 @@ def get_technical_data(symbols):
     
     try:
         data = yf.download(tickers_str, start=start_date, progress=False, auto_adjust=False)
-        closes = data['Close']
+        
+        # yfinance v0.2+ returns MultiIndex columns (Price, Ticker)
+        # We need to handle this carefully
         
         # Helper to process a single series
         def process_symbol(sym, series):
-            series = series.dropna()
-            if len(series) < 14:
-                return {'RSI': 'N/A', 'Signal': 'N/A'}
-            
-            # RSI
-            rsi = calculate_rsi(series)
-            
-            # Moving Averages
-            sma_50 = calculate_sma(series, 50).iloc[-1] if len(series) >= 50 else None
-            sma_200 = calculate_sma(series, 200).iloc[-1] if len(series) >= 200 else None
-            current_price = series.iloc[-1]
-            
-            # Pattern Detection
-            signal = "Neutral"
-            
-            if sma_50 and sma_200:
-                # Golden/Death Cross (Look at last 5 days to catch recent crosses)
-                sma_50_prev = calculate_sma(series, 50).iloc[-5]
-                sma_200_prev = calculate_sma(series, 200).iloc[-5]
-                
-                # Check for crossover
-                if sma_50_prev < sma_200_prev and sma_50 > sma_200:
-                    signal = "🌟 Golden Cross"
-                elif sma_50_prev > sma_200_prev and sma_50 < sma_200:
-                    signal = "💀 Death Cross"
-                # Trend Check
-                elif current_price > sma_50 > sma_200:
-                    signal = "📈 Strong Uptrend"
-                elif current_price < sma_50 < sma_200:
-                    signal = "📉 Downtrend"
-                elif current_price > sma_200 and current_price < sma_50:
-                    signal = "⚠️ Below SMA50"
-                elif current_price < sma_200 and current_price > sma_50:
-                    signal = "🔄 Recovery?"
-            elif sma_50:
-                if current_price > sma_50:
-                    signal = "Above SMA50"
-                else:
-                    signal = "Below SMA50"
-                    
-            return {'RSI': rsi, 'Signal': signal}
+            # ... (function body remains same, will be injected by the outer scope if not replaced here, 
+            # but we need to ensure we pass the correct series)
+            pass 
 
-        if len(symbols) == 1:
-            if isinstance(closes, pd.DataFrame):
-                 series = closes.iloc[:, 0]
-            else:
-                 series = closes
-            technical_data[symbols[0]] = process_symbol(symbols[0], series)
-        else:
-            for sym in symbols:
-                if sym in closes:
-                    technical_data[sym] = process_symbol(sym, closes[sym])
+        # We will iterate symbols and extract series manually
+        for sym in symbols:
+            try:
+                # Extract Close
+                if isinstance(data.columns, pd.MultiIndex):
+                    if 'Close' in data.columns.levels[0]:
+                        series = data['Close'][sym]
+                    else:
+                        # Fallback or weird structure
+                        continue
                 else:
-                    technical_data[sym] = {'RSI': 'N/A', 'Signal': 'N/A'}
+                    # Single level
+                    if 'Close' in data.columns:
+                        series = data['Close']
+                    else:
+                        continue
+                
+                # Extract Open/High/Low for Candles if available
+                # Create a mini-dataframe for this symbol
+                sym_data = pd.DataFrame()
+                sym_data['Close'] = series
+                
+                if isinstance(data.columns, pd.MultiIndex):
+                    if 'Open' in data.columns.levels[0]: sym_data['Open'] = data['Open'][sym]
+                    if 'High' in data.columns.levels[0]: sym_data['High'] = data['High'][sym]
+                    if 'Low' in data.columns.levels[0]:  sym_data['Low'] = data['Low'][sym]
+                else:
+                    if 'Open' in data.columns: sym_data['Open'] = data['Open']
+                    if 'High' in data.columns: sym_data['High'] = data['High']
+                    if 'Low' in data.columns:  sym_data['Low'] = data['Low']
+
+                # Now process
+                series = sym_data['Close'].dropna()
+                if len(series) < 14:
+                    technical_data[sym] = {'RSI': 'N/A', 'Signal': 'N/A', 'Scorecard': ''}
+                    continue
+            
+                # RSI
+                rsi = calculate_rsi(series)
+                
+                # Moving Averages
+                sma_50 = calculate_sma(series, 50).iloc[-1] if len(series) >= 50 else None
+                sma_200 = calculate_sma(series, 200).iloc[-1] if len(series) >= 200 else None
+                current_price = series.iloc[-1]
+                
+                # Pattern Detection
+                signal = "Neutral"
+                
+                if sma_50 and sma_200:
+                    # Golden/Death Cross (Look at last 5 days to catch recent crosses)
+                    sma_50_vec = calculate_sma(series, 50)
+                    sma_200_vec = calculate_sma(series, 200)
                     
+                    sma_50_prev = sma_50_vec.iloc[-5]
+                    sma_200_prev = sma_200_vec.iloc[-5]
+                    
+                    # Check for crossover
+                    if sma_50_prev < sma_200_prev and sma_50 > sma_200:
+                        signal = "🌟 Golden Cross"
+                    elif sma_50_prev > sma_200_prev and sma_50 < sma_200:
+                        signal = "💀 Death Cross"
+                    # Trend Check
+                    elif current_price > sma_50 > sma_200:
+                        signal = "📈 Strong Uptrend"
+                    elif current_price < sma_50 < sma_200:
+                        signal = "📉 Downtrend"
+                    elif current_price > sma_200 and current_price < sma_50:
+                        signal = "⚠️ Below SMA50"
+                    elif current_price < sma_200 and current_price > sma_50:
+                        signal = "🔄 Recovery?"
+                elif sma_50:
+                    if current_price > sma_50:
+                        signal = "Above SMA50"
+                    else:
+                        signal = "Below SMA50"
+                        
+                # MACD
+                fast = series.ewm(span=12, adjust=False).mean()
+                slow = series.ewm(span=26, adjust=False).mean()
+                macd = fast - slow
+                signal_line = macd.ewm(span=9, adjust=False).mean()
+                
+                macd_sig = "Neutral"
+                if macd.iloc[-1] > signal_line.iloc[-1] and macd.iloc[-2] <= signal_line.iloc[-2]:
+                    macd_sig = "🚀 MACD Buy"
+                elif macd.iloc[-1] < signal_line.iloc[-1] and macd.iloc[-2] >= signal_line.iloc[-2]:
+                    macd_sig = "🔻 MACD Sell"
+                    
+                # Bollinger Bands
+                sma_20 = calculate_sma(series, 20)
+                std_20 = series.rolling(window=20).std()
+                
+                upper_bb = sma_20 + (std_20 * 2)
+                lower_bb = sma_20 - (std_20 * 2)
+                
+                bb_sig = "Neutral"
+                if len(upper_bb) > 0:
+                    if current_price > upper_bb.iloc[-1]:
+                        bb_sig = "Upper Band Breakout"
+                    elif current_price < lower_bb.iloc[-1]:
+                        bb_sig = "Lower Band Breakout"
+                    elif (upper_bb.iloc[-1] - lower_bb.iloc[-1]) / sma_20.iloc[-1] < 0.05:
+                        bb_sig = "Squeeze"
+
+                # Candlestick Patterns (Last 2 days)
+                candle_sig = ""
+                if not sym_data.empty and 'Open' in sym_data.columns:
+                    # Ensure we align indices
+                    latest = sym_data.iloc[-1]
+                    open_p, high_p, low_p, close_p = latest['Open'], latest['High'], latest['Low'], latest['Close']
+                    
+                    body = abs(close_p - open_p)
+                    upper_wick = high_p - max(close_p, open_p)
+                    lower_wick = min(close_p, open_p) - low_p
+                    
+                    # Simple Hammer / Shooting Star / Doji
+                    if lower_wick > 2 * body and upper_wick < body:
+                        candle_sig = "🔨 Hammer"
+                    elif upper_wick > 2 * body and lower_wick < body:
+                        candle_sig = "🌠 Shooting Star"
+                    elif body < (high_p - low_p) * 0.1:
+                         candle_sig = "Doji"
+                
+                # Format Scorecard
+                components = []
+                if macd_sig != "Neutral": components.append(macd_sig)
+                if bb_sig != "Neutral": components.append(bb_sig)
+                if candle_sig: components.append(candle_sig)
+                
+                scorecard = " | ".join(components)
+                if not scorecard:
+                    scorecard = "Neutral"
+                
+                technical_data[sym] = {
+                    'RSI': rsi, 
+                    'Signal': signal,
+                    'Scorecard': scorecard
+                }
+            
+            except Exception as e:
+                print(f"Error processing technicals for {sym}: {e}")
+                technical_data[sym] = {'RSI': 'N/A', 'Signal': 'N/A', 'Scorecard': ''}
+
     except Exception as e:
         print(f"Error calculating technicals: {e}")
         
     return technical_data
+                    
+
 
 def get_latest_news(symbols):
     """
