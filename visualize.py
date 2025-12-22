@@ -245,7 +245,8 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
         pes = []
         growths = []
         recs = []
-        patterns = []
+        recs = []
+        scores = []
         
         for _, row in qm_df.iterrows():
             sym = row['Symbol']
@@ -274,11 +275,11 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
                 else:
                     rsis.append(str(rsi_val))
                     
-                # Pattern
-                patterns.append(t_data.get('Signal', 'Neutral'))
+                # Scorecard (MACD, BB, Candles)
+                scores.append(t_data.get('Scorecard', ''))
             else:
                 rsis.append('N/A')
-                patterns.append('N/A')
+                scores.append('')
             
             fund = fundamentals.get(sym, {})
             earnings.append(fund.get('Next Earnings', 'N/A'))
@@ -298,8 +299,8 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
                 
             recs.append(fund.get('Recommendation', 'N/A'))
             
-        table_data = [symbols, theses, catalysts, kill_switches, convictions, rsis, patterns, earnings, ex_divs, yields, timeframes, pes, growths, recs]
-        table_headers = ["Symbol", "Thesis", "Catalyst", "Kill Switch", "Conviction", "RSI", "Pattern", "Next Earnings", "Ex-Div", "Yield", "Timeframe", "PEG Ratio", "Growth", "Rec"]
+        table_data = [symbols, theses, catalysts, kill_switches, convictions, rsis, scores, earnings, ex_divs, yields, timeframes, pes, growths, recs]
+        table_headers = ["Symbol", "Thesis", "Catalyst", "Kill Switch", "Conviction", "RSI", "Tech Scorecard", "Next Earnings", "Ex-Div", "Yield", "Timeframe", "PEG Ratio", "Growth", "Rec"]
     
     # --- Create Subplots ---
     # We use a cleaner 2-row layout for charts. The table will be external HTML.
@@ -518,7 +519,7 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
                 {fig_html}
             </div>
             
-            {'<div class="chart-card"><h2>Quant-Mental Analysis</h2><div class="table-wrapper">' + qm_html + '</div><p style="margin-top: 10px; font-size: 0.9em; color: #888;">* <strong>PEG Ratio</strong>: Price/Earnings-to-Growth Ratio. A crude rule of thumb: < 1.0 suggests a stock may be undervalued given its growth; 1.0 - 2.0 is often considered fair/reasonable; > 2.0 may suggest overvalue or high-expectations.</p></div>' if qm_html else ''}
+            {'<div class="chart-card"><h2>Quant-Mental Analysis</h2><div class="table-wrapper">' + qm_html + '</div><div style="margin-top: 15px; font-size: 0.9em; color: #aaa; line-height: 1.5;"><p><strong>* PEG Ratio</strong>: < 1.0 (Undervalued); 1.0-2.0 (Fair); > 2.0 (Overvalued/High Expectations).</p><p><strong>* Tech Scorecard</strong>: Combined signals from 3 indicators:<br>&nbsp;&nbsp;• <strong>MACD</strong>: Momentum shift (🚀 Buy / 🔻 Sell).<br>&nbsp;&nbsp;• <strong>Bollinger</strong>: Volatility extremes (Breakout) or potential explosions (<strong>Squeeze</strong>: "Calm before the storm").<br>&nbsp;&nbsp;• <strong>Candles</strong>: Reversal patterns (🔨 Hammer = Bullish, 🌠 Star = Bearish, <strong>Doji</strong> = Indecision).</p></div></div>' if qm_html else ''}
         </div>
         
         <script>
