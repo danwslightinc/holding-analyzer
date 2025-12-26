@@ -66,11 +66,18 @@ def main():
     df['Market Value (CAD)'] = df['Quantity'] * df['Price (CAD)']
     df['P&L (CAD)'] = df['Market Value (CAD)'] - df['Cost Basis (CAD)']
     
-    # CAGR Calculation needs consistent currency. Using the normalized CAD values is safest.
-    # We must patch analysis.py logic? 
-    # Actually, calculate_metrics uses 'Cost Basis' and 'Market Value' column names.
-    # We should overwrite them with CAD values so analysis.py works on normalized data.
+    # CRITICAL: Overwrite columns with CAD values BEFORE calling calculate_metrics
+    # calculate_metrics re-computes Cost Basis and Market Value from Price/Qty/Commission
+    # So we must convert the input columns to CAD.
     
+    # 1. Update Prices to CAD
+    df['Current Price'] = df['Price (CAD)']
+    df['Purchase Price'] = df['Purchase Price'] * df['FX Rate']
+    
+    # 2. Update Commission to CAD
+    df['Commission'] = df['Commission'] * df['FX Rate']
+    
+    # 3. Explicitly set derived columns (just to be safe, though calculate_metrics will re-do roughly same)
     df['Cost Basis'] = df['Cost Basis (CAD)']
     df['Market Value'] = df['Market Value (CAD)']
     df['P&L'] = df['P&L (CAD)']

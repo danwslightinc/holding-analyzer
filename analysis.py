@@ -184,7 +184,7 @@ def analyze_pnl(df):
     Returns a formatted summary string for email reports.
     """
     print("\n" + "="*50)
-    print("P&L ANALYSIS (Profit & Loss)")
+    print("P&L ANALYSIS (Profit & Loss) - All values in CAD")
     print("="*50)
 
     # Filter out CASH.TO
