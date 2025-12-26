@@ -61,7 +61,26 @@ def load_portfolio_holdings(filepath):
                     df[col] = json_series.combine_first(df[col]).fillna('')
                     
         except Exception as e:
-            print(f"Warning: Failed to load thesis.json: {e}")
+            # Fallback: Try `ast.literal_eval` to support python-dict style (single quotes)
+            # This is helpful if the user pasted a Python dict into the secret
+            try:
+                import ast
+                with open(thesis_path, "r") as f:
+                    content = f.read()
+                metadata = ast.literal_eval(content)
+                
+                # Apply metadata (duplicate logic, could be refactored)
+                for col in mental_cols:
+                    mapper = {sym: data.get(col, None) for sym, data in metadata.items()}
+                    mapper = {k: v for k, v in mapper.items() if v is not None}
+                    if mapper:
+                        json_series = df['Symbol'].map(mapper)
+                        df[col] = json_series.combine_first(df[col]).fillna('')
+                        
+                print("Warning: thesis.json loaded via ast.literal_eval (invalid JSON but valid Python dict)")
+                
+            except Exception as e2:
+                print(f"Warning: Failed to load thesis.json: {e}. Fallback also failed: {e2}")
 
     # Parse Trade Date (format 20251205 -> YYYYMMDD based on sample)
     # Sample: 20251205, 20251125
