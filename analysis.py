@@ -275,7 +275,7 @@ def analyze_sector_exposure(df, fundamentals):
     Helps identifying rebalancing needs.
     """
     print("\n" + "="*50)
-    print("SECTOR EXPOSURE ANALYSIS (Look-Through)")
+    print("SECTOR EXPOSURE ANALYSIS (Look-Through) - All values in CAD")
     print("="*50)
     
     if not fundamentals:
@@ -304,13 +304,13 @@ def analyze_sector_exposure(df, fundamentals):
             sector_map[base_sector] = sector_map.get(base_sector, 0) + val
             
     # Convert to DF
-    sector_df = pd.DataFrame(list(sector_map.items()), columns=['Sector', 'Market Value'])
-    sector_df['Allocation %'] = (sector_df['Market Value'] / total_val) * 100
-    sector_df = sector_df.sort_values('Market Value', ascending=False)
+    sector_df = pd.DataFrame(list(sector_map.items()), columns=['Sector', 'Market Value (CAD)'])
+    sector_df['Allocation %'] = (sector_df['Market Value (CAD)'] / total_val) * 100
+    sector_df = sector_df.sort_values('Market Value (CAD)', ascending=False)
     
     # Format for printing
     print_df = sector_df.copy()
-    print_df['Market Value'] = print_df['Market Value'].apply(lambda x: f"${x:,.2f}")
+    print_df['Market Value (CAD)'] = print_df['Market Value (CAD)'].apply(lambda x: f"${x:,.2f}")
     print_df['Allocation %'] = print_df['Allocation %'].apply(lambda x: f"{x:.1f}%")
     
     output_str = "\n" + "="*50 + "\nSECTOR EXPOSURE ANALYSIS (Look-Through)\n" + "="*50 + "\n"
