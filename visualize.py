@@ -130,7 +130,7 @@ def generate_static_preview(df, target_cagr, fundamentals=None, save_path='dashb
     ax4.set_xlabel('P&L ($)')
     ax4.grid(axis='x', alpha=0.3)
     
-    plt.tight_layout()
+    # plt.tight_layout() # Removed to avoid warnings with GridSpec
     plt.savefig(save_path, dpi=100, bbox_inches='tight')
     plt.close()
     print(f"Static preview saved to: {save_path}")
