@@ -138,19 +138,29 @@ def get_top_movers(changes_dict):
 
     sorted_changes = sorted(changes_dict.items(), key=lambda x: x[1], reverse=True)
     
-    # Top 3 Gainers
-    gainers = sorted_changes[:3]
-    # Top 3 Losers (reverse end)
-    losers = sorted_changes[-3:]
-    losers.reverse() # Sort worst first
+    # Top 3 Gainers (Strictly Positive)
+    gainers = [x for x in sorted_changes if x[1] > 0][:3]
+    
+    # Top 3 Losers (Strictly Negative)
+    # We want the absolute bottom of the list, provided they are negative
+    losers = [x for x in sorted_changes if x[1] < 0]
+    # Take the worst 3 (last 3 of the descending list)
+    losers = losers[-3:]
+    losers.reverse() # Sort worst first (most negative at top)
     
     summary = "\nWeekly Top Gainers:\n"
-    for sym, change in gainers:
-        summary += f"  🟢 {sym}: {change:+.2%}\n"
+    if gainers:
+        for sym, change in gainers:
+            summary += f"  🟢 {sym}: {change:+.2%}\n"
+    else:
+        summary += "  (None)\n"
         
     summary += "\nWeekly Top Losers:\n"
-    for sym, change in losers:
-        summary += f"  🔴 {sym}: {change:+.2%}\n"
+    if losers:
+        for sym, change in losers:
+            summary += f"  🔴 {sym}: {change:+.2%}\n"
+    else:
+        summary += "  (None)\n"
         
     return summary
 
