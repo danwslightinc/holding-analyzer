@@ -5,6 +5,8 @@ on:
     # 22:00 UTC is 5:00 PM EST (Standard Time) or 6:00 PM EDT (Daylight Time)
     - cron: '0 22 * * 5'
   workflow_dispatch: # Allows manual trigger from GitHub UI
+  push:
+    branches: [ "main" ]
 
 jobs:
   analyze_and_email:
