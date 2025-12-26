@@ -27,9 +27,12 @@ jobs:
         pip install -r requirements.txt
 
     - name: Create Data Files from Secrets
+      env:
+        PORTFOLIO_CSV: ${{ secrets.PORTFOLIO_CSV }}
+        THESIS_JSON: ${{ secrets.THESIS_JSON }}
       run: |
-        echo "${{ secrets.PORTFOLIO_CSV }}" > portfolio.csv
-        echo "${{ secrets.THESIS_JSON }}" > thesis.json
+        echo "$PORTFOLIO_CSV" > portfolio.csv
+        echo "$THESIS_JSON" > thesis.json
     
     - name: Run Analysis and Send Email
       env:
