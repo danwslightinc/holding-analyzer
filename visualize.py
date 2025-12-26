@@ -126,8 +126,8 @@ def generate_static_preview(df, target_cagr, fundamentals=None, save_path='dashb
     ax4 = fig.add_subplot(gs[1, 1])
     ax4.barh(pnl_df['Symbol'], pnl_df['P&L'], color=pnl_colors)
     ax4.axvline(x=0, color='black', linestyle='-', linewidth=0.8)
-    ax4.set_title('P&L by Holding ($)', fontsize=14, fontweight='bold')
-    ax4.set_xlabel('P&L ($)')
+    ax4.set_title('P&L by Holding (CAD $)', fontsize=14, fontweight='bold')
+    ax4.set_xlabel('P&L (CAD $)')
     ax4.grid(axis='x', alpha=0.3)
     
     # plt.tight_layout() # Removed to avoid warnings with GridSpec
@@ -316,10 +316,10 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
             [{"type": "treemap"}, {"type": "xy"}]
         ]
         titles = (
-            f"Holdings (Total: ${total_val:,.0f})", 
+            f"Holdings (Total: CAD ${total_val:,.0f})", 
             f"CAGR Performance (Target: {target_cagr:.0%})",
-            "Sector Exposure (Look-Through)",
-            "P&L by Holding"
+            "Sector Exposure (Look-Through) - CAD",
+            "P&L by Holding (CAD)"
         )
     else:
         specs = [
@@ -327,9 +327,9 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
             [{"type": "xy", "colspan": 2}, None]
         ]
         titles = (
-            f"Portfolio Allocation (Total: ${total_val:,.0f})", 
+            f"Portfolio Allocation (Total: CAD ${total_val:,.0f})", 
             f"CAGR Performance (Target: {target_cagr:.0%})",
-            "P&L by Holding"
+            "P&L by Holding (CAD)"
         )
 
     fig = make_subplots(
