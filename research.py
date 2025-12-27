@@ -3,11 +3,25 @@ import pandas as pd
 from datetime import datetime
 import sys
 
+def format_large_number(num):
+    if not num: return "N/A"
+    if num >= 1e12:
+        return f"${num/1e12:.2f}T"
+    elif num >= 1e9:
+        return f"${num/1e9:.2f}B"
+    elif num >= 1e6:
+        return f"${num/1e6:.2f}M"
+    return f"${num:,.0f}"
+
+def format_pct(num):
+    if num is None: return "N/A"
+    return f"{num*100:.2f}%"
+
 def generate_report(symbol=None):
     if not symbol:
-        symbol = sys.argv[1] if len(sys.argv) > 1 else "VGRO.TO"
+        symbol = sys.argv[1] if len(sys.argv) > 1 else "AAPL" # Default to AAPL if no arg
         
-    print(f"Fetching live data for {symbol}...")
+    print(f"Fetching detailed data for {symbol}...")
     
     ticker = yf.Ticker(symbol)
     try:
@@ -21,23 +35,68 @@ def generate_report(symbol=None):
         print("No historical data found.")
         return
     
-    # 1. Price & Performance
+    # --- 1. Key Metrics & Valuation ---
     current_price = info.get('currentPrice') or hist['Close'].iloc[-1]
-    prev_close = info.get('previousClose') or hist['Close'].iloc[-2]
-    change = (current_price - prev_close) / prev_close
+    mkt_cap = info.get('marketCap')
+    pe_trailing = info.get('trailingPE')
+    pe_forward = info.get('forwardPE')
+    peg_ratio = info.get('pegRatio') or "N/A"
+    ps_ratio = info.get('priceToSalesTrailing12Months')
+    pb_ratio = info.get('priceToBook')
     
-    high_52 = info.get('fiftyTwoWeekHigh', 'N/A')
-    low_52 = info.get('fiftyTwoWeekLow', 'N/A')
+    div_yield = info.get('dividendYield')
+    payout_ratio = info.get('payoutRatio')
     
-    # Calculate returns
+    # Profitability
+    roe = info.get('returnOnEquity')
+    profit_margin = info.get('profitMargins')
+    op_margin = info.get('operatingMargins')
+    
+    # Growth
+    rev_growth = info.get('revenueGrowth')
+    earnings_growth = info.get('earningsGrowth')
+    
+    # Balance Sheet
+    debt_to_equity = info.get('debtToEquity')
+    curr_ratio = info.get('currentRatio')
+    free_cashflow = info.get('freeCashflow')
+    
+    # Analyst Estimates
+    target_mean = info.get('targetMeanPrice')
+    target_low = info.get('targetLowPrice')
+    target_high = info.get('targetHighPrice')
+    recommendation = info.get('recommendationKey', 'N/A').replace('_', ' ').title()
+    num_analysts = info.get('numberOfAnalystOpinions')
+
+    long_name = info.get('longName', symbol)
+    sector = info.get('sector', 'N/A')
+    industry = info.get('industry', 'N/A')
+    summary = info.get('longBusinessSummary', 'No summary available.')
+    
+    # --- 2. Technical Analysis ---
+    # SMA
+    sma50 = hist['Close'].rolling(window=50).mean().iloc[-1]
+    sma200 = hist['Close'].rolling(window=200).mean().iloc[-1]
+    
+    # RSI
+    delta = hist['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    current_rsi = rsi.iloc[-1]
+    
+    # Trend
+    if current_price > sma50 and current_price > sma200:
+        trend = "Strong Uptrend 🟢"
+    elif current_price < sma50 and current_price < sma200:
+        trend = "Downtrend 🔴"
+    else:
+        trend = "Neutral / Consolidating 🟡"
+
+    # --- 3. Returns Calculation ---
     returns = {}
-    periods = {
-        '1 Month': 21,
-        '3 Months': 63,
-        '6 Months': 126,
-        '1 Year': 252
-    }
-    
+    periods = {'1 Month': 21, '3 Months': 63, '6 Months': 126, '1 Year': 252}
     for label, days in periods.items():
         if len(hist) > days:
             start_price = hist['Close'].iloc[-days]
@@ -53,115 +112,76 @@ def generate_report(symbol=None):
         start_price = ytd_hist['Close'].iloc[0]
         ytd_ret = (current_price - start_price) / start_price
         returns['YTD'] = f"{ytd_ret*100:.2f}%"
-    
-    # 2. Fundamentals (Hardcoded for VGRO, Generic for others)
-    mer = "N/A"
-    holdings_section = ""
-    sector_section = ""
-    thesis_section = ""
-    
-    if symbol == "VGRO.TO":
-        mer = "0.24% (Recent cut to 0.17% reported)"
-        holdings_section = """
-## 3. Underlying Holdings
-VGRO essentially wraps roughly 7 other Vanguard ETFs to achieve global diversification.
-| Underlying ETF | Exposure |
-|---|---|
-| Vanguard US Total Market Index ETF (VUN) | US Equity |
-| Vanguard FTSE Canada All Cap Index ETF (VCN) | Canadian Equity |
-| Vanguard FTSE Developed All Cap ex North America Index ETF (VIU) | Intl Developed Equity |
-| Vanguard Total Bond Market ETF (VAB) | Bonds |
-| Vanguard FTSE Emerging Markets All Cap Index ETF (VEE) | Emerging Markets |
-"""
-        sector_section = """
-## 4. Sector Allocation (Look-through)
-Approximate Sector weights based on underlying funds:
-- **Technology:** 24.3%
-- **Financials:** 20.5%
-- **Industrials:** 11.6%
-- **Consumer Discretionary:** 10.9%
-- **Basic Materials:** 7.3%
-- **Energy:** 7.0%
-- **Health Care:** 6.6%
-- **Other:** ~12%
-"""
-        thesis_section = """
-## 5. Thesis / Observation
-VGRO is a "Set it and forget it" solution for growth-oriented investors who want global diversification without rebalancing manually.
-- **Pros:** Automatic rebalancing, low cost, massive diversification (>13,000 stocks/bonds).
-- **Cons:** Fixed 80/20 allocation may be too conservative for aggressive investors or too risky for conservative ones. Home bias (approx 30% Canadian equity) is intentional but debated.
-"""
-    else:
-        # Generic Fundamentals
-        mer = f"{info.get('trailingAnnualDividendYield', 'N/A')}" 
-        # Try to get sector
-        sec = info.get('sector', 'Unknown')
-        ind = info.get('industry', 'Unknown')
-        sector_section = f"## 4. Sector / Industry\n- **Sector:** {sec}\n- **Industry:** {ind}\n"
-        
-        # Try to get meaningful summary
-        summ = info.get('longBusinessSummary', 'No summary available.')
-        thesis_section = f"## 5. Summary\n{summ[:500]}...\n"
 
-    # Dividend Yield
-    div_yield = info.get('dividendYield', 0)
-    yield_str = "N/A"
-    if div_yield:
-        if div_yield > 0.5: 
-             yield_str = f"{div_yield:.2f}%"
-        else:
-             yield_str = f"{div_yield*100:.2f}%"
+    # --- Generate Report Markdown ---
     
-    long_name = info.get('longName', symbol)
+    md_rows = "\n".join([f"| {k} | {v} |" for k, v in returns.items()])
     
-    # Generate Markdown
-    # Prepare table rows first
-    perf_rows = "\n".join([f"| {k} | {v} |" for k, v in returns.items()])
+    # Handle Analyst Targets
+    upside = "N/A"
+    if target_mean and current_price:
+        upside_val = (target_mean - current_price) / current_price
+        upside = f"{upside_val*100:.1f}%"
 
-    md = f"""# {symbol} Research Report
+    report = f"""# 📊 Quantitative Research Report: {symbol}
+**Company:** {long_name}
+**Sector:** {sector} | **Industry:** {industry}
 **Date:** {datetime.now().strftime('%Y-%m-%d')}
-**Ticker:** {symbol}
-**Name:** {long_name}
+**Price:** ${current_price:,.2f}
 
-## 1. Overview
-{thesis_section}
+## 1. Executive Summary
+{summary}
 
-## 2. Market Data (Live)
-- **Price:** ${current_price:.2f}
-- **52-Week Range:** ${low_52} - ${high_52}
-- **Yield:** {yield_str}
-- **Change:** {change*100:.2f}%
+## 2. Valuation & Financials
+| Metric | Value | Reference |
+|---|---|---|
+| **Market Cap** | {format_large_number(mkt_cap)} | Size |
+| **P/E (Trailing)** | {pe_trailing:.2f} | Avg ~20-25 |
+| **P/E (Forward)** | {pe_forward:.2f} | Future Expectations |
+| **PEG Ratio** | {peg_ratio} | < 1.0 is Undervalued |
+| **Price/Book** | {pb_ratio} | Asset Value |
+| **Dividend Yield** | {format_pct(div_yield)} | Income |
+| **Payout Ratio** | {format_pct(payout_ratio)} | Safety of Div |
 
-### Performance
+**Profitability & Growth:**
+- **ROE:** {format_pct(roe)}
+- **Profit Margin:** {format_pct(profit_margin)}
+- **Revenue Growth (YoY):** {format_pct(rev_growth)}
+- **Earnings Growth (YoY):** {format_pct(earnings_growth)}
+
+**Balance Sheet:**
+- **Debt/Equity:** {debt_to_equity} (Lower is better)
+- **Current Ratio:** {curr_ratio} (> 1.0 is safe)
+- **Free Cash Flow:** {format_large_number(free_cashflow)}
+
+## 3. Analyst Consensus
+- **Recommendation:** **{recommendation.upper()}** (Based on {num_analysts} Analysts)
+- **Target Price:** ${target_mean:.2f} (Upside: {upside})
+- **Range:** ${target_low} - ${target_high}
+
+## 4. Technical Analysis
+| Indicator | Value | Signal |
+|---|---|---|
+| **Trend** | - | {trend} |
+| **RSI (14)** | {current_rsi:.1f} | { "Overbought (>70)" if current_rsi > 70 else "Oversold (<30)" if current_rsi < 30 else "Neutral" } |
+| **SMA 50** | ${sma50:.2f} | Short-term Support |
+| **SMA 200** | ${sma200:.2f} | Long-term Trend |
+
+**Performance History:**
 | Period | Return |
 |---|---|
-{perf_rows}
+{md_rows}
 
-{holdings_section}
-{sector_section}
-
-## 6. Technicals
+---
+*Generated by Auto-Research Tool*
 """
-    # Quick technical check
-    sma50 = hist['Close'].rolling(window=50).mean().iloc[-1]
-    sma200 = hist['Close'].rolling(window=200).mean().iloc[-1]
     
-    md += f"- **SMA 50:** ${sma50:.2f}\n"
-    md += f"- **SMA 200:** ${sma200:.2f}\n"
+    filename = f"{symbol.replace('.','_')}_Quant_Report.md"
+    with open(filename, "w", encoding='utf-8') as f:
+        f.write(report)
     
-    if current_price > sma50 and current_price > sma200:
-        md += "- **Trend:** Strong Uptrend (Price > SMA50 > SMA200)\n"
-    elif current_price < sma50 and current_price < sma200:
-        md += "- **Trend:** Downtrend\n"
-    else:
-        md += "- **Trend:** Mixed / Consolidating\n"
-
-    filename = f"{symbol.replace('.','_')}_Research.md"
-    with open(filename, "w") as f:
-        f.write(md)
-    
-    print(f"Report generated: {filename}")
-    # print(md)
+    print(f"Quant Report generated: {filename}")
+    # print(report)
 
 if __name__ == "__main__":
     generate_report()
