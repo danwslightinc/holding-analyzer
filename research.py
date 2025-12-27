@@ -13,6 +13,13 @@ def format_large_number(num):
         return f"${num/1e6:.2f}M"
     return f"${num:,.0f}"
 
+def format_float(num, pattern="{:.2f}"):
+    if num is None: return "N/A"
+    try:
+        return pattern.format(num)
+    except:
+        return "N/A"
+
 def format_pct(num):
     if num is None: return "N/A"
     return f"{num*100:.2f}%"
@@ -26,7 +33,7 @@ def generate_report(symbol=None):
     ticker = yf.Ticker(symbol)
     try:
         info = ticker.info
-        hist = ticker.history(period="2y")
+        hist = ticker.history(period="max")
     except Exception as e:
         print(f"Error fetching data: {e}")
         return
@@ -94,6 +101,43 @@ def generate_report(symbol=None):
     else:
         trend = "Neutral / Consolidating 🟡"
 
+    # Support & Resistance / Ceiling
+    ath = hist['High'].max()
+    ceilings = []
+    
+    if current_price >= ath * 0.99: # At or near ATH (within 1%)
+        ceilings.append(f"ATH: ${ath:.2f} (Price Discovery)")
+        # Fib Extensions from 52w range
+        last_year = hist.iloc[-252:]
+        low_52w = last_year['Low'].min()
+        high_52w = last_year['High'].max()
+        diff = high_52w - low_52w
+        fib_1272 = high_52w + (diff * 0.272)
+        ceilings.append(f"Fib 1.272: ${fib_1272:.2f}")
+        ceilings.append(f"Psych: ${int(current_price/5)*5 + 5}")
+    else:
+        # Find historical resistance (weekly highs above current)
+        # Resample to weekly to reduce noise
+        weekly = hist['High'].resample('W').max()
+        above_current = weekly[weekly > current_price * 1.01] # 1% buffer
+        if not above_current.empty:
+            next_levels = sorted(above_current.unique())[:3]
+            # Simple clustering - pick first and then ones far enough apart
+            clusters = []
+            if next_levels:
+                clusters.append(next_levels[0])
+                for l in next_levels[1:]:
+                    if l - clusters[-1] > (current_price * 0.02): # 2% gap
+                        clusters.append(l)
+            
+            for c in clusters[:2]:
+                ceilings.append(f"${c:.2f}")
+            ceilings.append(f"ATH: ${ath:.2f}")
+        else:
+            ceilings.append(f"ATH: ${ath:.2f}")
+            
+    resistance_str = ", ".join(ceilings)
+
     # --- 3. Returns Calculation ---
     returns = {}
     periods = {'1 Month': 21, '3 Months': 63, '6 Months': 126, '1 Year': 252}
@@ -136,10 +180,10 @@ def generate_report(symbol=None):
 | Metric | Value | Reference |
 |---|---|---|
 | **Market Cap** | {format_large_number(mkt_cap)} | Size |
-| **P/E (Trailing)** | {pe_trailing:.2f} | Avg ~20-25 |
-| **P/E (Forward)** | {pe_forward:.2f} | Future Expectations |
-| **PEG Ratio** | {peg_ratio} | < 1.0 is Undervalued |
-| **Price/Book** | {pb_ratio} | Asset Value |
+| **P/E (Trailing)** | {format_float(pe_trailing)} | Avg ~20-25 |
+| **P/E (Forward)** | {format_float(pe_forward)} | Future Expectations |
+| **PEG Ratio** | {peg_ratio if peg_ratio else "N/A"} | < 1.0 is Undervalued |
+| **Price/Book** | {format_float(pb_ratio)} | Asset Value |
 | **Dividend Yield** | {format_pct(div_yield)} | Income |
 | **Payout Ratio** | {format_pct(payout_ratio)} | Safety of Div |
 
@@ -150,22 +194,23 @@ def generate_report(symbol=None):
 - **Earnings Growth (YoY):** {format_pct(earnings_growth)}
 
 **Balance Sheet:**
-- **Debt/Equity:** {debt_to_equity} (Lower is better)
-- **Current Ratio:** {curr_ratio} (> 1.0 is safe)
+- **Debt/Equity:** {format_float(debt_to_equity)} (Lower is better)
+- **Current Ratio:** {format_float(curr_ratio)} (> 1.0 is safe)
 - **Free Cash Flow:** {format_large_number(free_cashflow)}
 
 ## 3. Analyst Consensus
 - **Recommendation:** **{recommendation.upper()}** (Based on {num_analysts} Analysts)
-- **Target Price:** ${target_mean:.2f} (Upside: {upside})
-- **Range:** ${target_low} - ${target_high}
+- **Target Price:** ${format_float(target_mean)} (Upside: {upside})
+- **Range:** ${format_float(target_low)} - ${format_float(target_high)}
 
 ## 4. Technical Analysis
 | Indicator | Value | Signal |
 |---|---|---|
 | **Trend** | - | {trend} |
 | **RSI (14)** | {current_rsi:.1f} | { "Overbought (>70)" if current_rsi > 70 else "Oversold (<30)" if current_rsi < 30 else "Neutral" } |
-| **SMA 50** | ${sma50:.2f} | Short-term Support |
-| **SMA 200** | ${sma200:.2f} | Long-term Trend |
+| **SMA 50** | ${format_float(sma50)} | Short-term Support |
+| **SMA 200** | ${format_float(sma200)} | Long-term Trend |
+| **Ceiling / Res** | **{resistance_str}** | Key Levels |
 
 **Performance History:**
 | Period | Return |
