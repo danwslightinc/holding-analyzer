@@ -321,7 +321,7 @@ def analyze_sector_exposure(df, fundamentals):
         top_sector = sector_df.iloc[0]
         if top_sector['Allocation %'] > 30:
             output_str += f"\n\n⚠️ Concentration Alert: {top_sector['Sector']} is {top_sector['Allocation %']:.1f}% of portfolio."
-            output_str += "\nAction: Consider trimming winners in this sector if > target."
+            output_str += "\nAction: Consider trimming winners if this exceeds your maximum sector allocation (Default Alert > 30%)."
 
     print(output_str)
     return sector_df, output_str
