@@ -68,7 +68,7 @@ def generate_static_preview(df, target_cagr, fundamentals=None, save_path='dashb
     # Using case-insensitive check for 'BTC'
     cagr_df = df[~df['Symbol'].str.contains('BTC', case=False, na=False)].copy()
     cagr_df['CAGR_Visual'] = cagr_df['CAGR'].clip(upper=3.0, lower=-1.0)
-    cagr_colors = ['green' if x >= target_cagr else 'red' for x in cagr_df['CAGR']]
+    cagr_colors = ['red' if x < 0 else 'orange' if x < target_cagr else 'green' for x in cagr_df['CAGR']]
     
     # P&L Data
     pnl_df = df.copy()
@@ -217,7 +217,7 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
     # CAGR Data (Cleaned)
     cagr_df = df[~df['Symbol'].str.contains('BTC', case=False, na=False)].copy()
     cagr_df['CAGR_Visual'] = cagr_df['CAGR'].clip(upper=3.0, lower=-1.0) 
-    cagr_df['Color'] = cagr_df['CAGR'].apply(lambda x: 'green' if x >= target_cagr else 'red')
+    cagr_df['Color'] = cagr_df['CAGR'].apply(lambda x: 'red' if x < 0 else 'orange' if x < target_cagr else 'green')
     
     # P&L Data
     pnl_df = df.copy()
