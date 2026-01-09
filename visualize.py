@@ -29,6 +29,31 @@ ETF_SECTOR_WEIGHTS = {
     }
 }
 
+ETF_REGION_WEIGHTS = {
+    'VOO': {'US': 1.0},
+    'QQQ': {'US': 1.0},
+    'MSFT': {'US': 1.0}, 'NVDA': {'US': 1.0}, 'V': {'US': 1.0}, 'UNH': {'US': 1.0},
+    'SAVA': {'US': 1.0}, 'SLV': {'Commodities': 1.0},
+    'XIU.TO': {'Canada': 1.0}, 'XEI.TO': {'Canada': 1.0}, 'XQQ.TO': {'US': 1.0},
+    'TD.TO': {'Canada': 1.0}, 'CM.TO': {'Canada': 1.0}, 'WCP.TO': {'Canada': 1.0},
+    'AC.TO': {'Canada': 1.0}, 'ACB.TO': {'Canada': 1.0}, 'CASH.TO': {'Canada': 1.0},
+    'XEF.TO': {'Intl Developed': 1.0},
+    'XEC.TO': {'Emerging Markets': 1.0},
+    'BTC-USD': {'Crypto': 1.0}, 'YGMZF': {'Intl Developed': 1.0}
+}
+
+# Custom Color Map for Regions
+REGION_COLORS = {
+    'US': '#0A3161', # US Flag Blue
+    'Canada': '#C5050C', # Canadian Flag Red
+    'Intl Developed': '#00B050', # Green
+    'Emerging Markets': '#FFC000', # Orange/Yellow
+    'Crypto': '#F7931A', # Bitcoin Orange
+    'Commodities': '#A0A0A0', # Silver/Grey
+    'Other': '#808080'
+}
+
+
 def generate_static_preview(df, target_cagr, fundamentals=None, save_path='dashboard_preview.png'):
     """
     Generates a static PNG summary for email embedding.
@@ -59,6 +84,25 @@ def generate_static_preview(df, target_cagr, fundamentals=None, save_path='dashb
         
         plot_data = pd.Series(sector_map).sort_values(ascending=False)
         title_text = 'Sector Exposure (Look-Through)'
+        
+        # Region Allocation Logic
+        region_map = {}
+        for _, row in df.iterrows():
+            sym = row['Symbol']
+            val = row['Market Value']
+            
+            # Default to US if not found (or check suffix)
+            if sym not in ETF_REGION_WEIGHTS:
+                if '.TO' in sym: region = 'Canada'
+                else: region = 'US'
+                region_map[region] = region_map.get(region, 0) + val
+            else:
+                weights = ETF_REGION_WEIGHTS[sym]
+                for reg, w in weights.items():
+                    region_map[reg] = region_map.get(reg, 0) + (val * w)
+        
+        region_data = pd.Series(region_map).sort_values(ascending=False)
+        
     else:
         # Fallback to Holdings if no fundamentals
         plot_data = df.groupby('Symbol')['Market Value'].sum().sort_values(ascending=False)
@@ -76,9 +120,9 @@ def generate_static_preview(df, target_cagr, fundamentals=None, save_path='dashb
     pnl_df = pnl_df.sort_values('P&L', ascending=True)
     pnl_colors = ['green' if x > 0 else 'red' for x in pnl_df['P&L']]
 
-    # Create grid
-    fig = plt.figure(figsize=(16, 12))
-    gs = fig.add_gridspec(2, 2, height_ratios=[1, 1], hspace=0.3, wspace=0.3)
+    # Create grid (2 Rows x 3 Cols layout to fit Region)
+    fig = plt.figure(figsize=(18, 12))
+    gs = fig.add_gridspec(2, 3, height_ratios=[1, 1], hspace=0.3, wspace=0.3)
     
     # Row 1, Col 1: Sector Donut Chart
     ax1 = fig.add_subplot(gs[0, 0])
@@ -99,7 +143,22 @@ def generate_static_preview(df, target_cagr, fundamentals=None, save_path='dashb
     ax2.set_title('CAGR vs Target (Excl. BTC)', fontsize=14, fontweight='bold')
     ax2.tick_params(axis='x', rotation=45)
     ax2.legend()
+    ax2.legend()
     ax2.grid(axis='y', alpha=0.3)
+    
+    # Row 1, Col 3: Region Donut (New)
+    ax_reg = fig.add_subplot(gs[0, 2])
+    if fundamentals and not region_data.empty:
+        # Map colors for Matplotlib
+        reg_colors = [REGION_COLORS.get(label, '#808080') for label in region_data.index]
+        r_wedges, r_texts, r_autotexts = ax_reg.pie(region_data, labels=region_data.index, autopct='%1.1f%%', startangle=90, pctdistance=0.85, colors=reg_colors)
+        plt.setp(r_texts, size=8)
+        plt.setp(r_autotexts, size=8, weight="bold")
+        ax_reg.add_artist(plt.Circle((0,0),0.70,fc='white'))
+        ax_reg.set_title("Region Allocation", fontsize=14, fontweight='bold')
+    else:
+        ax_reg.text(0.5, 0.5, "Region Data N/A", ha='center')
+    ax_reg.axis('equal')
     
     # Row 2, Col 1: Sector/Allocation (Treemap)
     ax3 = fig.add_subplot(gs[1, 0])
@@ -122,8 +181,8 @@ def generate_static_preview(df, target_cagr, fundamentals=None, save_path='dashb
     ax3.set_title('Sector Look-Through (Treemap)', fontsize=14, fontweight='bold')
     ax3.axis('off')
     
-    # Row 2, Col 2: P&L (Horizontal Bar)
-    ax4 = fig.add_subplot(gs[1, 1])
+    # Row 2, Cols 2-3: P&L (Horizontal Bar) - Span 2 cols
+    ax4 = fig.add_subplot(gs[1, 1:])
     ax4.barh(pnl_df['Symbol'], pnl_df['P&L'], color=pnl_colors)
     ax4.axvline(x=0, color='black', linestyle='-', linewidth=0.8)
     ax4.set_title('P&L by Holding (CAD $)', fontsize=14, fontweight='bold')
@@ -226,6 +285,39 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
     pnl_df = pnl_df.sort_values('P&L', ascending=True)
     pnl_df['Text'] = pnl_df.apply(lambda x: f"${x['P&L']:,.0f} ({x['Return %']:.1f}%)", axis=1)
     
+    pnl_df['Text'] = pnl_df.apply(lambda x: f"${x['P&L']:,.0f} ({x['Return %']:.1f}%)", axis=1)
+    
+    # Region Data
+    region_labels = []
+    region_vals = []
+    if fundamentals:
+        r_map = {}
+        for _, row in df.iterrows():
+            sym = row['Symbol']
+            val = row['Market Value']
+            if sym not in ETF_REGION_WEIGHTS:
+                region = 'Canada' if '.TO' in sym else 'US'
+            else:
+                # Use primary region for simplification in Pie or just take first
+                # Better: aggregate strictly
+                pass
+                
+        # Strict Aggregation
+        for _, row in df.iterrows():
+            sym = row['Symbol']
+            val = row['Market Value']
+            
+            if sym not in ETF_REGION_WEIGHTS:
+               reg = 'Canada' if '.TO' in sym else 'US'
+               r_map[reg] = r_map.get(reg, 0) + val
+            else:
+               weights = ETF_REGION_WEIGHTS[sym]
+               for reg, w in weights.items():
+                   r_map[reg] = r_map.get(reg, 0) + (val * w)
+        
+        region_labels = list(r_map.keys())
+        region_vals = list(r_map.values())
+
     # Quant-Mental Table Data
     table_rows = []
     if fundamentals:
@@ -305,20 +397,22 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
     # --- Create Subplots ---
     # We use a cleaner 2-row layout for charts. The table will be external HTML.
     # --- Create Subplots ---
+    # --- Create Subplots ---
     rows_count = 2 
     
     if fundamentals:
         # Layout:
-        # Row 1: Holdings Pie | CAGR Bar
-        # Row 2: Treemap      | P&L Bar
+        # Row 1: Holdings Pie | Region Pie | CAGR Bar
+        # Row 2: Treemap      | P&L Bar (Span 2)
         specs = [
-            [{"type": "domain"}, {"type": "xy"}],
-            [{"type": "treemap"}, {"type": "xy"}]
+            [{"type": "domain"}, {"type": "domain"}, {"type": "xy"}],
+            [{"type": "treemap"}, {"type": "xy", "colspan": 2}, None]
         ]
         titles = (
-            f"Holdings (Total: CAD ${total_val:,.0f})", 
-            f"CAGR Performance (Target: {target_cagr:.0%})",
-            "Sector Exposure (Look-Through) - CAD",
+            f"Holdings (Total: ${total_val:,.0f})", 
+            "Region Allocation",
+            f"CAGR (Target: {target_cagr:.0%})",
+            "Broad Sector Exposure",
             "P&L by Holding (CAD)"
         )
     else:
@@ -333,11 +427,11 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
         )
 
     fig = make_subplots(
-        rows=rows_count, cols=2,
+        rows=rows_count, cols=3,
         specs=specs,
         subplot_titles=titles,
         vertical_spacing=0.12,
-        horizontal_spacing=0.1
+        horizontal_spacing=0.05
     )
     
     # 1. Pie Chart (Holdings) - (Row 1, Col 1)
@@ -352,10 +446,28 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
         ),
         row=1, col=1
     )
+
+    # 2. Region Pie (Row 1, Col 2)
+    if fundamentals and region_vals:
+        # Dynamic Color Mapping
+        pie_colors = [REGION_COLORS.get(label, '#808080') for label in region_labels]
+        
+        fig.add_trace(
+            go.Pie(
+                labels=region_labels,
+                values=region_vals,
+                name="Region",
+                hole=0.4,
+                hoverinfo="label+percent+value",
+                marker=dict(colors=pie_colors),
+                showlegend=False
+            ),
+            row=1, col=2
+        )
     
-    # 2. CAGR Bar Chart - (Row 1, Col 2)
+    # 3. CAGR Bar Chart - (Row 1, Col 3)
     cagr_row = 1
-    cagr_col = 2
+    cagr_col = 3
     
     fig.add_trace(
         go.Bar(
@@ -394,9 +506,9 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
             row=2, col=1
         )
 
-    # 4. P&L Bar Chart - (Row 2, Col 2)
+    # 4. P&L Bar Chart - (Row 2, Col 2 - Spanning)
     pnl_row = 2
-    pnl_col = 2 if fundamentals else 1
+    pnl_col = 2
     
     fig.add_trace(
         go.Bar(
