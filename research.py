@@ -158,6 +158,7 @@ def generate_report(symbol=None):
     
     # --- 2. Technical Analysis ---
     # SMA
+    sma20 = hist['Close'].rolling(window=20).mean().iloc[-1]
     sma50 = hist['Close'].rolling(window=50).mean().iloc[-1]
     sma200 = hist['Close'].rolling(window=200).mean().iloc[-1]
     
@@ -330,7 +331,9 @@ def generate_report(symbol=None):
     # Growth
     if rev_growth and rev_growth > 0.10: bulls.append(f"Strong top-line growth of {rev_growth:.1%} indicates gaining market share.")
     elif rev_growth and rev_growth < 0: bears.append(f"Revenue is contracting ({rev_growth:.1%}), signaling headwinds.")
-    else: bears.append(f"Revenue growth is tepid ({rev_growth:.1%}), lagging high-growth peers.")
+    else: 
+        growth_val = f"{rev_growth:.1%}" if rev_growth else "N/A"
+        bears.append(f"Revenue growth is tepid ({growth_val}), lagging high-growth peers.")
     
     # Valuation
     if price_to_fv < 0.85: bulls.append(f"Trading at a discount to Fair Value (${fair_value:,.2f}), offering a margin of safety.")
@@ -413,6 +416,9 @@ def generate_report(symbol=None):
 |---|---|---|
 | **Trend** | {trend} | Market Phase |
 | **RSI (14)** | {current_rsi:.1f} | Momentum |
+| **SMA 20** | ${format_float(sma20)} | Short-term Trend |
+| **SMA 50** | ${format_float(sma50)} | Medium-term Trend |
+| **SMA 200** | ${format_float(sma200)} | Long-term Trend |
 | **Support** | **{floor_str}** | Buy Zones |
 | **Resistance** | **{resistance_str}** | Sell Zones |
 
