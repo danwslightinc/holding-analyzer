@@ -478,6 +478,116 @@ def get_latest_news(symbols):
                 
     return news_map
 
+def get_dividend_calendar(symbols):
+    """
+    Fetches dividend history to project future income.
+    Returns dict: {Symbol: {'Frequency': 'Monthly', 'Rate': 0.50, 'Months': [1,2,3...]}}
+    """
+    if not symbols: return {}
+
+    print(f"Fetching dividend calendar for {len(symbols)} symbols...")
+    calendar_map = {}
+    
+    def process_divs(sym):
+        try:
+            # Skip non-equity/ETF
+            if 'CAD=X' in sym or 'BTC' in sym:
+                return sym, None
+
+            t = yf.Ticker(sym)
+            divs = t.dividends
+            
+            if divs.empty:
+                return sym, {'Frequency': 'None', 'Rate': 0.0, 'Months': [], 'Next_Ex': 'N/A'}
+                
+            # TZ-naive for calculation
+            divs.index = divs.index.tz_localize(None)
+            
+            # Filter last 12 months to determine frequency
+            one_year_ago = datetime.now() - timedelta(days=366)
+            recent = divs[divs.index > one_year_ago]
+            count = len(recent)
+            
+            if count == 0:
+                 # Check last 18 months in case of weird gaps or annual
+                 recent = divs[divs.index > (datetime.now() - timedelta(days=550))]
+                 count = len(recent)
+
+            # Determine Frequency
+            freq_months = 0
+            freq_label = "Irregular"
+            
+            if 10 <= count <= 13:
+                freq_label = "Monthly"
+                freq_months = 1
+            elif 3 <= count <= 5:
+                freq_label = "Quarterly"
+                freq_months = 3
+            elif count == 2:
+                freq_label = "Semi-Annual"
+                freq_months = 6
+            elif count == 1:
+                freq_label = "Annual"
+                freq_months = 12
+                
+            if freq_months == 0:
+                return sym, {'Frequency': 'None', 'Rate': 0.0, 'Months': [], 'Next_Ex': 'N/A'}
+
+            # Get latest rate
+            latest_rate = float(recent.iloc[-1])
+            last_date = recent.index[-1]
+            
+            # Project Next 12 Months
+            projected_months = []
+            
+            # Start projecting from the MONTH AFTER the last known payment
+            # or just project 12 months/dates forward from last date
+            
+            next_date = last_date
+            for _ in range(12 // freq_months):
+                # Add months (approximate)
+                # We use a simple logic: existing month + freq
+                # But handling year rollover is key
+                new_month = next_date.month + freq_months
+                year_offset = 0
+                if new_month > 12: # Handle overflow
+                    year_offset = (new_month - 1) // 12
+                    new_month = (new_month - 1) % 12 + 1
+                
+                # Construct new date (try to keep day same, handle Feb 28/30 issues)
+                try:
+                    next_date = next_date.replace(year=next_date.year + year_offset, month=new_month)
+                except ValueError:
+                    # Handle Feb 30 -> Feb 28
+                    # If failed, just go to 1st of next month or clamped day
+                    next_date = next_date.replace(year=next_date.year + year_offset, month=new_month, day=28)
+                
+                projected_months.append(next_date.month)
+            
+            # Sort unique
+            projected_months = sorted(list(set(projected_months)))
+            
+            return sym, {
+                'Frequency': freq_label, 
+                'Rate': latest_rate, 
+                'Months': projected_months,
+                'Last_Ex': last_date.strftime('%Y-%m-%d')
+            }
+            
+        except Exception as e:
+            return sym, None
+
+    # Threaded Fetch
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_sym = {executor.submit(process_divs, sym): sym for sym in symbols}
+        for future in concurrent.futures.as_completed(future_to_sym):
+            sym, data = future.result()
+            if data:
+                calendar_map[sym] = data
+                
+    return calendar_map
+
 def get_fundamental_data(symbols):
     """
     Fetches fundamental data for a list of symbols.
