@@ -194,12 +194,13 @@ def generate_static_preview(df, target_cagr, fundamentals=None, save_path='dashb
     plt.close()
     print(f"Static preview saved to: {save_path}")
 
-def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news=None, save_path='portfolio_dashboard.html'):
+def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news=None, dividend_calendar=None, usd_to_cad=1.40, save_path='portfolio_dashboard.html'):
     """
     Generates an interactive HTML dashboard with:
     1. Portfolio Allocation (Pie) and CAGR Performance (Bar) - Top Row
     2. P&L Performance (Bar) - Middle Row
-    3. Quant-Mental Analysis (Table) - Bottom Row (if fundamentals provided)
+    3. Dividend Calendar (Stacked Bar) - Bottom Row (if provided)
+    4. Quant-Mental Analysis (Table) - Bottom Area
     """
     if df.empty: return
 
@@ -208,6 +209,63 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
     # Allocation Data
     alloc_df = df.groupby('Symbol')['Market Value'].sum().reset_index()
     total_val = alloc_df['Market Value'].sum()
+
+    # --- Divide Calendar Data Prep ---
+    div_fig_data = [] # List of traces
+    total_annual_div = 0.0
+    
+    if dividend_calendar:
+        # Prepare list of dicts: {Month: 1, Symbol: AAPL, Amount: 50.0}
+        month_map = {1:'Jan', 2:'Feb', 3:'Mar', 4:'Apr', 5:'May', 6:'Jun',
+                     7:'Jul', 8:'Aug', 9:'Sep', 10:'Oct', 11:'Nov', 12:'Dec'}
+        
+        # Structure for Stacked Bar: X=MonthName, Y=Amount, Color=Symbol
+        # We need a DataFrame to group effectively or just add traces per symbol?
+        # Stacked bar in Plotly: Add a trace for each Symbol, with X=[Jan, Feb...] and Y=[0, 50, 0...]
+        
+        div_traces = {} # Symbol -> [12 months of values]
+        
+        for _, row in df.iterrows():
+            sym = row['Symbol']
+            shares = row.get('Quantity', 0)
+            
+            # Get Div Data
+            cal = dividend_calendar.get(sym)
+            if cal and cal.get('Frequency') != 'None':
+                rate = cal['Rate']
+                months = cal['Months']
+                
+                # Currency conversion
+                # Assume .TO is CAD, else USD
+                is_cad = '.TO' in sym or 'CAD' in sym
+                
+                # Calculate payment per occurrence
+                payment_native = shares * rate
+                payment_cad = payment_native if is_cad else payment_native * usd_to_cad
+                
+                # Add to annual total
+                # count how many payments (len(months))
+                total_annual_div += (payment_cad * len(months))
+                
+                # Populate trace data
+                # Initialize 12 zeros
+                monthly_amts = [0.0] * 12
+                for m in months:
+                    # month m is 1-12, index 0-11
+                    if 1 <= m <= 12:
+                        monthly_amts[m-1] += payment_cad
+                
+                div_traces[sym] = monthly_amts
+        
+        # Create Traces
+        # X-axis labels
+        months_x = [month_map[i] for i in range(1, 13)]
+        
+        for sym, y_vals in div_traces.items():
+            if sum(y_vals) > 0:
+                div_fig_data.append(
+                    go.Bar(name=sym, x=months_x, y=y_vals, opacity=0.8, hovertemplate=f"<b>{sym}</b><br>$%{{y:,.2f}}<extra></extra>")
+                )
 
     # --- Treemap Data Preparation (Look-Through) ---
     if fundamentals:
@@ -220,10 +278,6 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
         # 1. Aggregate Value by Sector for Parents
         # We need this to ensure parent values match sum of children (Plotly requirement)
         # Re-using sector_map logic from static generation or recalculating here
-        
-        # We need to build the list of children first to sum them up perfectly?
-        # Actually Plotly can sum children if branchvalues='total'.
-        # Let's generate the detailed list of fragments first.
         
         fragments = [] # list of (Sector, Label, Value)
         
@@ -285,23 +339,11 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
     pnl_df = pnl_df.sort_values('P&L', ascending=True)
     pnl_df['Text'] = pnl_df.apply(lambda x: f"${x['P&L']:,.0f} ({x['Return %']:.1f}%)", axis=1)
     
-    pnl_df['Text'] = pnl_df.apply(lambda x: f"${x['P&L']:,.0f} ({x['Return %']:.1f}%)", axis=1)
-    
     # Region Data
     region_labels = []
     region_vals = []
     if fundamentals:
         r_map = {}
-        for _, row in df.iterrows():
-            sym = row['Symbol']
-            val = row['Market Value']
-            if sym not in ETF_REGION_WEIGHTS:
-                region = 'Canada' if '.TO' in sym else 'US'
-            else:
-                # Use primary region for simplification in Pie or just take first
-                # Better: aggregate strictly
-                pass
-                
         # Strict Aggregation
         for _, row in df.iterrows():
             sym = row['Symbol']
@@ -337,7 +379,7 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
         pes = []
         growths = []
         recs = []
-        recs = []
+        # recs duplicate removed
         scores = []
         
         for _, row in qm_df.iterrows():
@@ -395,44 +437,55 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
         table_headers = ["Symbol", "Thesis", "Catalyst", "Kill Switch", "Conviction", "RSI", "Tech Scorecard", "Next Earnings", "Ex-Div", "Yield", "Timeframe", "PEG Ratio", "Growth", "Rec"]
     
     # --- Create Subplots ---
-    # We use a cleaner 2-row layout for charts. The table will be external HTML.
-    # --- Create Subplots ---
-    # --- Create Subplots ---
-    rows_count = 2 
+    rows_count = 2
+    if dividend_calendar:
+        rows_count = 3
     
     if fundamentals:
-        # Layout:
-        # Row 1: Holdings Pie | Region Pie | CAGR Bar
-        # Row 2: Treemap      | P&L Bar (Span 2)
+        # Complex Layout
         specs = [
-            [{"type": "domain"}, {"type": "domain"}, {"type": "xy"}],
-            [{"type": "treemap"}, {"type": "xy", "colspan": 2}, None]
+            [{"type": "domain"}, {"type": "domain"}, {"type": "xy"}], # Row 1
+            [{"type": "treemap"}, {"type": "xy", "colspan": 2}, None] # Row 2
         ]
-        titles = (
+        titles = [
             f"Holdings (Total: ${total_val:,.0f})", 
             "Region Allocation",
             f"CAGR (Target: {target_cagr:.0%})",
             "Broad Sector Exposure",
             "P&L by Holding (CAD)"
-        )
+        ]
+        
+        if dividend_calendar:
+            specs.append([{"type": "xy", "colspan": 3}, None, None]) # Row 3 (Full Width)
+            titles.append(f"Dividend Calendar (Est. Annual: ${total_annual_div:,.2f})")
+            
     else:
+        # Simple Layout
         specs = [
             [{"type": "domain"}, {"type": "xy"}],
             [{"type": "xy", "colspan": 2}, None]
         ]
-        titles = (
-            f"Portfolio Allocation (Total: CAD ${total_val:,.0f})", 
-            f"CAGR Performance (Target: {target_cagr:.0%})",
-            "P&L by Holding (CAD)"
-        )
+        titles = [
+             f"Portfolio Allocation (Total: CAD ${total_val:,.0f})", 
+             f"CAGR Performance (Target: {target_cagr:.0%})",
+             "P&L by Holding (CAD)"
+        ]
+        if dividend_calendar:
+             specs.append([{"type": "xy", "colspan": 2}, None])
+             titles.append(f"Dividend Calendar (Est. Total: ${total_annual_div:,.2f})")
 
+    # Handle subplot_titles length match
+    # make_subplots expects list/tuple
+    
     fig = make_subplots(
-        rows=rows_count, cols=3,
+        rows=rows_count, cols=3 if fundamentals else 2,
         specs=specs,
-        subplot_titles=titles,
-        vertical_spacing=0.12,
+        subplot_titles=tuple(titles),
+        vertical_spacing=0.10,
         horizontal_spacing=0.05
     )
+    
+    # --- Add Traces ---
     
     # 1. Pie Chart (Holdings) - (Row 1, Col 1)
     fig.add_trace(
@@ -447,7 +500,7 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
         row=1, col=1
     )
 
-    # 2. Region Pie (Row 1, Col 2)
+    # 2. Region Pie (Row 1, Col 2) - Only if Fundamentals
     if fundamentals and region_vals:
         # Dynamic Color Mapping
         pie_colors = [REGION_COLORS.get(label, '#808080') for label in region_labels]
@@ -465,9 +518,8 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
             row=1, col=2
         )
     
-    # 3. CAGR Bar Chart - (Row 1, Col 3)
-    cagr_row = 1
-    cagr_col = 3
+    # 3. CAGR Bar Chart - (Row 1, Col 3) [Adjust col index if simple layout]
+    cagr_col = 3 if fundamentals else 2
     
     fig.add_trace(
         go.Bar(
@@ -478,7 +530,7 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
             name="CAGR",
             hovertemplate="<b>%{x}</b><br>CAGR: %{text}<extra></extra>"
         ),
-        row=cagr_row, col=cagr_col
+        row=1, col=cagr_col
     )
     
     fig.add_shape(
@@ -486,10 +538,10 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
         x0=-0.5, x1=len(cagr_df)-0.5,
         y0=target_cagr, y1=target_cagr,
         line=dict(color="blue", width=2, dash="dash"),
-        row=cagr_row, col=cagr_col
+        row=1, col=cagr_col
     )
     
-    # 3. Sector Treemap - (Row 2, Col 1)
+    # 4. Sector Treemap - (Row 2, Col 1)
     if fundamentals:
         fig.add_trace(
             go.Treemap(
@@ -506,9 +558,11 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
             row=2, col=1
         )
 
-    # 4. P&L Bar Chart - (Row 2, Col 2 - Spanning)
-    pnl_row = 2
-    pnl_col = 2
+    # 5. P&L Bar Chart - (Row 2, Col 2 - Spanning)
+    pnl_col = 2 if fundamentals else 1 # If simple, it spans full, start col 1
+    
+    # Simple layout P&L spans 2 columns starting at 1
+    # Fundamentals layout P&L spans 2 columns starting at 2
     
     fig.add_trace(
         go.Bar(
@@ -520,21 +574,32 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
             orientation='h',
             hovertemplate="<b>%{y}</b><br>P&L: $%{x:,.2f}<br>Return: %{text}<extra></extra>"
         ),
-        row=pnl_row, col=pnl_col
+        row=2, col=2 if fundamentals else 1
     )
+    
+    # 6. Dividend Calendar - (Row 3, Col 1 - Spanning)
+    if dividend_calendar and div_fig_data:
+        for trace in div_fig_data:
+            fig.add_trace(trace, row=3, col=1)
+            
+        fig.update_layout(barmode='stack') # Stack the dividends
     
     # --- Layout / Styling ---
     # Update axes labels
-    fig.update_xaxes(title_text="Symbol", row=cagr_row, col=cagr_col)
-    fig.update_yaxes(title_text="CAGR", row=cagr_row, col=cagr_col)
-    fig.update_xaxes(title_text="P&L ($)", row=pnl_row, col=pnl_col)
+    fig.update_xaxes(title_text="Symbol", row=1, col=cagr_col)
+    fig.update_yaxes(title_text="CAGR", row=1, col=cagr_col)
+    fig.update_xaxes(title_text="P&L ($)", row=2, col=2 if fundamentals else 1)
+    
+    if dividend_calendar:
+        fig.update_yaxes(title_text="Est. Income ($)", row=3, col=1)
     
     fig.update_layout(
         title_text="Stock Portfolio Analysis",
         template="plotly_dark",
-        height=900, 
-        showlegend=False,
-        margin=dict(l=50, r=50, t=80, b=50)
+        height=1300 if dividend_calendar else 900, 
+        showlegend=True if dividend_calendar else False, # Legend helpful for stacked bar
+        margin=dict(l=50, r=50, t=80, b=50),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
 
     # --- Generate Custom HTML ---
@@ -682,5 +747,3 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
     with open(save_path, 'w', encoding='utf-8') as f:
         f.write(html_template)
     print(f"Interactive dashboard saved to: {save_path}")
-
-
