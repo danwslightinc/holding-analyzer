@@ -89,7 +89,7 @@ def main():
     output_df = df.copy()
     
     # Format columns
-    output_df['Trade Date'] = output_df['Trade Date'].dt.strftime('%Y-%m-%d')
+    output_df['Trade Date'] = output_df['Trade Date'].dt.strftime('%Y/%m/%d')
     output_df['P&L'] = output_df['P&L'].apply(lambda x: f"${x:,.2f}")
     output_df['Market Value'] = output_df['Market Value'].apply(lambda x: f"${x:,.2f}")
     output_df['Cost Basis'] = output_df['Cost Basis'].apply(lambda x: f"${x:,.2f}")

@@ -35,7 +35,7 @@ def send_email():
     msg = MIMEMultipart()
     msg['From'] = SENDER_EMAIL
     msg['To'] = RECIPIENT_EMAIL
-    msg['Subject'] = f"Weekly Stock Portfolio Dashboard - {datetime.now().strftime('%Y-%m-%d')}"
+    msg['Subject'] = f"Weekly Stock Portfolio Dashboard - {datetime.now().strftime('%Y/%m/%d')}"
 
     # HTML Body with embedded image CID
     html_body = "<html><body>"

@@ -35,6 +35,14 @@ def load_portfolio_holdings(filepath):
     df['Purchase Price'] = pd.to_numeric(df['Purchase Price'], errors='coerce').fillna(0.0)
     df['Commission'] = pd.to_numeric(df['Commission'], errors='coerce').fillna(0.0)
     
+    # Handle Transaction Type (Buy/Sell)
+    # If "Sell", treat quantity as negative for aggregation
+    if 'Transaction Type' in df.columns:
+        df['Quantity'] = df.apply(
+            lambda x: -abs(x['Quantity']) if str(x['Transaction Type']).strip().lower() == 'sell' else abs(x['Quantity']),
+            axis=1
+        )
+    
     # Ensure mental columns are strings
     for col in mental_cols:
         df[col] = df[col].astype(str).replace('nan', '')
@@ -82,13 +90,22 @@ def load_portfolio_holdings(filepath):
             except Exception as e2:
                 print(f"Warning: Failed to load thesis.json: {e}. Fallback also failed: {e2}")
 
-    # Parse Trade Date (format 20251205 -> YYYYMMDD based on sample)
-    # Sample: 20251205, 20251125
-    df['Trade Date'] = pd.to_datetime(df['Trade Date'], format='%Y%m%d', errors='coerce')
+    # Parse Trade Date (support both YYYYMMDD and YYYY/MM/DD)
+    def parse_date(val):
+        d_str = str(val).split('.')[0].strip()
+        if not d_str or d_str == 'nan':
+            return pd.NaT
+        try:
+            if len(d_str) == 8 and d_str.isdigit():
+                return pd.to_datetime(d_str, format='%Y%m%d')
+            return pd.to_datetime(d_str)
+        except:
+            return pd.NaT
 
-    # Remove rows with invalid dates or 0 quantity
+    df['Trade Date'] = df['Trade Date'].apply(parse_date)
+
+    # Remove rows with invalid dates
     df = df.dropna(subset=['Trade Date'])
-    df = df[df['Quantity'] > 0]
 
     # Combine duplicate symbols with weighted average cost
     # Calculate cost basis for each row first
@@ -103,9 +120,12 @@ def load_portfolio_holdings(filepath):
     }
     # Add rules for mental columns
     for col in mental_cols:
-        agg_rules[col] = 'first' # Take the first non-empty value if possible? 'first' is simple.
+        agg_rules[col] = 'first' # Take the first non-empty value if possible
 
     aggregated = df.groupby('Symbol').agg(agg_rules).reset_index()
+    
+    # Remove assets with 0 net quantity (closed positions)
+    aggregated = aggregated[aggregated['Quantity'] > 0]
     
     # Calculate weighted average purchase price
     # Weighted Avg Price = (Total Cost - Total Commission) / Total Quantity

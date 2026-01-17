@@ -50,9 +50,8 @@ def analyze_restructuring(df, target_cagr=0.10):
     print("RESTRUCTURING ANALYSIS")
     print("="*50)
 
-    # Filter out CASH.TO
-    # Note: Case sensitive check usually, but good to be robust.
-    equity_df = df[~df['Symbol'].str.contains('CASH.TO', case=False, na=False)].copy()
+    # Filter out CASH.TO and BTC-USD
+    equity_df = df[~df['Symbol'].str.contains('CASH.TO|BTC-USD', case=False, na=False)].copy()
     
     if equity_df.empty:
         print("No equity holdings found (non-CASH.TO).")
@@ -187,8 +186,8 @@ def analyze_pnl(df):
     print("P&L ANALYSIS (Profit & Loss) - All values in CAD")
     print("="*50)
 
-    # Filter out CASH.TO
-    equity_df = df[~df['Symbol'].str.contains('CASH.TO', case=False, na=False)].copy()
+    # Filter out CASH.TO and BTC-USD for P&L Summary
+    equity_df = df[~df['Symbol'].str.contains('CASH.TO|BTC-USD', case=False, na=False)].copy()
     
     if equity_df.empty:
         print("No equity holdings found (non-CASH.TO).")
