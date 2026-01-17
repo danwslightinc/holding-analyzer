@@ -114,8 +114,8 @@ def generate_static_preview(df, target_cagr, fundamentals=None, save_path='dashb
     cagr_df['CAGR_Visual'] = cagr_df['CAGR'].clip(upper=3.0, lower=-1.0)
     cagr_colors = ['red' if x < 0 else 'orange' if x < target_cagr else 'green' for x in cagr_df['CAGR']]
     
-    # P&L Data
-    pnl_df = df.copy()
+    # P&L Data (Excl. BTC)
+    pnl_df = df[~df['Symbol'].str.contains('BTC', case=False, na=False)].copy()
     pnl_df['Return %'] = (pnl_df['P&L'] / pnl_df['Cost Basis']) * 100
     pnl_df = pnl_df.sort_values('P&L', ascending=True)
     pnl_colors = ['green' if x > 0 else 'red' for x in pnl_df['P&L']]
@@ -444,12 +444,12 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
     if fundamentals:
         # Complex Layout
         specs = [
-            [{"type": "domain"}, {"type": "domain"}, {"type": "xy"}], # Row 1
-            [{"type": "treemap"}, {"type": "xy", "colspan": 2}, None] # Row 2
+            [{"type": "domain"}, {"type": "domain"}, {"type": "xy"}], # Row 1 (Region, Holdings, CAGR)
+            [{"type": "treemap", "colspan": 2}, None, {"type": "xy"}] # Row 2 (Sector Exposure [colspan 2], P&L)
         ]
         titles = [
-            f"Holdings (Total: ${total_val:,.0f})", 
             "Region Allocation",
+            f"Holdings (Total: ${total_val:,.0f})", 
             f"CAGR (Target: {target_cagr:.0%})",
             "Broad Sector Exposure",
             "P&L by Holding (CAD)"
@@ -481,8 +481,9 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
         rows=rows_count, cols=3 if fundamentals else 2,
         specs=specs,
         subplot_titles=tuple(titles),
-        vertical_spacing=0.10,
-        horizontal_spacing=0.05
+        vertical_spacing=0.08,
+        horizontal_spacing=0.06,
+        column_widths=[0.33, 0.33, 0.34] if fundamentals else [0.5, 0.5]
     )
     
     # --- Add Traces ---
@@ -497,7 +498,7 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
             hoverinfo="label+percent+value",
             showlegend=False
         ),
-        row=1, col=1
+        row=1, col=2 if fundamentals else 1
     )
 
     # 2. Region Pie (Row 1, Col 2) - Only if Fundamentals
@@ -515,7 +516,7 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
                 marker=dict(colors=pie_colors),
                 showlegend=False
             ),
-            row=1, col=2
+            row=1, col=1
         )
     
     # 3. CAGR Bar Chart - (Row 1, Col 3) [Adjust col index if simple layout]
@@ -559,10 +560,7 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
         )
 
     # 5. P&L Bar Chart - (Row 2, Col 2 - Spanning)
-    pnl_col = 2 if fundamentals else 1 # If simple, it spans full, start col 1
-    
-    # Simple layout P&L spans 2 columns starting at 1
-    # Fundamentals layout P&L spans 2 columns starting at 2
+    # Fundamentals layout P&L is in col 3
     
     fig.add_trace(
         go.Bar(
@@ -574,7 +572,7 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
             orientation='h',
             hovertemplate="<b>%{y}</b><br>P&L: $%{x:,.2f}<br>Return: %{text}<extra></extra>"
         ),
-        row=2, col=2 if fundamentals else 1
+        row=2, col=3 if fundamentals else 1
     )
     
     # 6. Dividend Calendar - (Row 3, Col 1 - Spanning)
@@ -588,7 +586,7 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
     # Update axes labels
     fig.update_xaxes(title_text="Symbol", row=1, col=cagr_col)
     fig.update_yaxes(title_text="CAGR", row=1, col=cagr_col)
-    fig.update_xaxes(title_text="P&L ($)", row=2, col=2 if fundamentals else 1)
+    fig.update_xaxes(title_text="P&L ($)", row=2, col=3 if fundamentals else 1)
     
     if dividend_calendar:
         fig.update_yaxes(title_text="Est. Income ($)", row=3, col=1)

@@ -571,7 +571,7 @@ def get_dividend_calendar(symbols):
                 'Frequency': freq_label, 
                 'Rate': latest_rate, 
                 'Months': projected_months,
-                'Last_Ex': last_date.strftime('%Y-%m-%d')
+                'Last_Ex': last_date.strftime('%Y/%m/%d')
             }
             
         except Exception as e:
@@ -613,11 +613,13 @@ def get_fundamental_data(symbols):
         'CASH.TO': 'Cash & Equivalents'
     }
 
-    for sym in symbols:
+    import concurrent.futures
+
+    def fetch_fundamental(sym):
         try:
             # Skip CAD=X if not needed, or classify it
             if '=' in sym and sym not in custom_sectors:
-                continue
+                return sym, None
                 
             ticker = yf.Ticker(sym)
             info = ticker.info
@@ -647,7 +649,10 @@ def get_fundamental_data(symbols):
             # 2. Ex-Dividend Date
             ex_div = info.get('exDividendDate', 'N/A')
             if isinstance(ex_div, (int, float)):
-                ex_div = datetime.fromtimestamp(ex_div).strftime('%Y-%m-%d')
+                try:
+                    ex_div = datetime.fromtimestamp(ex_div).strftime('%Y/%m/%d')
+                except Exception:
+                    ex_div = 'N/A'
             
             # 3. Next Earnings (Only for equities)
             # 3. Next Earnings (Only for equities)
@@ -690,7 +695,7 @@ def get_fundamental_data(symbols):
                             valid_dates.append(current_date)
                             
                     if valid_dates:
-                        next_earnings = min(valid_dates).strftime('%Y-%m-%d')
+                        next_earnings = min(valid_dates).strftime('%Y/%m/%d')
             except Exception:
                 pass
 
@@ -731,14 +736,108 @@ def get_fundamental_data(symbols):
                 '52w High': info.get('fiftyTwoWeekHigh', 'N/A'),
                 'Recommendation': info.get('recommendationKey', 'N/A').replace('_', ' ').title(),
                 'Sector': normalized_sector,
+                'Country': info.get('country', 'Unknown'),
                 'Yield': yield_str,
                 'Ex-Dividend': str(ex_div),
                 'Next Earnings': str(next_earnings)
             }
-            fundamentals[sym] = f_data
+            return sym, f_data
             
         except Exception as e:
             print(f"Error fetching fundamentals for {sym}: {e}")
-            fundamentals[sym] = {'Error': str(e), 'Sector': 'Unknown'}
+            return sym, {'Error': str(e), 'Sector': 'Unknown'}
+
+    # Use ThreadPool to fetch parallelly (I/O bound)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_sym = {executor.submit(fetch_fundamental, sym): sym for sym in symbols}
+        for future in concurrent.futures.as_completed(future_to_sym):
+            sym, data = future.result()
+            if data:
+                fundamentals[sym] = data
             
     return fundamentals
+            
+def get_portfolio_history(holdings_df):
+    """
+    Simulates historical portfolio performance by backtesting current holdings.
+    Returns DataFrame with columns: ['Date', 'Portfolio', 'SP500', 'NASDAQ', 'TSX']
+    Prices are normalized to % return from start of data is handled by frontend, 
+    this returns Raw Value (CAD) for Portfolio and Raw Index Values for benchmarks.
+    """
+    if holdings_df.empty: return pd.DataFrame()
+
+    symbols = holdings_df['Symbol'].unique().tolist()
+    
+    # Needs 10 years of data
+    start_date = (datetime.now() - timedelta(days=365*10)).strftime('%Y-%m-%d')
+    
+    # 1. Fetch History for Stocks + Benchmarks + FX
+    # Benchmarks: ^GSPC (S&P500), ^IXIC (NASDAQ), ^GSPTSE (TSX)
+    # FX: CAD=X
+    benchmarks = ['^GSPC', '^IXIC', '^GSPTSE']
+    fx_symbol = 'CAD=X'
+    
+    all_tickers = symbols + benchmarks + [fx_symbol]
+    tickers_str = " ".join(all_tickers)
+    
+    print(f"Fetching 10Y history for performance analysis...")
+    try:
+        data = yf.download(tickers_str, start=start_date, progress=False, auto_adjust=False)
+        
+        # Check if 'Close' exists (yfinance structure varies)
+        if hasattr(data, 'columns') and 'Close' in data.columns:
+            closes = data['Close']
+        else:
+             # If single level or just tickers
+             closes = data
+
+        closes = closes.ffill()
+        
+        # 2. Extract FX Series
+        if fx_symbol in closes.columns:
+            fx_rates = closes[fx_symbol]
+        elif fx_symbol in closes.index: # unlikely for wide format
+             fx_rates = closes[fx_symbol]
+        else:
+            fx_rates = pd.Series(1.35, index=closes.index) # Fallback
+
+        # 3. Calculate Daily Portfolio Value
+        # Formula: Sum(Qty * Price_daily * (FX if USD))
+        
+        # Align dates
+        dates = closes.index
+        portfolio_daily = pd.Series(0.0, index=dates)
+        
+        holdings_dict = holdings_df.set_index('Symbol')['Quantity'].to_dict()
+        
+        for sym, qty in holdings_dict.items():
+            if sym in closes.columns:
+                series = closes[sym]
+                
+                # Currency conversion logic
+                # Optimization: do vector math if possible, but loop is fine for <50 stocks
+                if not sym.endswith('.TO'):
+                    # Assume USD, multiply by FX columns aligned by index
+                    series = series * fx_rates
+                
+                # Add to total
+                portfolio_daily += (series * qty)
+                
+        # 4. Construct Result DataFrame
+        result = pd.DataFrame(index=dates)
+        result['Portfolio'] = portfolio_daily
+        
+        for bench in benchmarks:
+            if bench in closes.columns:
+                result[bench] = closes[bench]
+                
+        result = result.dropna()
+        
+        # Reset index to make Date a column
+        result = result.reset_index()
+        return result
+
+    except Exception as e:
+        print(f"History Fetch Error: {e}")
+        return pd.DataFrame()
+
