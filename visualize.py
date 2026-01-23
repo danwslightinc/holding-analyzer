@@ -26,6 +26,11 @@ ETF_SECTOR_WEIGHTS = {
     'XEI.TO': {
         'Energy': 0.30, 'Financial Services': 0.30, 'Utilities': 0.15, 
         'Communication Services': 0.10, 'Real Estate': 0.05, 'Basic Materials': 0.05, 'Industrials': 0.05
+    },
+    'QQQ': {
+        'Technology': 0.51, 'Communication Services': 0.16, 'Consumer Cyclical': 0.13, 
+        'Healthcare': 0.06, 'Consumer Defensive': 0.04, 'Industrials': 0.04, 'Utilities': 0.01,
+        'Financial Services': 0.01
     }
 }
 
