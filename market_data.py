@@ -617,7 +617,16 @@ def get_fundamental_data(symbols):
         'ETH-USD': 'Crypto',
         'CAD=X': 'Currency',
         'CASH.TO': 'Cash & Equivalents',
-        'NVDA': 'Technology'
+        'NVDA': 'Technology',
+        'MSFT': 'Technology',
+        'CRM': 'Technology',
+        'COST': 'Consumer Defensive',
+        'V': 'Financial Services',
+        'UNH': 'Healthcare',
+        'TD.TO': 'Financial Services',
+        'CM.TO': 'Financial Services',
+        'AC.TO': 'Industrials',
+        'WCP.TO': 'Energy'
     }
 
     import concurrent.futures
@@ -632,7 +641,7 @@ def get_fundamental_data(symbols):
             info = ticker.info
             
             # Determine Sector
-            sector = info.get('sector', 'N/A')
+            sector = info.get('sector') or 'N/A'
             quote_type = info.get('quoteType', 'N/A')
             
             # Use custom mapping if available, otherwise fallback to Yahoo data
