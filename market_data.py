@@ -367,10 +367,13 @@ def get_latest_news(symbols):
         t = Ticker(symbols)
         all_news = t.news(20) # Get a batch of news
         
+        # Check if all_news is a valid list of dictionaries
         if isinstance(all_news, list):
             for sym in symbols:
                 for item in all_news:
-                    # Check if symbol is in the 'symbols' list of this news item
+                    if not isinstance(item, dict):
+                        continue
+                        
                     item_syms = item.get('symbols', [])
                     if sym in item_syms:
                         title = item.get('title', 'No Title')
@@ -378,9 +381,30 @@ def get_latest_news(symbols):
                         if len(title) > 80:
                             title = title[:77] + "..."
                         news_map[sym] = {'headline': f"📰 {title}", 'link': link}
-                        break # Found one for this symbol
+                        break
+        
+        # Fallback for missing symbols: try yfinance for news (often bypasses crumb issues)
+        remaining = [s for s in symbols if s not in news_map]
+        if remaining:
+            print(f"Using yfinance fallback for news for {len(remaining)} symbols...")
+            for sym in remaining:
+                try:
+                    yt = yf.Ticker(sym)
+                    y_news = yt.news
+                    if y_news and isinstance(y_news, list):
+                        top = y_news[0]
+                        # Structure varies: sometimes it's nested in 'content'
+                        content = top.get('content', top)
+                        title = content.get('title', 'No Title')
+                        link = content.get('link', f"https://finance.yahoo.com/quote/{sym}")
+                        if len(title) > 80:
+                            title = title[:77] + "..."
+                        news_map[sym] = {'headline': f"📰 {title}", 'link': link}
+                except Exception:
+                    pass
+
     except Exception as e:
-        print(f"Error fetching news via yahooquery: {e}")
+        print(f"Error fetching news: {e}")
         
     return news_map
 
@@ -451,7 +475,8 @@ def get_fundamental_data(symbols):
         'CAD=X': 'Currency', 'CASH.TO': 'Cash & Equivalents', 'NVDA': 'Technology',
         'MSFT': 'Technology', 'CRM': 'Technology', 'COST': 'Consumer Defensive',
         'V': 'Financial Services', 'UNH': 'Healthcare', 'TD.TO': 'Financial Services',
-        'CM.TO': 'Financial Services', 'AC.TO': 'Industrials', 'WCP.TO': 'Energy'
+        'CM.TO': 'Financial Services', 'AC.TO': 'Industrials', 'WCP.TO': 'Energy',
+        'JPST': 'Short-Term Fixed Income'
     }
 
     try:

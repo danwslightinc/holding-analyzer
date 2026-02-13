@@ -109,26 +109,31 @@ def analyze_restructuring(df, target_cagr=0.10):
     print(f"A) At target return ({target_cagr:.0%}):")
     print(f"   You would generate +${gain_target:,.2f} in profit over the next year.")
     
-    # Scenario B: Reinvest in your Top Winner
+    # Scenario B: Reinvest in your Leaders (Top 5 Average)
     if not winners.empty:
-        # Find top winner by CAGR
-        top_winner = winners.loc[winners['CAGR'].idxmax()]
-        winner_cagr = top_winner['CAGR']
-        winner_sym = top_winner['Symbol']
+        # Sort winners by CAGR and take top 5
+        top_winners = winners.sort_values('CAGR', ascending=False).head(5)
+        avg_winner_cagr = top_winners['CAGR'].mean()
         
-        # Cap unreasonable CAGRs for projection (e.g. if > 100%, maybe scale back?)
-        # But user wants to see "what if".
-        projected_val_winner = capital_tied_up * (1 + winner_cagr)
+        # Cap unreasonable CAGRs for projection to keep it realistic (e.g. 40%)
+        # This prevents outliers from distorting the "Goal" message
+        clamped_cagr = min(avg_winner_cagr, 0.40)
+        
+        projected_val_winner = capital_tied_up * (1 + clamped_cagr)
         gain_winner = projected_val_winner - capital_tied_up
         
-        print(f"B) At your best asset's current run rate ({winner_sym} @ {winner_cagr:.1%}):")
+        labels = [f"{row['Symbol']} ({row['CAGR']:.0%})" for _, row in top_winners.iterrows()]
+        winner_label = ", ".join(labels)
+        
+        print(f"B) Reinvested in your Leaders (Avg: {clamped_cagr:.1%}):")
+        print(f"   [Leaders: {winner_label}]")
         print(f"   You would generate +${gain_winner:,.2f} in profit over the next year.")
-        print(f"   (Warning: Past performance doesn't guarantee future results!)")
+        print(f"   (Note: We clamp projections at 40% for realism. Past performance != future results.)")
 
     print("\nRecommendation:")
-    print("Consider liquidating the underperformers listed above and re-allocating")
-    print("to your winning positions or an index fund tracking your target.")
-
+    print("Consider trimming or liquidating underperformers listed above.")
+    print("Re-allocate capital toward a diversified mix of your leading positions")
+    print("or a low-cost index fund if the individual thesis no longer holds.")
 def get_top_movers(changes_dict):
     """
     Returns a formatted string summarizing Top 3 Gainers and Losers.
@@ -279,7 +284,7 @@ def analyze_sector_exposure(df, fundamentals):
     
     if not fundamentals:
         print("No fundamentals data available.")
-        return
+        return pd.DataFrame(), ""
 
     sector_map = {}
     total_val = df['Market Value'].sum()

@@ -8,6 +8,10 @@ import pandas as pd
 import json
 import numpy as np
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Add parent directory to path to import existing modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -30,7 +34,7 @@ app.add_middleware(
 
 CSV_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "portfolio.csv")
 THESIS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "thesis.json")
-TARGET_CAGR = 0.10
+TARGET_CAGR = float(os.getenv("TARGET_CAGR", 0.08))
 
 # Load thesis data once at startup
 THESIS_DATA = {}

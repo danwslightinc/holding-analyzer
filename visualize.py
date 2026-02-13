@@ -114,16 +114,22 @@ def generate_static_preview(df, target_cagr, fundamentals=None, save_path='dashb
         title_text = 'Portfolio Allocation (Holdings)'
     
     # CAGR Data (Filter out Crypto/BTC to fix scaling)
-    # Using case-insensitive check for 'BTC'
     cagr_df = df[~df['Symbol'].str.contains('BTC', case=False, na=False)].copy()
     cagr_df['CAGR_Visual'] = cagr_df['CAGR'].clip(upper=3.0, lower=-1.0)
-    cagr_colors = ['red' if x < 0 else 'orange' if x < target_cagr else 'green' for x in cagr_df['CAGR']]
+    
+    # Improved Performance Colors: Green (>Target), Orange (0-Target), Red (<0)
+    def get_perf_color(val):
+        if val <= 0: return '#FF3B30' # Red
+        if val < target_cagr: return '#FF9500' # Orange
+        return '#4CD964' # Green
+        
+    cagr_colors = [get_perf_color(x) for x in cagr_df['CAGR']]
     
     # P&L Data (Excl. BTC)
     pnl_df = df[~df['Symbol'].str.contains('BTC', case=False, na=False)].copy()
     pnl_df['Return %'] = (pnl_df['P&L'] / pnl_df['Cost Basis']) * 100
     pnl_df = pnl_df.sort_values('P&L', ascending=True)
-    pnl_colors = ['green' if x > 0 else 'red' for x in pnl_df['P&L']]
+    pnl_colors = ['#4CD964' if x > 0 else '#FF3B30' for x in pnl_df['P&L']]
 
     # Create grid (2 Rows x 3 Cols layout to fit Region)
     fig = plt.figure(figsize=(18, 12))
@@ -168,16 +174,34 @@ def generate_static_preview(df, target_cagr, fundamentals=None, save_path='dashb
     # Row 2, Col 1: Sector/Allocation (Treemap)
     ax3 = fig.add_subplot(gs[1, 0])
     
-    # Generate colors (Blue gradient)
-    colors = plt.cm.Blues(np.linspace(0.4, 0.9, len(plot_data)))
+    # Color Treemap by CAGR instead of Blues if possible?
+    # In matplotlib treemap, we need to map colors manually.
+    # Let's group by sector to get average CAGR
+    sector_cagr_map = {}
+    if fundamentals:
+        for sec in plot_data.index:
+            # Find symbols in this sector
+            sec_symbols = []
+            for sym, f_data in fundamentals.items():
+                if f_data.get('Sector') == sec: sec_symbols.append(sym)
+            
+            if sec_symbols:
+                sec_df = df[df['Symbol'].isin(sec_symbols)]
+                if not sec_df.empty:
+                    # Value weighted average CAGR
+                    avg_cagr = (sec_df['CAGR'] * sec_df['Market Value']).sum() / sec_df['Market Value'].sum()
+                    sector_cagr_map[sec] = avg_cagr
+                else: sector_cagr_map[sec] = 0
+            else: sector_cagr_map[sec] = 0
+            
+    tm_colors = [get_perf_color(sector_cagr_map.get(sec, 0)) for sec in plot_data.index]
     
-    # Labels with %
-    total_val = plot_data.sum()
-    labels = [f"{i}\n{v/total_val:.1%}" if v/total_val > 0.03 else "" for i, v in zip(plot_data.index, plot_data.values)]
-    
+    # Labels with % for treemap
+    total_val_static = plot_data.sum()
+    labels = [f"{i}\n{v/total_val_static:.1%}" if v/total_val_static > 0.03 else "" for i, v in zip(plot_data.index, plot_data.values)]
     try:
         squarify.plot(sizes=plot_data.values, label=labels, 
-                      color=colors, alpha=0.8, ax=ax3, 
+                      color=tm_colors, alpha=0.8, ax=ax3, 
                       text_kwargs={'fontsize':9, 'weight':'bold', 'color':'white'})
     except Exception as e:
         print(f"Treemap error: {e}")
@@ -273,74 +297,89 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
                 )
 
     # --- Treemap Data Preparation (Look-Through) ---
-    if fundamentals:
+        # 0. Performance Color Map Logic
+        def get_perf_color(val):
+            if val <= 0: return '#FF3B30' # Red
+            if val < target_cagr: return '#FF9500' # Orange
+            return '#4CD964' # Green
+
         tm_ids = ["Portfolio"]
         tm_labels = ["Portfolio"]
         tm_parents = [""]
         tm_values = [total_val]
         tm_text = ["Total Value"]
+        tm_colors = ["#333333"] # Neutral for root
         
-        # 1. Aggregate Value by Sector for Parents
-        # We need this to ensure parent values match sum of children (Plotly requirement)
-        # Re-using sector_map logic from static generation or recalculating here
+        # 1. Aggregate Value and Weighted CAGR by Sector for Parents
+        fragments = [] # list of (Sector, Label, Value, CAGR)
         
-        fragments = [] # list of (Sector, Label, Value)
+        # Map Symbol to CAGR for easy lookup
+        sym_cagr = df.set_index('Symbol')['CAGR'].to_dict()
         
         for _, row in df.iterrows():
             sym = row['Symbol']
             val = row['Market Value']
+            cagr = sym_cagr.get(sym, 0)
             base_sector = fundamentals.get(sym, {}).get('Sector', 'Other')
             if not base_sector: base_sector = 'Other'
             
             if sym in ETF_SECTOR_WEIGHTS:
-                # Split ETF
                 weights = ETF_SECTOR_WEIGHTS[sym]
                 remaining_weight = 1.0
                 for sec, w in weights.items():
                     amount = val * w
-                    fragments.append((sec, f"{sym} ({sec[:4]})", amount))
+                    fragments.append((sec, f"{sym} ({sec[:4]})", amount, cagr))
                     remaining_weight -= w
                 
                 if remaining_weight > 0.001:
                     amount = val * remaining_weight
-                    fragments.append(('Other', f"{sym} (Other)", amount))
+                    fragments.append(('Other', f"{sym} (Other)", amount, cagr))
             else:
-                # Single Stock
-                fragments.append((base_sector, sym, val))
+                fragments.append((base_sector, sym, val, cagr))
         
-        # Convert to DataFrame to group by Sector
-        frag_df = pd.DataFrame(fragments, columns=['Sector', 'Label', 'Value'])
-        frag_df = frag_df[frag_df['Value'] > 0.01] # Filter noise
+        frag_df = pd.DataFrame(fragments, columns=['Sector', 'Label', 'Value', 'CAGR'])
+        frag_df = frag_df[frag_df['Value'] > 0.01] 
         
         # Add Sectors (Parents)
-        sector_group = frag_df.groupby('Sector')['Value'].sum()
-        for sector, val in sector_group.items():
+        sector_group = frag_df.groupby('Sector').agg({
+            'Value': 'sum',
+            'CAGR': lambda x: (x * frag_df.loc[x.index, 'Value']).sum() / frag_df.loc[x.index, 'Value'].sum()
+        })
+        
+        for sector, row in sector_group.iterrows():
             tm_ids.append(sector)
             tm_labels.append(sector)
             tm_parents.append("Portfolio")
-            tm_values.append(val)
-            tm_text.append(f"{val:,.0f}")
+            tm_values.append(row['Value'])
+            tm_text.append(f"CAGR: {row['CAGR']:.1%}")
+            tm_colors.append(get_perf_color(row['CAGR']))
             
         # Add Holdings (Children)
         for _, row in frag_df.iterrows():
-            # ID must be unique. Label can be same.
-            # ID: Sector + Label to be unique (e.g. Technology - VOO (Tech))
             unique_id = f"{row['Sector']} - {row['Label']}"
             tm_ids.append(unique_id)
-            tm_labels.append(row['Label']) # Visible Label
+            tm_labels.append(row['Label']) 
             tm_parents.append(row['Sector'])
             tm_values.append(row['Value'])
-            tm_text.append(f"${row['Value']:,.0f}")
+            tm_text.append(f"CAGR: {row['CAGR']:.1%}")
+            tm_colors.append(get_perf_color(row['CAGR']))
             
     # CAGR Data (Cleaned)
     cagr_df = df[~df['Symbol'].str.contains('BTC', case=False, na=False)].copy()
     cagr_df['CAGR_Visual'] = cagr_df['CAGR'].clip(upper=3.0, lower=-1.0) 
-    cagr_df['Color'] = cagr_df['CAGR'].apply(lambda x: 'red' if x < 0 else 'orange' if x < target_cagr else 'green')
+    
+    # Unified performance coloring function
+    def get_perf_color(val):
+        if val <= 0: return '#FF3B30' # Red
+        if val < target_cagr: return '#FF9500' # Orange
+        return '#4CD964' # Green
+        
+    cagr_df['Color'] = cagr_df['CAGR'].apply(get_perf_color)
     
     # P&L Data
     pnl_df = df.copy()
     pnl_df['Return %'] = (pnl_df['P&L'] / pnl_df['Cost Basis']) * 100
-    pnl_df['PnL_Color'] = pnl_df['P&L'].apply(lambda x: 'green' if x > 0 else 'red')
+    pnl_df['PnL_Color'] = pnl_df['P&L'].apply(lambda x: '#4CD964' if x > 0 else '#FF3B30')
     pnl_df = pnl_df.sort_values('P&L', ascending=True)
     pnl_df['Text'] = pnl_df.apply(lambda x: f"${x['P&L']:,.0f} ({x['Return %']:.1f}%)", axis=1)
     
@@ -558,7 +597,7 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
                 text=tm_text,
                 textinfo="label+text+percent parent",
                 branchvalues="total",
-                marker=dict(colorscale='Blues'), # Professional Blue theme
+                marker=dict(colors=tm_colors),
                 hovertemplate='<b>%{label}</b><br>Value: $%{value:,.2f}<br>Share: %{percentParent:.1%}<extra></extra>'
             ),
             row=2, col=1
