@@ -26,10 +26,21 @@ ETF_SECTOR_WEIGHTS = {
         'Energy': 0.30, 'Financial Services': 0.30, 'Utilities': 0.15, 
         'Communication Services': 0.10, 'Real Estate': 0.05, 'Basic Materials': 0.05, 'Industrials': 0.05
     },
+    'VDY.TO': {
+        'Financial Services': 0.56, 'Energy': 0.20, 'Utilities': 0.09, 
+        'Communication Services': 0.07, 'Industrials': 0.03, 'Basic Materials': 0.02, 
+        'Consumer Defensive': 0.02, 'Consumer Cyclical': 0.01
+    },
     'QQQ': {
         'Technology': 0.51, 'Communication Services': 0.16, 'Consumer Cyclical': 0.13, 
         'Healthcare': 0.06, 'Consumer Defensive': 0.04, 'Industrials': 0.04, 'Utilities': 0.01,
         'Financial Services': 0.01
+    },
+    'AVUV': {
+        'Financial Services': 0.26, 'Consumer Cyclical': 0.18, 'Industrials': 0.17, 
+        'Energy': 0.16, 'Technology': 0.06, 'Basic Materials': 0.06, 
+        'Consumer Defensive': 0.04, 'Healthcare': 0.03, 'Communication Services': 0.02, 
+        'Real Estate': 0.01, 'Utilities': 0.01
     }
 }
 
@@ -475,8 +486,8 @@ def get_fundamental_data(symbols):
         'CAD=X': 'Currency', 'CASH.TO': 'Cash & Equivalents', 'NVDA': 'Technology',
         'MSFT': 'Technology', 'CRM': 'Technology', 'COST': 'Consumer Defensive',
         'V': 'Financial Services', 'UNH': 'Healthcare', 'TD.TO': 'Financial Services',
-        'CM.TO': 'Financial Services', 'AC.TO': 'Industrials', 'WCP.TO': 'Energy',
-        'JPST': 'Short-Term Fixed Income'
+        'CM.TO': 'Financial Services', 'AC.TO': 'Industrials',        'WCP.TO': 'Energy', 'VDY.TO': 'Canadian Dividends',
+        'AVUV': 'US Small Cap Value', 'JPST': 'Short-Term Fixed Income'
     }
 
     try:

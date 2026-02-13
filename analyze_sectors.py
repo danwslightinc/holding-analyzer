@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 SECTOR_MAP = {
     'AC.TO': 'Industrials',
     'ACB.TO': 'Healthcare',
+    'AVUV': 'Index Fund',
     'BTC-USD': 'Cryptocurrency',
     'CASH.TO': 'Cash',
     'CM.TO': 'Financial Services',
@@ -20,8 +21,10 @@ SECTOR_MAP = {
     'TD.TO': 'Financial Services',
     'UNH': 'Healthcare',
     'V': 'Financial Services',
+    'VDY.TO': 'Index Fund',
     'VOO': 'Index Fund',
     'WCP.TO': 'Energy',
+    'XEI.TO': 'Index Fund',
     'XIU.TO': 'Index Fund',
     'XQQ.TO': 'Index Fund',
     'YGMZ': 'Industrials'

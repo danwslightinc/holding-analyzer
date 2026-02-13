@@ -27,10 +27,21 @@ ETF_SECTOR_WEIGHTS = {
         'Energy': 0.30, 'Financial Services': 0.30, 'Utilities': 0.15, 
         'Communication Services': 0.10, 'Real Estate': 0.05, 'Basic Materials': 0.05, 'Industrials': 0.05
     },
+    'VDY.TO': {
+        'Financial Services': 0.56, 'Energy': 0.20, 'Utilities': 0.09, 
+        'Communication Services': 0.07, 'Industrials': 0.03, 'Basic Materials': 0.02, 
+        'Consumer Defensive': 0.02, 'Consumer Cyclical': 0.01
+    },
     'QQQ': {
         'Technology': 0.51, 'Communication Services': 0.16, 'Consumer Cyclical': 0.13, 
         'Healthcare': 0.06, 'Consumer Defensive': 0.04, 'Industrials': 0.04, 'Utilities': 0.01,
         'Financial Services': 0.01
+    },
+    'AVUV': {
+        'Financial Services': 0.26, 'Consumer Cyclical': 0.18, 'Industrials': 0.17, 
+        'Energy': 0.16, 'Technology': 0.06, 'Basic Materials': 0.06, 
+        'Consumer Defensive': 0.04, 'Healthcare': 0.03, 'Communication Services': 0.02, 
+        'Real Estate': 0.01, 'Utilities': 0.01
     }
 }
 
@@ -41,7 +52,7 @@ ETF_REGION_WEIGHTS = {
     'SAVA': {'US': 1.0}, 'SLV': {'Commodities': 1.0},
     'XIU.TO': {'Canada': 1.0}, 'XEI.TO': {'Canada': 1.0}, 'XQQ.TO': {'US': 1.0},
     'TD.TO': {'Canada': 1.0}, 'CM.TO': {'Canada': 1.0}, 'WCP.TO': {'Canada': 1.0},
-    'AC.TO': {'Canada': 1.0}, 'ACB.TO': {'Canada': 1.0}, 'CASH.TO': {'Canada': 1.0},
+    'AC.TO': {'Canada': 1.0}, 'ACB.TO': {'Canada': 1.0}, 'CASH.TO': {'Canada': 1.0}, 'VDY.TO': {'Canada': 1.0}, 'AVUV': {'US': 1.0},
     'XEF.TO': {'Intl Developed': 1.0},
     'XEC.TO': {'Emerging Markets': 1.0},
     'BTC-USD': {'Crypto': 1.0}, 'YGMZF': {'Intl Developed': 1.0}
