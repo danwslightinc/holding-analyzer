@@ -181,7 +181,7 @@ def get_market_summary(indices_dict):
         
     return summary
 
-def analyze_pnl(df):
+def analyze_pnl(df, realized_pnl=None, usd_to_cad=1.4):
     """
     Analyzes portfolio P&L (Profit & Loss) showing absolute dollar gains/losses.
     Excludes CASH.TO from analysis.
@@ -191,27 +191,24 @@ def analyze_pnl(df):
     print("P&L ANALYSIS (Profit & Loss) - All values in CAD")
     print("="*50)
 
-    # Filter out CASH.TO and BTC-USD for P&L Summary
+    # ... (rest of filtering logic)
     equity_df = df[~df['Symbol'].str.contains('CASH.TO|BTC-USD', case=False, na=False)].copy()
     
     if equity_df.empty:
         print("No equity holdings found (non-CASH.TO).")
         return ""
 
-    # Calculate simple return percentage
+    # ... (winners/losers calculation)
     equity_df['Return %'] = (equity_df['P&L'] / equity_df['Cost Basis']) * 100
-    
-    # Sort by Return % for ranking
     equity_df_sorted = equity_df.sort_values('Return %', ascending=False)
-    
-    # Winners and Losers
     winners = equity_df_sorted[equity_df_sorted['P&L'] > 0].copy()
     losers = equity_df_sorted[equity_df_sorted['P&L'] < 0].sort_values('Return %', ascending=True).copy()
-    
+
     # Build email summary
-    email_summary = "\n💰 P&L SUMMARY\n"
+    email_summary = "\n💰 P&L SUMMARY (CAD)\n"
     email_summary += "-" * 30 + "\n"
     
+    # ... (print Winners table)
     print(f"\n💰 WINNERS (Profitable Positions)")
     print("-" * 50)
     if not winners.empty:
@@ -221,17 +218,10 @@ def analyze_pnl(df):
         winners_summary['P&L'] = winners_summary['P&L'].apply(lambda x: f"${x:,.2f}")
         winners_summary['Return %'] = winners_summary['Return %'].apply(lambda x: f"{x:.2f}%")
         print(tabulate(winners_summary, headers='keys', tablefmt='psql', showindex=False))
-        
         total_gains = winners['P&L'].sum()
-        print(f"\nTotal Gains: ${total_gains:,.2f}")
-        
-        # Add top 3 winners to email
-        email_summary += "Top Winners:\n"
-        for idx, (_, row) in enumerate(winners.head(3).iterrows(), 1):
-            email_summary += f"  {idx}. {row['Symbol']}: ${row['P&L']:,.2f} ({row['Return %']:.1f}%)\n"
-    else:
-        print("No profitable positions.")
+        print(f"\nTotal Unrealized Gains: ${total_gains:,.2f}")
     
+    # ... (print Losers table)
     print(f"\n📉 LOSERS (Loss Positions)")
     print("-" * 50)
     if not losers.empty:
@@ -241,32 +231,64 @@ def analyze_pnl(df):
         losers_summary['P&L'] = losers_summary['P&L'].apply(lambda x: f"${x:,.2f}")
         losers_summary['Return %'] = losers_summary['Return %'].apply(lambda x: f"{x:.2f}%")
         print(tabulate(losers_summary, headers='keys', tablefmt='psql', showindex=False))
-        
         total_losses = losers['P&L'].sum()
-        print(f"\nTotal Losses: ${total_losses:,.2f}")
+        print(f"\nTotal Unrealized Losses: ${total_losses:,.2f}")
+
+    # Realized P&L Breakdown
+    total_realized_pnl = 0.0
+    if realized_pnl:
+        print(f"\n💵 REALIZED P&L BREAKDOWN (CAD)")
+        print("-" * 50)
+        realized_rows = []
         
-        # Add top 3 losers to email
-        email_summary += "\nTop Losers:\n"
-        for idx, (_, row) in enumerate(losers.head(3).iterrows(), 1):
-            email_summary += f"  {idx}. {row['Symbol']}: ${row['P&L']:,.2f} ({row['Return %']:.1f}%)\n"
-    else:
-        print("No loss positions.")
+        for sym, data in realized_pnl.items():
+            # data could be a float (old format) or a dict (new format)
+            pnl_cad = 0.0
+            if isinstance(data, dict):
+                for curr, val in data.items():
+                    rate = usd_to_cad if curr == 'USD' else 1.0
+                    pnl_cad += (val * rate)
+            else:
+                # Fallback for old flat dict
+                pnl_cad = data
+            
+            if abs(pnl_cad) > 0.01:
+                realized_rows.append({'Symbol': sym, 'Realized P&L': pnl_cad})
+                total_realized_pnl += pnl_cad
+        
+        if realized_rows:
+            df_realized = pd.DataFrame(realized_rows).sort_values('Realized P&L', ascending=False)
+            df_realized['Realized P&L'] = df_realized['Realized P&L'].apply(lambda x: f"${x:,.2f}")
+            print(tabulate(df_realized, headers='keys', tablefmt='psql', showindex=False))
+        else:
+            print("No significant realized P&L.")
     
-    # Overall Summary
-    total_pnl = equity_df['P&L'].sum()
-    total_cost = equity_df['Cost Basis'].sum()
-    total_value = equity_df['Market Value'].sum()
-    overall_return = (total_pnl / total_cost) * 100 if total_cost > 0 else 0
+    total_unrealized_pnl = equity_df['P&L'].fillna(0.0).sum()
+    total_cost = equity_df['Cost Basis'].fillna(0.0).sum()
+    total_value = equity_df['Market Value'].fillna(0.0).sum()
     
     print(f"\n📊 OVERALL P&L SUMMARY")
     print("-" * 50)
-    print(f"Total Cost Basis:    ${total_cost:,.2f}")
-    print(f"Total Market Value:  ${total_value:,.2f}")
-    print(f"Total P&L:           ${total_pnl:,.2f}")
-    print(f"Overall Return:      {overall_return:.2f}%")
+    print(f"Total Cost Basis:       ${total_cost:,.2f}")
+    print(f"Total Market Value:     ${total_value:,.2f}")
+    print(f"Total Unrealized P&L:   ${total_unrealized_pnl:,.2f}")
+    print(f"Total Realized P&L:     ${total_realized_pnl:,.2f}")
+    print(f"COMBINED TOTAL P&L:     ${total_unrealized_pnl + total_realized_pnl:,.2f}")
     
-    # Add overall to email
-    email_summary += f"\nOverall P&L: ${total_pnl:,.2f} ({overall_return:.1f}%)\n"
+    # Add to email
+    if not winners.empty:
+        email_summary += "Top Winners:\n"
+        for idx, (_, row) in enumerate(winners.head(3).iterrows(), 1):
+            email_summary += f"  {idx}. {row['Symbol']}: ${row['P&L']:,.2f} ({row['Return %']:.1f}%)\n"
+
+    if not losers.empty:
+        email_summary += "\nTop Losers:\n"
+        for idx, (_, row) in enumerate(losers.head(3).iterrows(), 1):
+            email_summary += f"  {idx}. {row['Symbol']}: ${row['P&L']:,.2f} ({row['Return %']:.1f}%)\n"
+
+    email_summary += f"\nUnrealized P&L: ${total_unrealized_pnl:,.2f}\n"
+    email_summary += f"Realized P&L:   ${total_realized_pnl:,.2f}\n"
+    email_summary += f"Total P&L:      ${total_unrealized_pnl + total_realized_pnl:,.2f}\n"
     
     return email_summary
 

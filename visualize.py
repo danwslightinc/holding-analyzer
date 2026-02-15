@@ -70,7 +70,7 @@ REGION_COLORS = {
 }
 
 
-def generate_static_preview(df, target_cagr, fundamentals=None, save_path='dashboard_preview.png'):
+def generate_static_preview(df, target_cagr, fundamentals=None, realized_pnl=None, usd_to_cad=1.4, save_path='dashboard_preview.png'):
     """
     Generates a static PNG summary for email embedding.
     Includes: Sector Allocation (H-Bar), CAGR (bar, excl BTC), and P&L (H-Bar).
@@ -231,10 +231,26 @@ def generate_static_preview(df, target_cagr, fundamentals=None, save_path='dashb
     
     # plt.tight_layout() # Removed to avoid warnings with GridSpec
     plt.savefig(save_path, dpi=100, bbox_inches='tight')
+    
+    # Add Realized P&L if available
+    if realized_pnl:
+        total_realized = 0.0
+        for data in realized_pnl.values():
+            if isinstance(data, dict):
+                for curr, val in data.items():
+                    rate = usd_to_cad if curr == 'USD' else 1.0
+                    total_realized += (val * rate)
+            else:
+                total_realized += data
+        
+        plt.figtext(0.5, 0.01, f"Total Realized P&L: CAD ${total_realized:,.2f}", 
+                    ha="center", fontsize=14, bbox={"facecolor":"#1e1e1e", "alpha":0.5, "pad":5}, color='white')
+        plt.savefig(save_path, dpi=100, bbox_inches='tight')
+
     plt.close()
     print(f"Static preview saved to: {save_path}")
 
-def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news=None, dividend_calendar=None, usd_to_cad=1.40, save_path='portfolio_dashboard.html'):
+def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news=None, dividend_calendar=None, realized_pnl=None, usd_to_cad=1.40, save_path='portfolio_dashboard.html'):
     """
     Generates an interactive HTML dashboard with:
     1. Portfolio Allocation (Pie) and CAGR Performance (Bar) - Top Row
@@ -658,16 +674,39 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
     # --- Generate Custom HTML ---
     # 1. Charts
     fig_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
-    
     # 2. Table
     qm_html = ""
     if fundamentals and table_data:
-         # Construct DataFrame from lists
-         qm_display_df = pd.DataFrame()
-         for i, col_name in enumerate(table_headers):
-             qm_display_df[col_name] = table_data[i]
-             
-         qm_html = qm_display_df.to_html(index=False, classes="fl-table", border=0, escape=False)
+        # Construct DataFrame from lists
+        qm_display_df = pd.DataFrame()
+        for i, col_name in enumerate(table_headers):
+            qm_display_df[col_name] = table_data[i]
+            
+        qm_html = qm_display_df.to_html(index=False, classes="fl-table", border=0, escape=False)
+
+    # 3. Realized P&L Table
+    realized_html = ""
+    if realized_pnl:
+        realized_rows = []
+        total_realized_cad = 0.0
+        for sym, data in realized_pnl.items():
+            pnl_cad = 0.0
+            if isinstance(data, dict):
+                for curr, val in data.items():
+                    rate = usd_to_cad if curr == 'USD' else 1.0
+                    pnl_cad += (val * rate)
+            else:
+                pnl_cad = data
+            
+            if abs(pnl_cad) > 0.01:
+                realized_rows.append({'Symbol': sym, 'Realized P&L (CAD)': pnl_cad})
+                total_realized_cad += pnl_cad
+        
+        if realized_rows:
+            df_realized = pd.DataFrame(realized_rows).sort_values('Realized P&L (CAD)', ascending=False)
+            df_realized['Realized P&L (CAD)'] = df_realized['Realized P&L (CAD)'].apply(lambda x: f"${x:,.2f}")
+            df_realized.loc[len(df_realized)] = ['TOTAL', f"${total_realized_cad:,.2f}"]
+            realized_html = df_realized.to_html(index=False, classes="fl-table realized-table", border=0)
 
     # 3. Full Template (Rich Aesthetics)
     html_template = f"""
@@ -704,6 +743,12 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
                 margin-bottom: 20px; 
                 color: #fff; 
                 font-weight: 600;
+            }}
+            .narrow-card {{
+                max-width: 500px;
+            }}
+            .realized-table {{
+                min-width: 100% !important;
             }}
             
             /* Table Styling */
@@ -750,6 +795,8 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
             </div>
             
             {'<div class="chart-card"><h2>Quant-Mental Analysis</h2><div class="table-wrapper">' + qm_html + '</div><div style="margin-top: 15px; font-size: 0.9em; color: #aaa; line-height: 1.5;"><p><strong>* PEG Ratio</strong>: < 1.0 (Undervalued); 1.0-2.0 (Fair); > 2.0 (Overvalued/High Expectations).</p><p><strong>* Tech Scorecard</strong>: Combined signals from 3 indicators:<br>&nbsp;&nbsp;• <strong>MACD</strong>: Momentum shift (🚀 Buy / 🔻 Sell).<br>&nbsp;&nbsp;• <strong>Bollinger</strong>: Volatility extremes (Breakout) or potential explosions (<strong>Squeeze</strong>: "Calm before the storm").<br>&nbsp;&nbsp;• <strong>Candles</strong>: Reversal patterns (🔨 Hammer = Bullish, 🌠 Star = Bearish, <strong>Doji</strong> = Indecision).</p></div></div>' if qm_html else ''}
+            
+            {'<div class="chart-card narrow-card"><h2>Realized Performance</h2><div class="table-wrapper">' + realized_html + '</div></div>' if realized_html else ''}
         </div>
         
         <script>

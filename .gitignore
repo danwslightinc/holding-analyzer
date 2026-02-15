@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .DS_Store
 .env
+transactions/
 
 # Personal Data (Do not commit)
 portfolio.csv
