@@ -252,6 +252,8 @@ def analyze_pnl(df, realized_pnl=None, usd_to_cad=1.4):
                 # Fallback for old flat dict
                 pnl_cad = data
             
+            if sym in ['DLR.TO', 'CASH.TO']:
+                continue
             if abs(pnl_cad) > 0.01:
                 realized_rows.append({'Symbol': sym, 'Realized P&L': pnl_cad})
                 total_realized_pnl += pnl_cad

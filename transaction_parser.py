@@ -254,9 +254,26 @@ def load_all_transactions(directory):
     # Clean symbols once with description
     df['Symbol'] = df.apply(lambda row: clean_symbol(row['Symbol'], row['Source'], row.get('Description', '')), axis=1)
     
-    # Sort by date, then ensure SELL (surrenders) are processed before BUY (receipts) on the same day
-    action_rank = {'SELL': 0, 'BUY': 1, 'DIV': 2, 'OTHER': 3}
-    df['Action_Rank'] = df['Action'].map(lambda x: action_rank.get(x, 99))
+    # Define a robust sorting order:
+    # 1. Merger Surrenders (SELL) - must be first to capture cost basis for carryover
+    # 2. All BUYS (including Merger Receipts) - next to ensure lots exist for same-day sells
+    # 3. Standard SELLS - last to consume lots
+    def get_action_rank(row):
+        desc = str(row.get('Description', '')).upper()
+        is_merger = 'MERGER' in desc or 'ADJUSTMENT' in desc or 'REORG' in desc
+        action = row['Action']
+        
+        if action == 'SELL' and is_merger and 'SURRENDERED' in desc:
+            return 0 # Merger Surrender
+        if action == 'BUY':
+            return 1 # All Buys (including merger receipts)
+        if action == 'SELL':
+            return 2 # Standard Sells
+        if action == 'DIV':
+            return 3
+        return 99
+
+    df['Action_Rank'] = df.apply(get_action_rank, axis=1)
     df = df.sort_values(['Date', 'Action_Rank'])
     
     # Filter out empty symbols
