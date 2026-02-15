@@ -17,7 +17,7 @@ TARGET_CAGR = float(os.getenv("TARGET_CAGR", 0.08))
 
 def main():
     print("Loading portfolio...")
-    df = load_portfolio_holdings(CSV_PATH)
+    df, realized_pnl = load_portfolio_holdings(CSV_PATH)
     
     if df.empty:
         print("No valid holdings found.")
@@ -137,7 +137,7 @@ def main():
     analyze_restructuring(df, TARGET_CAGR)
     
     # --- P&L Analysis ---
-    pnl_summary = analyze_pnl(df)
+    pnl_summary = analyze_pnl(df, realized_pnl=realized_pnl, usd_to_cad=usd_cad_rate)
     
     # --- Sector Exposure & Rebalancing ---
     _, sector_summary = analyze_sector_exposure(df, fundamentals)
@@ -145,8 +145,9 @@ def main():
     # --- Visualization ---
     print("\nGenerating interactive dashboard with Quant-Mental view...")
     from visualize import generate_dashboard, generate_static_preview
-    generate_dashboard(df, TARGET_CAGR, fundamentals=fundamentals, technicals=technicals, news=news, dividend_calendar=div_calendar, usd_to_cad=usd_cad_rate)
-    generate_static_preview(df, TARGET_CAGR, fundamentals)
+    generate_dashboard(df, TARGET_CAGR, fundamentals=fundamentals, technicals=technicals, news=news, 
+                       dividend_calendar=div_calendar, realized_pnl=realized_pnl, usd_to_cad=usd_cad_rate)
+    generate_static_preview(df, TARGET_CAGR, fundamentals, realized_pnl=realized_pnl, usd_to_cad=usd_cad_rate)
     
     return movers_summary + "\n" + market_summary + "\n" + pnl_summary + "\n" + sector_summary
 
