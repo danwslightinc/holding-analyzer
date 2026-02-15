@@ -513,49 +513,90 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
         rows_count = 3
     
     if fundamentals:
-        # Complex Layout
+        # Complex Layout: 4 columns in Row 1
         specs = [
-            [{"type": "domain"}, {"type": "domain"}, {"type": "xy"}], # Row 1 (Region, Holdings, CAGR)
-            [{"type": "treemap", "colspan": 2}, None, {"type": "xy"}] # Row 2 (Sector Exposure [colspan 2], P&L)
+            [{"type": "domain"}, {"type": "domain"}, {"type": "xy"}, {"type": "table"}], # Row 1
+            [{"type": "treemap", "colspan": 3}, None, None, {"type": "xy"}] # Row 2
         ]
         titles = [
             "Region Allocation",
             f"Holdings (Total: ${total_val:,.0f})", 
             f"CAGR (Target: {target_cagr:.0%})",
+            "Realized Performance (CAD)",
             "Broad Sector Exposure",
             "P&L by Holding (CAD)"
         ]
         
         if dividend_calendar:
-            specs.append([{"type": "xy", "colspan": 3}, None, None]) # Row 3 (Full Width)
+            specs.append([{"type": "xy", "colspan": 4}, None, None, None]) # Row 3
             titles.append(f"Dividend Calendar (Est. Annual: ${total_annual_div:,.2f})")
             
     else:
-        # Simple Layout
+        # Simple Layout: 3 columns
         specs = [
-            [{"type": "domain"}, {"type": "xy"}],
-            [{"type": "xy", "colspan": 2}, None]
+            [{"type": "domain"}, {"type": "xy"}, {"type": "table"}],
+            [{"type": "xy", "colspan": 3}, None, None]
         ]
         titles = [
-             f"Portfolio Allocation (Total: CAD ${total_val:,.0f})", 
-             f"CAGR Performance (Target: {target_cagr:.0%})",
+             f"Allocation (CAD ${total_val:,.0f})", 
+             f"CAGR (Target: {target_cagr:.0%})",
+             "Realized Performance",
              "P&L by Holding (CAD)"
         ]
         if dividend_calendar:
-             specs.append([{"type": "xy", "colspan": 2}, None])
+             specs.append([{"type": "xy", "colspan": 3}, None, None])
              titles.append(f"Dividend Calendar (Est. Total: ${total_annual_div:,.2f})")
 
     # Handle subplot_titles length match
     # make_subplots expects list/tuple
     
     fig = make_subplots(
-        rows=rows_count, cols=3 if fundamentals else 2,
+        rows=rows_count, cols=4 if fundamentals else 3,
         specs=specs,
         subplot_titles=tuple(titles),
         vertical_spacing=0.08,
-        horizontal_spacing=0.06,
-        column_widths=[0.33, 0.33, 0.34] if fundamentals else [0.5, 0.5]
+        horizontal_spacing=0.04,
+        column_widths=[0.2, 0.2, 0.3, 0.3] if fundamentals else [0.3, 0.35, 0.35]
     )
+    
+    # --- Prepare Realized Table Trace ---
+    if realized_pnl:
+        r_symbols = []
+        r_pnl_cad = []
+        total_pnl_cad = 0.0
+        r_list = []
+        for sym, data in realized_pnl.items():
+            pnl_val = 0.0
+            if isinstance(data, dict):
+                for curr, val in data.items():
+                    rate = usd_to_cad if curr == 'USD' else 1.0
+                    pnl_val += (val * rate)
+            else:
+                pnl_val = data
+            if sym in ['DLR.TO', 'CASH.TO']:
+                continue
+            if abs(pnl_val) > 0.01:
+                r_list.append((sym, pnl_val))
+                total_pnl_cad += pnl_val
+        
+        r_list.sort(key=lambda x: x[1], reverse=True)
+        for s, p in r_list:
+            r_symbols.append(s)
+            r_pnl_cad.append(f"${p:,.2f}")
+        r_symbols.append("<b>TOTAL</b>")
+        r_pnl_cad.append(f"<b>${total_pnl_cad:,.2f}</b>")
+        
+        fig.add_trace(
+            go.Table(
+                header=dict(values=['Symbol', 'Realized P&L'],
+                            fill_color='#2b2b2b',
+                            align='left', font=dict(color='white', size=12)),
+                cells=dict(values=[r_symbols, r_pnl_cad],
+                           fill_color='#1e1e1e',
+                           align='left', font=dict(color='#ccc', size=11))
+            ),
+            row=1, col=4 if fundamentals else 3
+        )
     
     # --- Add Traces ---
     
@@ -643,7 +684,7 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
             orientation='h',
             hovertemplate="<b>%{y}</b><br>P&L: $%{x:,.2f}<br>Return: %{text}<extra></extra>"
         ),
-        row=2, col=3 if fundamentals else 1
+        row=2, col=4 if fundamentals else 1
     )
     
     # 6. Dividend Calendar - (Row 3, Col 1 - Spanning)
@@ -657,7 +698,7 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
     # Update axes labels
     fig.update_xaxes(title_text="Symbol", row=1, col=cagr_col)
     fig.update_yaxes(title_text="CAGR", row=1, col=cagr_col)
-    fig.update_xaxes(title_text="P&L ($)", row=2, col=3 if fundamentals else 1)
+    fig.update_xaxes(title_text="P&L ($)", row=2, col=4 if fundamentals else 1)
     
     if dividend_calendar:
         fig.update_yaxes(title_text="Est. Income ($)", row=3, col=1)
@@ -667,7 +708,7 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
         template="plotly_dark",
         height=1300 if dividend_calendar else 900, 
         showlegend=True if dividend_calendar else False, # Legend helpful for stacked bar
-        margin=dict(l=50, r=50, t=80, b=50),
+        margin=dict(l=30, r=30, t=80, b=50),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
 
@@ -795,8 +836,6 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
             </div>
             
             {'<div class="chart-card"><h2>Quant-Mental Analysis</h2><div class="table-wrapper">' + qm_html + '</div><div style="margin-top: 15px; font-size: 0.9em; color: #aaa; line-height: 1.5;"><p><strong>* PEG Ratio</strong>: < 1.0 (Undervalued); 1.0-2.0 (Fair); > 2.0 (Overvalued/High Expectations).</p><p><strong>* Tech Scorecard</strong>: Combined signals from 3 indicators:<br>&nbsp;&nbsp;• <strong>MACD</strong>: Momentum shift (🚀 Buy / 🔻 Sell).<br>&nbsp;&nbsp;• <strong>Bollinger</strong>: Volatility extremes (Breakout) or potential explosions (<strong>Squeeze</strong>: "Calm before the storm").<br>&nbsp;&nbsp;• <strong>Candles</strong>: Reversal patterns (🔨 Hammer = Bullish, 🌠 Star = Bearish, <strong>Doji</strong> = Indecision).</p></div></div>' if qm_html else ''}
-            
-            {'<div class="chart-card narrow-card"><h2>Realized Performance</h2><div class="table-wrapper">' + realized_html + '</div></div>' if realized_html else ''}
         </div>
         
         <script>
