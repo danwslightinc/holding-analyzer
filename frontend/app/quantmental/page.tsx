@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { ExternalLink, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { API_BASE_URL } from "@/lib/api";
+import { usePortfolio } from "@/lib/PortfolioContext";
 
 interface QuantmentalData {
     Symbol: string;
@@ -23,73 +24,58 @@ interface QuantmentalData {
 }
 
 export default function QuantmentalPage() {
-    const [data, setData] = useState<QuantmentalData[]>([]);
-    const [loading, setLoading] = useState(true);
+    const { data: portData, loading, error } = usePortfolio();
     const [sortField, setSortField] = useState<string>("");
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
-    useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const res = await fetch(`${API_BASE_URL}/api/portfolio`);
-                const json = await res.json();
+    const data = useMemo(() => {
+        if (!portData) return [];
 
-                // Map holdings to quantmental format
-                const quantmental = json.holdings.map((h: any) => ({
-                    Symbol: h.Symbol,
-                    Thesis: h.Thesis || "",
-                    Catalyst: h.Catalyst || "",
-                    CatalystLink: h.CatalystLink || "",
-                    "Kill Switch": h["Kill Switch"] || "",
-                    Conviction: h.Conviction || "",
-                    RSI: typeof h.RSI === 'number' ? Math.round(h.RSI) : (h.RSI || 0),
-                    "Tech Scorecard": h["Tech Scorecard"] || "N/A",
-                    "Next Earnings": h["Next Earnings"] || "N/A",
-                    "Ex-Div": h["Ex-Div"] || "N/A",
-                    Yield: h.Yield || "0.00%",
-                    Timeframe: h.Timeframe || "",
-                    "PEG Ratio": h["PEG Ratio"] || "N/A",
-                    Growth: h.Growth || "N/A",
-                    Rec: h.Rec || "N/A"
-                }));
+        return portData.holdings.map((h: any) => ({
+            Symbol: h.Symbol,
+            Thesis: h.Thesis || "",
+            Catalyst: h.Catalyst || "",
+            CatalystLink: h.CatalystLink || "",
+            "Kill Switch": h["Kill Switch"] || "",
+            Conviction: h.Conviction || "",
+            RSI: typeof h.RSI === 'number' ? Math.round(h.RSI) : (h.RSI || 0),
+            "Tech Scorecard": h["Tech Scorecard"] || "N/A",
+            "Next Earnings": h["Next Earnings"] || "N/A",
+            "Ex-Div": h["Ex-Div"] || "N/A",
+            Yield: h.Yield || "0.00%",
+            Timeframe: h.Timeframe || "",
+            "PEG Ratio": h["PEG Ratio"] || "N/A",
+            Growth: h.Growth || "N/A",
+            Rec: h.Rec || "N/A"
+        }));
+    }, [portData]);
 
-                setData(quantmental);
-            } catch (err) {
-                console.error("Failed to fetch quantmental data", err);
-            } finally {
-                setLoading(false);
-            }
-        };
+    const sortedData = useMemo(() => {
+        if (!sortField) return data;
 
-        fetchData();
-    }, []);
-
-    const handleSort = (field: string) => {
-        const direction = sortField === field && sortDirection === 'asc' ? 'desc' : 'asc';
-        setSortField(field);
-        setSortDirection(direction);
-
-        const sorted = [...data].sort((a, b) => {
-            const aVal = (a as any)[field];
-            const bVal = (b as any)[field];
+        return [...data].sort((a, b) => {
+            const aVal = (a as any)[sortField];
+            const bVal = (b as any)[sortField];
 
             if (aVal === bVal) return 0;
             if (aVal === 'N/A' || aVal === '') return 1;
             if (bVal === 'N/A' || bVal === '') return -1;
 
-            // Try numeric comparison
             const cleanA = typeof aVal === 'string' ? aVal.replace(/[$,%]/g, '') : aVal;
             const cleanB = typeof bVal === 'string' ? bVal.replace(/[$,%]/g, '') : bVal;
 
             if (!isNaN(cleanA) && !isNaN(cleanB)) {
-                return direction === 'asc' ? cleanA - cleanB : cleanB - cleanA;
+                return sortDirection === 'asc' ? cleanA - cleanB : cleanB - cleanA;
             }
 
-            // String comparison
-            return direction === 'asc' ? String(aVal).localeCompare(String(bVal)) : String(bVal).localeCompare(String(aVal));
+            return sortDirection === 'asc' ? String(aVal).localeCompare(String(bVal)) : String(bVal).localeCompare(String(aVal));
         });
+    }, [data, sortField, sortDirection]);
 
-        setData(sorted);
+    const handleSort = (field: string) => {
+        const direction = sortField === field && sortDirection === 'asc' ? 'desc' : 'asc';
+        setSortField(field);
+        setSortDirection(direction);
     };
 
     const getRecommendationColor = (rec: string) => {
@@ -169,7 +155,7 @@ export default function QuantmentalPage() {
                             </tr>
                         </thead>
                         <tbody>
-                            {data.map((row, idx) => (
+                            {sortedData.map((row, idx) => (
                                 <tr key={row.Symbol} className="border-b border-white/5 hover:bg-white/5 transition-colors">
                                     <td className="p-4 font-bold text-blue-600">{row.Symbol}</td>
                                     <td className="p-4 max-w-md">

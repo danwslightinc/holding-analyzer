@@ -6,6 +6,7 @@ import {
 } from "recharts";
 import { TrendingUp, Filter } from "lucide-react";
 import { API_BASE_URL } from "@/lib/api";
+import { usePortfolio } from "@/lib/PortfolioContext";
 
 interface PerformancePoint {
     date: string;
@@ -24,29 +25,13 @@ const BENCHMARKS = [
 ];
 
 export default function PerformancePage() {
-    const [rawHistory, setRawHistory] = useState<PerformancePoint[]>([]);
-    const [loading, setLoading] = useState(true);
+    const { history: rawHistory, loading, error } = usePortfolio();
     const [range, setRange] = useState("1M");
     const [visibleBenchmarks, setVisibleBenchmarks] = useState<Record<string, boolean>>({
         '^GSPC': true,
         '^IXIC': false,
         '^GSPTSE': false
     });
-
-    useEffect(() => {
-        const fetchHistory = async () => {
-            try {
-                const res = await fetch(`${API_BASE_URL}/api/performance`);
-                const json = await res.json();
-                setRawHistory(json);
-            } catch (err) {
-                console.error(err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchHistory();
-    }, []);
 
     const chartData = useMemo(() => {
         if (!rawHistory || rawHistory.length === 0) return [];
@@ -71,7 +56,7 @@ export default function PerformancePage() {
             }
         }
 
-        const filtered = rawHistory.filter(d => new Date(d.date) >= startDate);
+        const filtered = (rawHistory as PerformancePoint[]).filter(d => new Date(d.date) >= startDate);
         if (filtered.length === 0) return [];
 
         // 2. Normalize to Percentage (Start = 0%)
@@ -105,8 +90,9 @@ export default function PerformancePage() {
         setVisibleBenchmarks(prev => ({ ...prev, [key]: !prev[key] }));
     };
 
-    if (loading) return <div className="p-10 text-center animate-pulse">Loading History (10Y Backtest)...</div>;
-    if (rawHistory.length === 0) return <div className="p-10 text-center text-red-500">No historical data available.</div>;
+    if (loading && !rawHistory) return <div className="p-10 text-center animate-pulse">Loading History (10Y Backtest)...</div>;
+    if (error) return <div className="p-10 text-center text-red-500">Failed to load performance data.</div>;
+    if (!rawHistory || (rawHistory as PerformancePoint[]).length === 0) return <div className="p-10 text-center text-red-500">No historical data available.</div>;
 
     return (
         <div className="p-8 max-w-[1600px] mx-auto space-y-8 font-sans">

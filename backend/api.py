@@ -20,6 +20,7 @@ from data_loader import load_portfolio_holdings
 from market_data import get_current_prices, get_fundamental_data, get_technical_data, get_dividend_calendar, get_usd_to_cad_rate, get_portfolio_history, get_latest_news
 from analysis import calculate_metrics
 from backend.ticker_performance import get_ticker_performance
+from backend.cache import clear_all_caches
 
 app = FastAPI(title="Holding Analyzer API")
 
@@ -406,6 +407,7 @@ def add_transaction(tx: Transaction):
         # Append
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
         df.to_csv(CSV_PATH, index=False)
+        clear_all_caches()
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -423,6 +425,7 @@ def delete_transaction(index: int):
         
         df = df.drop(df.index[index])
         df.to_csv(CSV_PATH, index=False)
+        clear_all_caches()
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

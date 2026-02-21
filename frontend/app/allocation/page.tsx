@@ -6,6 +6,7 @@ import {
 } from "recharts";
 import { Activity, Layers, Tag, Globe } from "lucide-react";
 import { API_BASE_URL } from "@/lib/api";
+import { usePortfolio } from "@/lib/PortfolioContext";
 
 interface Holding {
     Symbol: string;
@@ -93,26 +94,11 @@ const CustomTooltip = ({ active, payload, totalValue }: any) => {
 };
 
 export default function AllocationPage() {
-    const [data, setData] = useState<PortfolioData | null>(null);
-    const [loading, setLoading] = useState(true);
+    const { data, loading, error } = usePortfolio();
 
-    useEffect(() => {
-        const fetchAllocation = async () => {
-            try {
-                const res = await fetch(`${API_BASE_URL}/api/portfolio`);
-                const json = await res.json();
-                setData(json);
-            } catch (err) {
-                console.error(err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchAllocation();
-    }, []);
-
-    if (loading) return <div className="p-10 text-center animate-pulse">Loading Allocation...</div>;
-    if (!data) return <div className="p-10 text-center text-red-500">Failed to load data.</div>;
+    if (loading && !data) return <div className="p-10 text-center animate-pulse">Loading Allocation...</div>;
+    if (error) return <div className="p-10 text-center text-red-500">Failed to load data.</div>;
+    if (!data) return null;
 
     // Process Data into Groups (Sector & Geo)
     const sectorMap: Record<string, number> = {};

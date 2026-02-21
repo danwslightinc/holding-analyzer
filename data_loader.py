@@ -112,12 +112,10 @@ def load_portfolio_holdings(filepath):
                         l_dict.update({col: row[col] for col in mental_cols})
                         merged_lots.append(l_dict)
                         
-            # Handle symbols in history NOT in manual
-            manual_symbols = set(df_manual['Symbol'].str.strip().str.upper())
-            for sym, h_lots in lots_history.items():
-                if sym not in manual_symbols:
-                    for l in h_lots:
-                        merged_lots.append(l.to_dict())
+            # Skip discovery loop: Symbols in history NOT in manual are now ignored
+            # to give the user full control via portfolio.csv.
+            # (Previously symbols in history were added automatically)
+            pass
     except Exception as e:
         print(f"Warning: Error merging lots: {e}")
         # Fallback to just history if manual fails
