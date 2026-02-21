@@ -1,15 +1,11 @@
 # Use an official Python runtime as a parent image
-FROM python:3.11-slim
+# Using full image instead of slim to include build tools (like gcc) by default
+FROM python:3.11
 
 # Set the working directory in the container
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    curl \
-    software-properties-common \
-    && rm -rf /var/lib/apt/lists/*
+# No manual apt-get needed as the full python image includes build-essential and curl
 
 # Copy the requirements file into the container
 COPY requirements.txt .
@@ -24,5 +20,6 @@ COPY . .
 EXPOSE 8000
 
 # Command to run the application
-# We use uvicorn to serve the FastAPI app
-CMD ["uvicorn", "backend.api:app", "--host", "0.0.0.0", "--port", "8000"]
+# We use uvicorn to serve the FastAPI app. 
+# Render will automatically pass the PORT env var if configured, but 8000 is our default.
+CMD ["sh", "-c", "uvicorn backend.api:app --host 0.0.0.0 --port ${PORT:-8000}"]
