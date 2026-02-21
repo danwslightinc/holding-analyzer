@@ -205,7 +205,7 @@ def get_portfolio():
 @app.get("/api/dividends")
 def get_dividends():
     try:
-        df, _ = load_portfolio_holdings(CSV_PATH)
+        df, _ = load_portfolio_from_db()
         if df.empty: return {}
         
         # Get Market Data
@@ -289,7 +289,7 @@ def get_dividends():
 @app.get("/api/performance")
 def get_performance_history():
     try:
-        df, _ = load_portfolio_holdings(CSV_PATH)
+        df, _ = load_portfolio_from_db()
         if df.empty: return []
         
         history = get_portfolio_history(df)
@@ -307,7 +307,7 @@ def get_performance_history():
 def get_ticker_perf():
     """Get per-ticker performance over various timeframes"""
     try:
-        df, _ = load_portfolio_holdings(CSV_PATH)
+        df, _ = load_portfolio_from_db()
         if df.empty:
             return {}
         
