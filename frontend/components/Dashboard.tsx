@@ -183,19 +183,19 @@ export default function Dashboard() {
                         value: pnlPercent,
                         fill: pnlPercent >= 0 ? '#10B981' : '#EF4444'
                     };
-                }).sort((a, b) => b.value - a.value);
+                }).sort((a: any, b: any) => b.value - a.value);
 
             case 'Weight':
-                const filteredTotal = data.holdings.reduce((sum, h) => sum + h.Market_Value, 0);
-                return data.holdings.map(h => ({
+                const filteredTotal = data.holdings.reduce((sum: number, h: Holding) => sum + h.Market_Value, 0);
+                return data.holdings.map((h: Holding) => ({
                     name: h.Symbol,
                     value: filteredTotal > 0 ? (h.Market_Value / filteredTotal) * 100 : 0,
                     fill: '#3b82f6' // Blue for weight
-                })).sort((a, b) => b.value - a.value);
+                })).sort((a: any, b: any) => b.value - a.value);
 
             case 'Gain (Value)':
             default:
-                return data.holdings.map(h => {
+                return data.holdings.map((h: Holding) => {
                     // Use timeframe-specific $ change if available, otherwise use total P&L
                     let pnlValue;
                     if (selectedTimeframe !== 'All' && tickerPerf && tickerPerf[h.Symbol]?.[selectedTimeframe]) {
@@ -211,7 +211,7 @@ export default function Dashboard() {
                         value: pnlValue,
                         fill: pnlValue >= 0 ? '#10B981' : '#EF4444'
                     };
-                }).sort((a, b) => b.value - a.value);
+                }).sort((a: any, b: any) => b.value - a.value);
         }
     };
 
@@ -272,7 +272,7 @@ export default function Dashboard() {
                     { name: 'NASDAQ', val: '15,055.65', change: '+0.12%' },
                     { name: 'TSX', val: '20,958.40', change: '-0.23%' },
                     { name: 'BTC-USD', val: '46,230.00', change: '+2.41%' }
-                ].map((bench) => (
+                ].map((bench: any) => (
                     <div key={bench.name} className="glass-panel p-4 rounded-xl">
                         <div className="text-gray-400 text-xs font-semibold uppercase">{bench.name}</div>
                         <div className="flex items-end justify-between mt-1">
@@ -294,7 +294,7 @@ export default function Dashboard() {
                     <div className="flex flex-col xl:flex-row gap-4">
                         {/* Metric Selector */}
                         <div className="flex gap-1 text-sm bg-white/5 p-1 rounded-lg">
-                            {['Gain (Value)', 'Gain (%)', 'Weight'].map((m) => (
+                            {['Gain (Value)', 'Gain (%)', 'Weight'].map((m: string) => (
                                 <button
                                     key={m}
                                     onClick={() => setSelectedMetric(m)}
@@ -307,7 +307,7 @@ export default function Dashboard() {
 
                         {/* Time Range Selector - Currently shows total P&L (all holdings) */}
                         <div className="flex gap-1 text-sm bg-white/5 p-1 rounded-lg overflow-x-auto scrollbar-hide">
-                            {['1d', '1w', '1m', '3m', '6m', 'YTD', '1y', 'All'].map((t) => (
+                            {['1d', '1w', '1m', '3m', '6m', 'YTD', '1y', 'All'].map((t: string) => (
                                 <button
                                     key={t}
                                     onClick={() => setSelectedTimeframe(t)}
@@ -329,7 +329,7 @@ export default function Dashboard() {
                                 <YAxis
                                     stroke="#666"
                                     fontSize={10}
-                                    tickFormatter={(val) =>
+                                    tickFormatter={(val: number) =>
                                         selectedMetric === 'Gain (%)' || selectedMetric === 'Weight'
                                             ? `${val.toFixed(0)}%`
                                             : `$${(val / 1000).toFixed(0)}k`
@@ -374,7 +374,7 @@ export default function Dashboard() {
                                     { label: 'Unr. Gain', key: 'PnL', align: 'right' },
                                     { label: 'Unr. %', key: 'PnLPercent', align: 'right' },
                                     { label: 'Market Value', key: 'Market_Value', align: 'right' },
-                                ].map((col, idx) => {
+                                ].map((col: any, idx: number) => {
                                     const isActive = sortConfig.key === col.key;
                                     return (
                                         <th
@@ -398,7 +398,7 @@ export default function Dashboard() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
-                            {sortedHoldings.map((h) => {
+                            {sortedHoldings.map((h: Holding) => {
                                 const avgCost = (h.Market_Value - h.PnL) / h.Quantity;
                                 const allocation = (h.Market_Value / totalValue) * 100;
                                 const isProfit = h.PnL >= 0;

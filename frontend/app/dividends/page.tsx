@@ -97,7 +97,7 @@ export default function DividendsPage() {
                                 fontSize={12}
                                 tickLine={false}
                                 axisLine={false}
-                                tickFormatter={(val) => `$${val}`}
+                                tickFormatter={(val: number) => `$${val}`}
                             />
                             <Tooltip
                                 cursor={{ fill: 'rgba(255,255,255,0.05)' }}
