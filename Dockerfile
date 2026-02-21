@@ -16,6 +16,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application code into the container
 COPY . .
 
+# Create empty data files if they don't exist (because they might be in .gitignore)
+# This prevents errors if the user hasn't pushed their data to GitHub.
+RUN if [ ! -f portfolio.csv ]; then echo "Symbol,Current Price,Date,Time,Change,Open,High,Low,Volume,Trade Date,Purchase Price,Quantity,Commission,High Limit,Low Limit,Comment,Transaction Type" > portfolio.csv; fi
+RUN if [ ! -f thesis.json ]; then echo "{}" > thesis.json; fi
+
 # Expose the port the app runs on
 EXPOSE 8000
 

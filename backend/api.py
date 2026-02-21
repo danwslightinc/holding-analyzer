@@ -45,6 +45,10 @@ try:
 except Exception as e:
     print(f"Warning: Could not load thesis.json: {e}")
 
+@app.get("/")
+def read_root():
+    return {"message": "Holding Analyzer API is running", "health": "ok"}
+
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
