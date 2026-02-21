@@ -53,7 +53,7 @@ export default function QuantmentalPage() {
     const sortedData = useMemo(() => {
         if (!sortField) return data;
 
-        return [...data].sort((a, b) => {
+        return [...data].sort((a: QuantmentalData, b: QuantmentalData) => {
             const aVal = (a as any)[sortField];
             const bVal = (b as any)[sortField];
 
@@ -140,7 +140,7 @@ export default function QuantmentalPage() {
                     <table className="w-full">
                         <thead className="bg-white/5 sticky top-0">
                             <tr>
-                                {['Symbol', 'Thesis', 'Catalyst', 'Kill Switch', 'Conviction', 'RSI', 'Tech Scorecard', 'Next Earnings', 'Ex-Div', 'Yield', 'Timeframe', 'PEG Ratio', 'Growth', 'Rec'].map((header) => (
+                                {['Symbol', 'Thesis', 'Catalyst', 'Kill Switch', 'Conviction', 'RSI', 'Tech Scorecard', 'Next Earnings', 'Ex-Div', 'Yield', 'Timeframe', 'PEG Ratio', 'Growth', 'Rec'].map((header: string) => (
                                     <th
                                         key={header}
                                         onClick={() => handleSort(header)}

@@ -113,12 +113,12 @@ export default function AllocationPage() {
     });
 
     const sectorData = Object.keys(sectorMap)
-        .map(key => ({ name: key, value: sectorMap[key] }))
-        .sort((a, b) => b.value - a.value);
+        .map((key: string) => ({ name: key, value: sectorMap[key] }))
+        .sort((a: any, b: any) => b.value - a.value);
 
     const geoData = Object.keys(geoMap)
-        .map(key => ({ name: key, value: geoMap[key] }))
-        .sort((a, b) => b.value - a.value);
+        .map((key: string) => ({ name: key, value: geoMap[key] }))
+        .sort((a: any, b: any) => b.value - a.value);
 
     // Treemap Data Structure (Flat for simpler visualization or Nested if needed)
     // Recharts Treemap takes a flat list or tree. Let's do flat tickers for now, but grouped visually would be better.
@@ -126,7 +126,7 @@ export default function AllocationPage() {
     const treemapData = [
         {
             name: 'Portfolio',
-            children: data.holdings.map(h => ({
+            children: data.holdings.map((h: Holding) => ({
                 name: h.Symbol,
                 value: h.Market_Value,
                 sector: h.Sector

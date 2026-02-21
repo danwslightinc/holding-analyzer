@@ -71,7 +71,7 @@ export default function PerformancePage() {
             }
 
             // Benchmarks %
-            BENCHMARKS.forEach(b => {
+            BENCHMARKS.forEach((b: any) => {
                 if (d[b.key] && base[b.key]) {
                     point[b.key] = ((d[b.key] - base[b.key]) / base[b.key]) * 100;
                 }
@@ -87,7 +87,7 @@ export default function PerformancePage() {
     const isPositive = currentReturn >= 0;
 
     const toggleBenchmark = (key: string) => {
-        setVisibleBenchmarks(prev => ({ ...prev, [key]: !prev[key] }));
+        setVisibleBenchmarks((prev: Record<string, boolean>) => ({ ...prev, [key]: !prev[key] }));
     };
 
     if (loading && !rawHistory) return <div className="p-10 text-center animate-pulse">Loading History (10Y Backtest)...</div>;
@@ -111,7 +111,7 @@ export default function PerformancePage() {
 
                 {/* Range Selector */}
                 <div className="glass-panel p-1 rounded-xl flex overflow-x-auto">
-                    {RANGES.map(r => (
+                    {RANGES.map((r: string) => (
                         <button
                             key={r}
                             onClick={() => setRange(r)}
@@ -137,7 +137,7 @@ export default function PerformancePage() {
                     </div>
 
                     {/* Benchmark Toggles */}
-                    {BENCHMARKS.map(b => (
+                    {BENCHMARKS.map((b: any) => (
                         <button
                             key={b.key}
                             onClick={() => toggleBenchmark(b.key)}
@@ -164,7 +164,7 @@ export default function PerformancePage() {
                                 dataKey="date"
                                 stroke="#666"
                                 fontSize={12}
-                                tickFormatter={(val) => {
+                                tickFormatter={(val: string) => {
                                     const d = new Date(val);
                                     return range === '1M' || range === '1W'
                                         ? d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
@@ -174,16 +174,16 @@ export default function PerformancePage() {
                             />
                             <YAxis
                                 stroke="#666"
-                                tickFormatter={(val) => `${val.toFixed(0)}%`}
+                                tickFormatter={(val: number) => `${val.toFixed(0)}%`}
                                 domain={['auto', 'auto']}
                             />
                             <Tooltip
                                 contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
                                 formatter={(val: any, name: any) => {
-                                    const benchmarkName = BENCHMARKS.find(b => b.key === name)?.name || name;
+                                    const benchmarkName = BENCHMARKS.find((b: any) => b.key === name)?.name || name;
                                     return [`${val.toFixed(2)}%`, benchmarkName];
                                 }}
-                                labelFormatter={(label) => new Date(label).toISOString().split('T')[0].replace(/-/g, '/')}
+                                labelFormatter={(label: string) => new Date(label).toISOString().split('T')[0].replace(/-/g, '/')}
                             />
 
                             {/* Portfolio Line */}
@@ -197,7 +197,7 @@ export default function PerformancePage() {
                             />
 
                             {/* Benchmark Lines */}
-                            {BENCHMARKS.map(b => (
+                            {BENCHMARKS.map((b: any) => (
                                 visibleBenchmarks[b.key] && (
                                     <Line
                                         key={b.key}
