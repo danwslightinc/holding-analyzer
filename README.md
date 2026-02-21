@@ -17,7 +17,7 @@ A powerful "Quant-Mental" portfolio analyzer that combines quantitative metrics 
     *   **Thesis**: Why did you buy?
     *   **Catalyst**: What event will unlock value?
     *   **Kill Switch**: When should you abort?
-*   **Persistent Metadata**: Your notes (Thesis, Conviction) are saved in `thesis.json` and automatically merged with your weekly CSV updates.
+*   **Persistent Metadata**: Your rationale (Thesis, Conviction, Kill Switch) is stored in a structured **SQLite database** (`portfolio.db`) ensuring persistence across updates and deployments.
 
 ### 📈 Visualization
 *   **Interactive Dashboard**: A premium 2x2 grid layout + Data Table:
@@ -45,8 +45,11 @@ A powerful "Quant-Mental" portfolio analyzer that combines quantitative metrics 
     ```
 
 3.  **Data Setup**:
-    *   **CSV**: Place your `portfolio.csv` in the root (Exported from Yahoo Finance or broker).
-    *   **Metadata**: The first time you run the tool, logic can extract notes. Subsequently, manage your notes in `thesis.json` or update your CSV—the system syncs them.
+    *   **Import**: If you have existing data in `portfolio.csv` and `thesis.json`, run the migration script:
+        ```bash
+        python scripts/migrate_to_db.py
+        ```
+    *   **Transactions**: Place broker CSVs in the `transactions/` folder to be parsed and synced to the database.
 
 ## 🖥️ Usage
 
@@ -70,8 +73,9 @@ The system is designed to run via **GitHub Actions** every Friday at 5:00 PM EST
 ## 📂 Project Structure
 
 *   `main.py`: Orchestrator for data loading, analysis, and reporting.
+*   `backend/`: FastAPI server with `models.py` and `database.py` (SQLModel).
 *   `market_data.py`: Fetches prices, fundamentals, catalyst dates, and ETF look-through weights.
-*   `data_loader.py`: Handles CSV loading and intelligent JSON metadata merging.
+*   `data_loader.py`: Handles DB fetching and intelligent merging for analysis.
 *   `analysis.py`: Logic for Rebalancing, CAGR, and P&L.
 *   `visualize.py`: Generates the HTML5 Interactive Dashboard.
-*   `thesis.json`: Storage for your qualitative investment notes.
+*   `portfolio.db`: SQLite database storing all holdings and transactions.

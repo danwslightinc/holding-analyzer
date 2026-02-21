@@ -2,7 +2,100 @@ import pandas as pd
 import json
 import os
 from datetime import datetime
+from sqlmodel import Session, select
 from transaction_parser import load_all_transactions, calculate_holdings
+
+# Import DB internal modules with absolute or relative paths depending on how it's called
+try:
+    from backend.database import engine
+    from backend.models import Holding, Transaction
+except ImportError:
+    # Fallback for scripts running from root
+    from .backend.database import engine
+    from .backend.models import Holding, Transaction
+
+def load_portfolio_from_db():
+    """
+    Loads portfolio data from the SQL database and returns it in a format 
+    compatible with the existing analysis logic.
+    """
+    mental_cols = ['Thesis', 'Catalyst', 'Kill Switch', 'Conviction', 'Timeframe']
+    
+    with Session(engine) as session:
+        # 1. Fetch Holdings
+        holdings = session.exec(select(Holding)).all()
+        
+        # 2. Fetch all transactions for P&L calculation
+        # We can reuse calculate_holdings but we need to convert DB objects to DF
+        transactions = session.exec(select(Transaction)).all()
+        
+        if not transactions:
+            return pd.DataFrame(), {}
+            
+        data = []
+        for tx in transactions:
+            data.append({
+                'Symbol': tx.symbol,
+                'Date': tx.date,
+                'Action': tx.type,
+                'Quantity': tx.quantity,
+                'Price': tx.price,
+                'Commission': tx.commission,
+                'Amount': tx.amount,
+                'Currency': tx.currency,
+                'Description': tx.description,
+                'Source': tx.source
+            })
+        
+        df_tx = pd.DataFrame(data)
+        df_h_holdings, realized_pnl = calculate_holdings(df_tx)
+        
+        # 3. Enrich with Mental Data from Holding table
+        # Create map of symbol -> mental data
+        mental_map = {h.symbol: {
+            'Thesis': h.thesis or "",
+            'Catalyst': getattr(h, 'catalyst', ""), # In case I add it later
+            'Kill Switch': h.kill_switch or "",
+            'Conviction': h.conviction or "",
+            'Timeframe': h.timeframe or ""
+        } for h in holdings}
+        
+        # Special case: Catalyst might be news-fetched, but we check if it's in the DB
+        # Actually, if Catalyst isn't in the Holding model, we'll let the API handle it as before.
+        
+        # Merge manual overrides from Holding table if they exist (for cases like "CAD=X")
+        rows = []
+        for symbol, h_info in mental_map.items():
+            # Check if this ticker has a position in calculated holdings
+            h_rows = df_h_holdings[df_h_holdings['Symbol'] == symbol]
+            
+            if not h_rows.empty:
+                for _, r in h_rows.iterrows():
+                    d = r.to_dict()
+                    d.update(h_info)
+                    rows.append(d)
+            else:
+                # Ticker in Holding table but no transactions found? 
+                # Check if it was a manual entry in the database
+                h_obj = next((h for h in holdings if h.symbol == symbol), None)
+                if h_obj and h_obj.quantity and h_obj.quantity > 0:
+                    rows.append({
+                        'Symbol': symbol,
+                        'Purchase Price': h_obj.purchase_price,
+                        'Quantity': h_obj.quantity,
+                        'Commission': h_obj.commission or 0.0,
+                        'Trade Date': h_obj.trade_date,
+                        **h_info
+                    })
+
+        if not rows:
+            return pd.DataFrame(), realized_pnl
+
+        df = pd.DataFrame(rows)
+        # Standardize columns
+        desired_cols = ['Symbol', 'Purchase Price', 'Quantity', 'Commission', 'Trade Date'] + mental_cols
+        cols = [c for c in desired_cols if c in df.columns]
+        return df[cols], realized_pnl
 
 def parse_date(val):
     """Parse Trade Date (support both YYYYMMDD and YYYY/MM/DD)"""
