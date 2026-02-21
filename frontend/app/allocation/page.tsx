@@ -104,7 +104,7 @@ export default function AllocationPage() {
     const sectorMap: Record<string, number> = {};
     const geoMap: Record<string, number> = {};
 
-    data.holdings.forEach(h => {
+    data.holdings.forEach((h: Holding) => {
         const s = h.Sector || "Unknown";
         sectorMap[s] = (sectorMap[s] || 0) + h.Market_Value;
 

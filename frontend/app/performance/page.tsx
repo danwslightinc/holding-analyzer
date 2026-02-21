@@ -56,13 +56,13 @@ export default function PerformancePage() {
             }
         }
 
-        const filtered = (rawHistory as PerformancePoint[]).filter(d => new Date(d.date) >= startDate);
+        const filtered = (rawHistory as PerformancePoint[]).filter((d: PerformancePoint) => new Date(d.date) >= startDate);
         if (filtered.length === 0) return [];
 
         // 2. Normalize to Percentage (Start = 0%)
         const base = filtered[0];
 
-        return filtered.map(d => {
+        return filtered.map((d: PerformancePoint) => {
             const point: any = { date: d.date };
 
             // Portfolio %

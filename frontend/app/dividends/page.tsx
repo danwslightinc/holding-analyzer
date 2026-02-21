@@ -43,7 +43,7 @@ export default function DividendsPage() {
     if (!data) return null;
 
     // Find Max for Y-Axis
-    const maxVal = Math.max(...data.calendar.map(d => d.total));
+    const maxVal = Math.max(...data.calendar.map((d: any) => d.total));
 
     return (
         <div className="p-8 max-w-[1600px] mx-auto space-y-8">
@@ -105,7 +105,7 @@ export default function DividendsPage() {
                                 formatter={(val: any) => [`$${val.toFixed(2)}`, 'Income']}
                             />
                             <Bar dataKey="total" radius={[6, 6, 0, 0]} maxBarSize={60} onClick={(data: any) => handleBarClick(data.month)}>
-                                {data.calendar.map((entry, index) => (
+                                {data.calendar.map((entry: any, index: number) => (
                                     <Cell
                                         key={`cell-${index}`}
                                         fill={entry.total > data.summary.monthly_average_cad ? '#10B981' : '#3b82f6'}
@@ -134,7 +134,7 @@ export default function DividendsPage() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
-                            {data.calendar.map((m) => (
+                            {data.calendar.map((m: any) => (
                                 <tr
                                     key={m.month}
                                     id={`month-row-${m.month}`}
@@ -147,7 +147,7 @@ export default function DividendsPage() {
                                     <td className="p-4 text-gray-400">
                                         {m.breakdown.length > 0 ? (
                                             <div className="flex flex-wrap gap-2">
-                                                {m.breakdown.map((b, i) => (
+                                                {m.breakdown.map((b: any, i: number) => (
                                                     <span key={i} className="px-2 py-1 bg-white/5 dark:bg-white/5 rounded text-xs text-blue-700 dark:text-blue-300">
                                                         {b.symbol} (${b.amount.toFixed(0)})
                                                     </span>
