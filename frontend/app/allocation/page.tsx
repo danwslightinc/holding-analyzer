@@ -160,7 +160,7 @@ export default function AllocationPage() {
                                         outerRadius={120}
                                         paddingAngle={2}
                                     >
-                                        {sectorData.map((entry, index) => (
+                                        {sectorData.map((entry: any, index: number) => (
                                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                         ))}
                                     </Pie>
@@ -191,7 +191,7 @@ export default function AllocationPage() {
                                         outerRadius={120}
                                         paddingAngle={2}
                                     >
-                                        {geoData.map((entry, index) => (
+                                        {geoData.map((entry: any, index: number) => (
                                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                         ))}
                                     </Pie>
@@ -242,10 +242,10 @@ export default function AllocationPage() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
-                            {sectorData.map((s, idx) => {
+                            {sectorData.map((s: any, idx: number) => {
                                 const sectorHoldings = data.holdings
-                                    .filter(h => h.Sector === s.name)
-                                    .sort((a, b) => b.Market_Value - a.Market_Value);
+                                    .filter((h: Holding) => h.Sector === s.name)
+                                    .sort((a: Holding, b: Holding) => b.Market_Value - a.Market_Value);
                                 const top = sectorHoldings[0];
                                 const weight = (s.value / data.summary.total_value) * 100;
 
