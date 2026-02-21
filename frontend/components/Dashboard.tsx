@@ -58,12 +58,12 @@ export default function Dashboard() {
 
     // Move processDividends before useEffect so it is hoisted/accessible
     const processDividends = (divRaw: any, portData: PortfolioData) => {
-        const chartData = MONTHS.map(m => ({ name: m }) as any);
+        const chartData = MONTHS.map((m: string) => ({ name: m }) as any);
         const symbols = Object.keys(divRaw);
         const shareMap: Record<string, number> = {};
-        portData.holdings.forEach(h => shareMap[h.Symbol] = h.Quantity);
+        portData.holdings.forEach((h: Holding) => shareMap[h.Symbol] = h.Quantity);
 
-        symbols.forEach(sym => {
+        symbols.forEach((sym: string) => {
             const d = divRaw[sym];
             if (d && d.Months) {
                 const shares = shareMap[sym] || 0;
@@ -169,7 +169,7 @@ export default function Dashboard() {
 
         switch (selectedMetric) {
             case 'Gain (%)':
-                return data.holdings.map(h => {
+                return data.holdings.map((h: Holding) => {
                     // Use timeframe-specific % change if available, otherwise use total P&L %
                     let pnlPercent;
                     if (selectedTimeframe !== 'All' && tickerPerf && tickerPerf[h.Symbol]?.[selectedTimeframe]) {
