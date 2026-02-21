@@ -527,12 +527,13 @@ def get_fundamental_data(symbols):
                 ex_div = detail.get('exDividendDate', 'N/A')
                 
                 # Next Earnings
-                earnings_dates = cal.get('earnings', {}).get('earningsDate', [])
                 next_earnings = 'N/A'
-                if earnings_dates:
-                    try:
-                        next_earnings = earnings_dates[0]
-                    except Exception: pass
+                if isinstance(cal, dict):
+                    earnings_dates = cal.get('earnings', {}).get('earningsDate', [])
+                    if earnings_dates:
+                        try:
+                            next_earnings = earnings_dates[0]
+                        except Exception: pass
 
                 # PEG
                 peg = stats.get('pegRatio', 'N/A')

@@ -52,7 +52,7 @@ def health_check():
 @app.get("/api/portfolio")
 def get_portfolio():
     try:
-        df = load_portfolio_holdings(CSV_PATH)
+        df, _ = load_portfolio_holdings(CSV_PATH)
         if df.empty:
             return {"summary": {}, "holdings": []}
         
@@ -181,7 +181,7 @@ def get_portfolio():
 @app.get("/api/dividends")
 def get_dividends():
     try:
-        df = load_portfolio_holdings(CSV_PATH)
+        df, _ = load_portfolio_holdings(CSV_PATH)
         if df.empty: return {}
         
         # Get Market Data
@@ -265,15 +265,15 @@ def get_dividends():
 @app.get("/api/performance")
 def get_performance_history():
     try:
-        df = load_portfolio_holdings(CSV_PATH)
+        df, _ = load_portfolio_holdings(CSV_PATH)
         if df.empty: return []
         
         history = get_portfolio_history(df)
         if history.empty:
              return []
         
-        # Convert Date to string
-        history['Date'] = history['Date'].dt.strftime('%Y/%m/%d')
+        # Convert date to string
+        history['date'] = pd.to_datetime(history['date'], utc=True).dt.strftime('%Y/%m/%d')
         
         return history.to_dict(orient="records")
     except Exception as e:
@@ -283,7 +283,7 @@ def get_performance_history():
 def get_ticker_perf():
     """Get per-ticker performance over various timeframes"""
     try:
-        df = load_portfolio_holdings(CSV_PATH)
+        df, _ = load_portfolio_holdings(CSV_PATH)
         if df.empty:
             return {}
         

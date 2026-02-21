@@ -5,6 +5,7 @@ import {
     BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell
 } from "recharts";
 import { DollarSign, Calendar, TrendingUp } from "lucide-react";
+import { API_BASE_URL } from "@/lib/api";
 
 interface MonthlyData {
     month: string;
@@ -31,7 +32,7 @@ export default function DividendsPage() {
     useEffect(() => {
         const fetchDividends = async () => {
             try {
-                const res = await fetch("http://127.0.0.1:8000/api/dividends");
+                const res = await fetch(`${API_BASE_URL}/api/dividends`);
                 if (!res.ok) throw new Error("Failed to fetch");
                 const json = await res.json();
                 setData(json);
@@ -153,8 +154,8 @@ export default function DividendsPage() {
                                     key={m.month}
                                     id={`month-row-${m.month}`}
                                     className={`transition-all duration-300 ${selectedMonth === m.month
-                                            ? 'bg-blue-500/20 border-l-4 border-blue-500'
-                                            : 'hover:bg-white/5'
+                                        ? 'bg-blue-500/20 border-l-4 border-blue-500'
+                                        : 'hover:bg-white/5'
                                         }`}
                                 >
                                     <td className="p-4 font-medium">{m.month}</td>

@@ -8,6 +8,7 @@ import {
 } from "recharts";
 import { TrendingUp, DollarSign, Activity, Calendar, ArrowUpRight, ArrowDownRight, ChevronUp, ChevronDown } from "lucide-react";
 import { motion } from "framer-motion";
+import { API_BASE_URL } from "@/lib/api";
 
 // --- Types ---
 interface Holding {
@@ -83,9 +84,9 @@ export default function Dashboard() {
         const fetchData = async () => {
             try {
                 const [portRes, divRes, perfRes] = await Promise.all([
-                    fetch("http://127.0.0.1:8000/api/portfolio"),
-                    fetch("http://127.0.0.1:8000/api/dividends"),
-                    fetch("http://127.0.0.1:8000/api/ticker-performance")
+                    fetch(`${API_BASE_URL}/api/portfolio`),
+                    fetch(`${API_BASE_URL}/api/dividends`),
+                    fetch(`${API_BASE_URL}/api/ticker-performance`)
                 ]);
 
                 const portData = await portRes.json();
