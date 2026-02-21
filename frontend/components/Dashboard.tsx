@@ -9,6 +9,7 @@ import {
 import { TrendingUp, DollarSign, Activity, Calendar, ArrowUpRight, ArrowDownRight, ChevronUp, ChevronDown } from "lucide-react";
 import { motion } from "framer-motion";
 import { API_BASE_URL } from "@/lib/api";
+import { usePortfolio } from "@/lib/PortfolioContext";
 
 // --- Types ---
 interface Holding {
@@ -48,13 +49,11 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF1919'
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 export default function Dashboard() {
-    const [data, setData] = useState<PortfolioData | null>(null);
+    const { data: portData, dividends: divRaw, tickerPerf, loading: portLoading, error: portError } = usePortfolio();
     const [divs, setDivs] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
     const [isMounted, setIsMounted] = useState(false);
     const [selectedMetric, setSelectedMetric] = useState<string>('Gain (Value)');
     const [selectedTimeframe, setSelectedTimeframe] = useState<string>('All');
-    const [tickerPerf, setTickerPerf] = useState<any>(null);
     const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'Market_Value', direction: 'desc' });
 
     // Move processDividends before useEffect so it is hoisted/accessible
@@ -81,33 +80,16 @@ export default function Dashboard() {
 
     useEffect(() => {
         setIsMounted(true);
-        const fetchData = async () => {
-            try {
-                const [portRes, divRes, perfRes] = await Promise.all([
-                    fetch(`${API_BASE_URL}/api/portfolio`),
-                    fetch(`${API_BASE_URL}/api/dividends`),
-                    fetch(`${API_BASE_URL}/api/ticker-performance`)
-                ]);
+        if (portData && divRaw) {
+            processDividends(divRaw, portData);
+        }
+    }, [portData, divRaw]);
 
-                const portData = await portRes.json();
-                const divRaw = await divRes.json();
-                const perfData = await perfRes.json();
+    if (portLoading && !portData) return <div className="p-10 text-center animate-pulse">Loading Dashboard...</div>;
+    if (portError) return <div className="p-10 text-center text-red-500">Failed to load data. Ensure Backend is running.</div>;
+    if (!portData) return null;
 
-                setData(portData);
-                setTickerPerf(perfData);
-                processDividends(divRaw, portData);
-            } catch (err) {
-                console.error("Failed to fetch data", err);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchData();
-    }, []);
-
-    if (loading) return <div className="p-10 text-center animate-pulse">Loading Dashboard...</div>;
-    if (!data) return <div className="p-10 text-center text-red-500">Failed to load data. Ensure Backend is running.</div>;
+    const data = portData;
 
     // Derived Metrics
     const totalValue = data.summary.total_value;

@@ -6,6 +6,7 @@ import {
 } from "recharts";
 import { DollarSign, Calendar, TrendingUp } from "lucide-react";
 import { API_BASE_URL } from "@/lib/api";
+import { usePortfolio } from "@/lib/PortfolioContext";
 
 interface MonthlyData {
     month: string;
@@ -25,25 +26,8 @@ interface DividendData {
 }
 
 export default function DividendsPage() {
-    const [data, setData] = useState<DividendData | null>(null);
-    const [loading, setLoading] = useState(true);
+    const { dividends: data, loading, error } = usePortfolio();
     const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
-
-    useEffect(() => {
-        const fetchDividends = async () => {
-            try {
-                const res = await fetch(`${API_BASE_URL}/api/dividends`);
-                if (!res.ok) throw new Error("Failed to fetch");
-                const json = await res.json();
-                setData(json);
-            } catch (err) {
-                console.error(err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchDividends();
-    }, []);
 
     const handleBarClick = (month: string) => {
         setSelectedMonth(month);
@@ -54,8 +38,9 @@ export default function DividendsPage() {
         }
     };
 
-    if (loading) return <div className="p-10 text-center animate-pulse">Loading Dividend Data...</div>;
-    if (!data) return <div className="p-10 text-center text-red-500">Failed to load data.</div>;
+    if (loading && !data) return <div className="p-10 text-center animate-pulse">Loading Dividend Data...</div>;
+    if (error) return <div className="p-10 text-center text-red-500">Failed to load data.</div>;
+    if (!data) return null;
 
     // Find Max for Y-Axis
     const maxVal = Math.max(...data.calendar.map(d => d.total));

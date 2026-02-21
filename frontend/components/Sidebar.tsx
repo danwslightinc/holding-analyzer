@@ -1,9 +1,10 @@
 "use client";
 
-import { Home, TrendingUp, PieChart, DollarSign, Sun, Moon, Brain, List } from "lucide-react";
+import { Home, TrendingUp, PieChart, DollarSign, Sun, Moon, Brain, List, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "./ThemeProvider";
+import { usePortfolio } from "@/lib/PortfolioContext";
 
 const NAV_ITEMS = [
     { name: "Home", icon: Home, href: "/" },
@@ -17,6 +18,7 @@ const NAV_ITEMS = [
 export default function Sidebar() {
     const pathname = usePathname();
     const { theme, toggleTheme } = useTheme();
+    const { refresh, loading } = usePortfolio();
 
     return (
         <aside className="w-64 h-full glass-panel border-r border-white/10 flex flex-col hidden md:flex">
@@ -51,8 +53,17 @@ export default function Sidebar() {
                 })}
             </nav>
 
-            {/* Footer / Theme Toggle */}
-            <div className="p-4 border-t border-white/10">
+            {/* Footer / Theme Toggle & Refresh */}
+            <div className="p-4 border-t border-white/10 space-y-2">
+                <button
+                    onClick={() => refresh()}
+                    disabled={loading}
+                    className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-gray-400 hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 transition-colors group disabled:opacity-50"
+                >
+                    <RefreshCw className={`w-5 h-5 group-hover:text-blue-400 transition-all ${loading ? 'animate-spin' : ''}`} />
+                    <span className="font-medium">{loading ? 'Syncing...' : 'Sync Data'}</span>
+                </button>
+
                 <button
                     onClick={toggleTheme}
                     className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-gray-400 hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 transition-colors group"

@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 import time
+from backend.cache import cache_result, prices_cache, fundamentals_cache, technicals_cache, news_cache, dividend_cache, fx_cache, history_cache
 
 # ETF Look-Through Weights (Approximate)
 ETF_SECTOR_WEIGHTS = {
@@ -118,6 +119,7 @@ def find_purchase_date_from_price(symbol, purchase_price, tolerance=0.05, min_da
         print(f"  ⚠️  Error finding purchase date for {symbol}: {e}")
         return None
 
+@cache_result(prices_cache)
 def get_current_prices(symbols):
     """
     Fetches real-time prices for a list of symbols using yahooquery.
@@ -180,6 +182,7 @@ def get_weekly_changes(symbols):
         print(f"Error fetching weekly changes: {e}")
         return {}
 
+@cache_result(fx_cache)
 def get_usd_to_cad_rate():
     """
     Fetches the current USD to CAD exchange rate using yahooquery.
@@ -241,6 +244,7 @@ def calculate_rsi(series, period=14):
 def calculate_sma(series, window):
     return series.rolling(window=window).mean()
 
+@cache_result(technicals_cache)
 def get_technical_data(symbols):
     """
     Fetches 1-year history and calculates RSI and Moving Averages using yahooquery.
@@ -364,6 +368,7 @@ def get_technical_data(symbols):
     return technical_data
 
 
+@cache_result(news_cache)
 def get_latest_news(symbols):
     """
     Fetches the latest news headline for each symbol using yahooquery.
@@ -419,6 +424,7 @@ def get_latest_news(symbols):
         
     return news_map
 
+@cache_result(dividend_cache)
 def get_dividend_calendar(symbols):
     """
     Fetches dividend history to project future income using yahooquery.
@@ -470,6 +476,7 @@ def get_dividend_calendar(symbols):
         
     return div_calendar
 
+@cache_result(fundamentals_cache)
 def get_fundamental_data(symbols):
     """
     Fetches fundamental data for a list of symbols using yahooquery.
@@ -562,6 +569,7 @@ def get_fundamental_data(symbols):
         
     return fundamentals
             
+@cache_result(history_cache)
 def get_portfolio_history(holdings_df):
     """
     Simulates historical portfolio performance by backtesting current holdings using yahooquery.
