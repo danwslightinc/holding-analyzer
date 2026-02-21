@@ -604,6 +604,10 @@ def get_portfolio_history(holdings_df):
             closes = hist[['close']].copy()
             closes.columns = [all_tickers[0]]
             
+        # Ensure chronological order and properly handle timezones before filling missing values
+        closes.index = pd.to_datetime(closes.index, utc=True)
+        closes = closes.sort_index()
+
         closes = closes.ffill()
         
         # FX Rates
