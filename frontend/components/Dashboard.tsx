@@ -107,7 +107,7 @@ export default function Dashboard() {
         setSortConfig({ key, direction });
     };
 
-    const sortedHoldings = [...data.holdings].sort((a, b) => {
+    const sortedHoldings = [...data.holdings].sort((a: Holding, b: Holding) => {
         let aValue: any;
         let bValue: any;
 
@@ -138,8 +138,8 @@ export default function Dashboard() {
                 bValue = b.Market_Value > 0 ? (b.PnL / (b.Market_Value - b.PnL)) : 0;
                 break;
             default:
-                aValue = a[sortConfig.key];
-                bValue = b[sortConfig.key];
+                aValue = (a as any)[sortConfig.key];
+                bValue = (b as any)[sortConfig.key];
         }
 
         if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
