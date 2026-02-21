@@ -20,6 +20,13 @@ def migrate():
     create_db_and_tables()
     
     with Session(engine) as session:
+        # 0. Wipe existing database tables before migrating
+        print("Wiping existing database tables...")
+        from sqlmodel import delete
+        session.exec(delete(Transaction))
+        session.exec(delete(Holding))
+        session.commit()
+        
         # 1. Load thesis.json
         thesis_data = {}
         if os.path.exists(THESIS_PATH):
@@ -54,18 +61,53 @@ def migrate():
             
             # Add manual position info if present
             if not df_manual.empty and symbol in df_manual['Symbol'].values:
-                row = df_manual[df_manual['Symbol'] == symbol].iloc[0]
-                h.quantity = float(row.get('Quantity', 0)) if pd.notnull(row.get('Quantity')) else None
-                h.purchase_price = float(row.get('Purchase Price', 0)) if pd.notnull(row.get('Purchase Price')) else None
-                h.commission = float(row.get('Commission', 0)) if pd.notnull(row.get('Commission')) else None
-                h.comment = row.get('Comment')
+                # Get all rows for the symbol
+                rows = df_manual[df_manual['Symbol'] == symbol]
                 
-                trade_date = row.get('Trade Date')
-                if pd.notnull(trade_date):
-                    try:
-                        h.trade_date = pd.to_datetime(trade_date)
-                    except:
-                        pass
+                # Aggregate quantity and calculate weighted average price
+                valid_qty_rows = rows.dropna(subset=['Quantity'])
+                if not valid_qty_rows.empty:
+                    # Filter out non-numeric quantities or parse strings gracefully if needed
+                    # pandas handles numbers fine, but let's be safe
+                    valid_qty_rows['Quantity'] = pd.to_numeric(valid_qty_rows['Quantity'], errors='coerce')
+                    valid_qty_rows = valid_qty_rows.dropna(subset=['Quantity'])
+                    
+                    if not valid_qty_rows.empty:
+                        h.quantity = float(valid_qty_rows['Quantity'].sum())
+                        
+                        # Calculate weighted average purchase price
+                        price_qty_rows = valid_qty_rows.dropna(subset=['Purchase Price'])
+                        price_qty_rows['Purchase Price'] = pd.to_numeric(price_qty_rows['Purchase Price'], errors='coerce')
+                        price_qty_rows = price_qty_rows.dropna(subset=['Purchase Price'])
+                        
+                        if not price_qty_rows.empty and price_qty_rows['Quantity'].sum() > 0:
+                            total_cost = (price_qty_rows['Purchase Price'] * price_qty_rows['Quantity']).sum()
+                            h.purchase_price = float(total_cost / price_qty_rows['Quantity'].sum())
+                        else:
+                            h.purchase_price = None
+
+                        if 'Commission' in valid_qty_rows:
+                            comm_col = pd.to_numeric(valid_qty_rows['Commission'], errors='coerce').dropna()
+                            h.commission = float(comm_col.sum()) if not comm_col.empty else 0.0
+                        else:
+                            h.commission = 0.0
+                
+                # Take the first available comment if any
+                if 'Comment' in rows:
+                    comments = rows['Comment'].dropna()
+                    h.comment = comments.iloc[0] if not comments.empty else None
+                
+                # Get the latest trade date
+                if 'Trade Date' in rows:
+                    valid_dates = rows['Trade Date'].dropna()
+                    if not valid_dates.empty:
+                        try:
+                            # Handle mixed formats safely
+                            parsed_dates = pd.to_datetime(valid_dates, errors='coerce').dropna()
+                            if not parsed_dates.empty:
+                                h.trade_date = parsed_dates.max()
+                        except:
+                            pass
             
             session.add(h)
         
