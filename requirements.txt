@@ -10,3 +10,4 @@ squarify
 lxml
 fastapi
 uvicorn
+sqlmodel

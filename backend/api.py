@@ -16,11 +16,14 @@ load_dotenv()
 # Add parent directory to path to import existing modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from data_loader import load_portfolio_holdings
+from data_loader import load_portfolio_holdings, load_portfolio_from_db
 from market_data import get_current_prices, get_fundamental_data, get_technical_data, get_dividend_calendar, get_usd_to_cad_rate, get_portfolio_history, get_latest_news
 from analysis import calculate_metrics
 from backend.ticker_performance import get_ticker_performance
 from backend.cache import clear_all_caches
+from backend.database import engine, get_session
+from backend.models import Holding, Transaction as DBTransaction
+from sqlmodel import Session, select
 
 app = FastAPI(title="Holding Analyzer API")
 
@@ -77,7 +80,8 @@ def health_check():
 @app.get("/api/portfolio")
 def get_portfolio():
     try:
-        df, _ = load_portfolio_holdings(CSV_PATH)
+        # Switch to database source
+        df, _ = load_portfolio_from_db()
         if df.empty:
             return {"summary": {}, "holdings": []}
         
@@ -158,12 +162,7 @@ def get_portfolio():
             sym = row['Symbol']
             holding_dict = row.to_dict()
             
-            # Add thesis data
-            thesis = THESIS_DATA.get(sym, {})
-            holding_dict['Thesis'] = thesis.get('Thesis', '')
-            holding_dict['Conviction'] = thesis.get('Conviction', '')
-            holding_dict['Timeframe'] = thesis.get('Timeframe', '')
-            holding_dict['Kill Switch'] = thesis.get('Kill Switch', '')
+            # Thesis data is already in row from load_portfolio_from_db()
             
             # Add technical data
             tech = technical_data.get(sym, {})
@@ -332,100 +331,114 @@ class Transaction(BaseModel):
 
 @app.get("/api/transactions")
 def get_transactions():
-    """Get raw transactions from CSV"""
+    """Fetch all transactions from DB formatted for frontend"""
     try:
-        if not os.path.exists(CSV_PATH):
-            return []
-        df = pd.read_csv(CSV_PATH)
-        # Filter for rows that are actually transactions (must have Symbol and Price/Qty)
-        # Specifically avoid rows like 'CAD=X' which might be in the CSV for other purposes
-        if 'Trade Date' in df.columns:
-             df = df.dropna(subset=['Trade Date'])
-        elif 'Purchase Price' in df.columns:
-             df = df.dropna(subset=['Purchase Price'])
-        
-        # Format Trade Date for consistency in frontend
-        if 'Trade Date' in df.columns:
-             # Handle numeric YYYYMMDD or string dates, and fallback to 'Date' if missing
-             def parse_trade_date(row):
-                 td = str(row.get('Trade Date', '')).split('.')[0].strip()
-                 if td and td != 'nan':
-                     try:
-                         # Try YYYYMMDD first if it looks like it
-                         if len(td) == 8 and td.isdigit():
-                             return pd.to_datetime(td, format='%Y%m%d').strftime('%Y/%m/%d')
-                         return pd.to_datetime(td).strftime('%Y/%m/%d')
-                     except:
-                         pass
-                 
-                 # Fallback to 'Date' column if Trade Date is unavailable
-                 main_date = str(row.get('Date', '')).strip()
-                 if main_date and main_date != 'nan':
-                     try:
-                         return pd.to_datetime(main_date).strftime('%Y/%m/%d')
-                     except:
-                         pass
-                 return None
-
-             df['Trade Date'] = df.apply(parse_trade_date, axis=1)
-        
-        # Replace NaN and Inf with None for JSON compliance
-        df = df.replace([np.nan, np.inf, -np.inf], None)
-        
-        # Add a stable ID for frontend to reference
-        df['id'] = range(len(df))
-        return df.to_dict(orient="records")
+        with Session(engine) as session:
+            txs = session.exec(select(DBTransaction).order_by(DBTransaction.date.desc())).all()
+            
+            # Map DB fields to the format the frontend expects (Uppercase keys)
+            formatted = []
+            for tx in txs:
+                formatted.append({
+                    "id": tx.id,
+                    "Symbol": tx.symbol,
+                    "Purchase Price": tx.price,
+                    "Quantity": tx.quantity,
+                    "Commission": tx.commission,
+                    "Trade Date": tx.date.strftime('%Y/%m/%d'),
+                    "Transaction Type": tx.type,
+                    "Comment": tx.description or ""
+                })
+            return formatted
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/transactions")
 def add_transaction(tx: Transaction):
-    """Add a new transaction to CSV"""
+    """Add a new transaction to Database"""
     try:
-        # Load existing
-        if os.path.exists(CSV_PATH):
-            df = pd.read_csv(CSV_PATH)
-        else:
-            # Create with default columns if doesn't exist
-            cols = ['Symbol', 'Current Price', 'Date', 'Time', 'Change', 'Open', 'High', 'Low', 'Volume', 'Trade Date', 'Purchase Price', 'Quantity', 'Commission', 'High Limit', 'Low Limit', 'Comment', 'Transaction Type']
-            df = pd.DataFrame(columns=cols)
-        
-        # Prepare new row
-        new_row = {
-            'Symbol': tx.Symbol,
-            'Purchase Price': tx.Purchase_Price,
-            'Quantity': tx.Quantity,
-            'Commission': tx.Commission,
-            'Trade Date': tx.Trade_Date,
-            'Transaction Type': tx.Transaction_Type,
-            'Comment': tx.Comment,
-            'Date': datetime.now().strftime('%Y/%m/%d'),
-            'Time': datetime.now().strftime('%H:%M %Z'),
-            'Current Price': 0, # Will be updated by market data later
-        }
-        
-        # Append
-        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-        df.to_csv(CSV_PATH, index=False)
-        clear_all_caches()
-        return {"status": "success"}
+        with Session(engine) as session:
+            # 1. Ensure Holding exists
+            existing_holding = session.exec(select(Holding).where(Holding.symbol == tx.Symbol)).first()
+            if not existing_holding:
+                new_h = Holding(symbol=tx.Symbol)
+                session.add(new_h)
+                session.commit()
+                session.refresh(new_h)
+                holding_id = new_h.id
+            else:
+                holding_id = existing_holding.id
+            
+            # 2. Add Transaction
+            db_tx = DBTransaction(
+                holding_id=holding_id,
+                symbol=tx.Symbol,
+                date=pd.to_datetime(tx.Trade_Date),
+                type=tx.Transaction_Type,
+                quantity=tx.Quantity,
+                price=tx.Purchase_Price,
+                commission=tx.Commission,
+                amount=(tx.Purchase_Price * tx.Quantity) + tx.Commission,
+                currency="CAD" if tx.Symbol.endswith(".TO") else "USD",
+                description=tx.Comment,
+                source="Manual"
+            )
+            session.add(db_tx)
+            session.commit()
+            
+            clear_all_caches()
+            return {"status": "success", "id": db_tx.id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/api/transactions/{index}")
-def delete_transaction(index: int):
-    """Delete a transaction from CSV by index"""
+@app.delete("/api/transactions/{id}")
+def delete_transaction(id: int):
+    """Delete a transaction from Database by ID"""
     try:
-        if not os.path.exists(CSV_PATH):
-            raise HTTPException(status_code=404, detail="CSV not found")
-        
-        df = pd.read_csv(CSV_PATH)
-        if index < 0 or index >= len(df):
-            raise HTTPException(status_code=404, detail="Index out of range")
-        
-        df = df.drop(df.index[index])
-        df.to_csv(CSV_PATH, index=False)
-        clear_all_caches()
-        return {"status": "success"}
+        with Session(engine) as session:
+            tx = session.get(DBTransaction, id)
+            if not tx:
+                raise HTTPException(status_code=404, detail="Transaction not found")
+            
+            session.delete(tx)
+            session.commit()
+            
+            clear_all_caches()
+            return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/db/transactions")
+def get_db_transactions():
+    with Session(engine) as session:
+        txs = session.exec(select(DBTransaction).order_by(DBTransaction.date.desc())).all()
+        return txs
+
+@app.get("/api/db/holdings")
+def get_db_holdings():
+    with Session(engine) as session:
+        holdings = session.exec(select(Holding).order_by(Holding.symbol)).all()
+        return holdings
+
+@app.put("/api/holdings/{symbol}")
+def update_holding(symbol: str, data: dict = Body(...)):
+    """Update thesis/mental data for a holding"""
+    try:
+        with Session(engine) as session:
+            h = session.exec(select(Holding).where(Holding.symbol == symbol)).first()
+            if not h:
+                h = Holding(symbol=symbol)
+                session.add(h)
+            
+            if 'Thesis' in data: h.thesis = data['Thesis']
+            if 'Conviction' in data: h.conviction = data['Conviction']
+            if 'Timeframe' in data: h.timeframe = data['Timeframe']
+            if 'Kill Switch' in data: h.kill_switch = data['Kill Switch']
+            if 'Comment' in data: h.comment = data['Comment']
+            
+            session.add(h)
+            session.commit()
+            clear_all_caches()
+            return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
