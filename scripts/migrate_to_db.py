@@ -35,7 +35,6 @@ def migrate():
         symbols = set()
         if not df_manual.empty:
             symbols.update(df_manual['Symbol'].unique())
-        symbols.update(thesis_data.keys())
         
         print(f"Migrating {len(symbols)} symbols...")
         
