@@ -5,7 +5,7 @@ import {
     PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Treemap, Legend
 } from "recharts";
 import { Activity, Layers, Tag, Globe } from "lucide-react";
-
+import { API_BASE_URL } from "@/lib/api";
 
 interface Holding {
     Symbol: string;
@@ -99,7 +99,7 @@ export default function AllocationPage() {
     useEffect(() => {
         const fetchAllocation = async () => {
             try {
-                const res = await fetch("http://127.0.0.1:8000/api/portfolio");
+                const res = await fetch(`${API_BASE_URL}/api/portfolio`);
                 const json = await res.json();
                 setData(json);
             } catch (err) {

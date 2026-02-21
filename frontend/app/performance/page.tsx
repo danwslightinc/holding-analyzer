@@ -5,9 +5,10 @@ import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from "recharts";
 import { TrendingUp, Filter } from "lucide-react";
+import { API_BASE_URL } from "@/lib/api";
 
 interface PerformancePoint {
-    Date: string;
+    date: string;
     Portfolio: number;
     "^GSPC": number;
     "^IXIC": number;
@@ -35,7 +36,7 @@ export default function PerformancePage() {
     useEffect(() => {
         const fetchHistory = async () => {
             try {
-                const res = await fetch("http://127.0.0.1:8000/api/performance");
+                const res = await fetch(`${API_BASE_URL}/api/performance`);
                 const json = await res.json();
                 setRawHistory(json);
             } catch (err) {
@@ -56,7 +57,7 @@ export default function PerformancePage() {
 
         // "ALL" uses earliest date
         if (range === 'ALL') {
-            startDate = new Date(rawHistory[0].Date);
+            startDate = new Date(rawHistory[0].date);
         } else {
             switch (range) {
                 case '1M': startDate.setMonth(now.getMonth() - 1); break;
@@ -70,14 +71,14 @@ export default function PerformancePage() {
             }
         }
 
-        const filtered = rawHistory.filter(d => new Date(d.Date) >= startDate);
+        const filtered = rawHistory.filter(d => new Date(d.date) >= startDate);
         if (filtered.length === 0) return [];
 
         // 2. Normalize to Percentage (Start = 0%)
         const base = filtered[0];
 
         return filtered.map(d => {
-            const point: any = { Date: d.Date };
+            const point: any = { date: d.date };
 
             // Portfolio %
             if (base.Portfolio) {
@@ -174,7 +175,7 @@ export default function PerformancePage() {
                         <LineChart data={chartData}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
                             <XAxis
-                                dataKey="Date"
+                                dataKey="date"
                                 stroke="#666"
                                 fontSize={12}
                                 tickFormatter={(val) => {

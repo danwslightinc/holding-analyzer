@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Plus, Trash2, Calendar, DollarSign, Hash, Tag, FileText } from "lucide-react";
-
+import { API_BASE_URL } from "@/lib/api";
 
 interface Transaction {
     id: number;
@@ -33,7 +33,7 @@ export default function TransactionsPage() {
 
     const fetchTransactions = async () => {
         try {
-            const res = await fetch("http://127.0.0.1:8000/api/transactions");
+            const res = await fetch(`${API_BASE_URL}/api/transactions`);
             const data = await res.json();
             setTransactions(data);
         } catch (err) {
@@ -50,7 +50,7 @@ export default function TransactionsPage() {
     const handleAdd = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            const res = await fetch("http://127.0.0.1:8000/api/transactions", {
+            const res = await fetch(`${API_BASE_URL}/api/transactions`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -81,7 +81,7 @@ export default function TransactionsPage() {
     const handleDelete = async (id: number) => {
         if (!confirm("Are you sure you want to delete this transaction?")) return;
         try {
-            const res = await fetch(`http://127.0.0.1:8000/api/transactions/${id}`, {
+            const res = await fetch(`${API_BASE_URL}/api/transactions/${id}`, {
                 method: "DELETE"
             });
             if (res.ok) fetchTransactions();

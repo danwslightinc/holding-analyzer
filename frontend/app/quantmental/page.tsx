@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ExternalLink, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { API_BASE_URL } from "@/lib/api";
 
 interface QuantmentalData {
     Symbol: string;
@@ -30,7 +31,7 @@ export default function QuantmentalPage() {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const res = await fetch("http://127.0.0.1:8000/api/portfolio");
+                const res = await fetch(`${API_BASE_URL}/api/portfolio`);
                 const json = await res.json();
 
                 // Map holdings to quantmental format
