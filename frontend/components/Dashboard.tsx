@@ -122,8 +122,8 @@ export default function Dashboard() {
                 bValue = b.Market_Value;
                 break;
             case 'Price':
-                aValue = a.Current_Price || 0;
-                bValue = b.Current_Price || 0;
+                aValue = a['Current Price'] || 0;
+                bValue = b['Current Price'] || 0;
                 break;
             case 'AvgCost':
                 aValue = (a.Market_Value - a.PnL) / a.Quantity;
@@ -409,12 +409,10 @@ export default function Dashboard() {
                                             <div className="font-bold text-foreground">{h.Symbol}</div>
                                             <div className="text-xs text-gray-500">{h.Quantity} shares</div>
                                         </td>
-                                        <td className="p-4 text-right">
-                                            <span className="bg-white/10 px-2 py-1 rounded text-xs text-gray-300">
-                                                {allocation.toFixed(1)}%
-                                            </span>
+                                        <td className="p-4 text-right text-gray-400">
+                                            {allocation.toFixed(1)}%
                                         </td>
-                                        <td className="p-4 text-right text-gray-300">${(h.Current_Price || 0).toFixed(2)}</td>
+                                        <td className="p-4 text-right text-gray-400">${(h['Current Price'] || 0).toFixed(2)}</td>
                                         <td className="p-4 text-right text-gray-400">${avgCost.toFixed(2)}</td>
                                         <td className={`p-4 text-right font-medium ${isProfit ? 'text-emerald-400' : 'text-rose-400'}`}>
                                             ${h.PnL.toLocaleString()}
