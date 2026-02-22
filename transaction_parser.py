@@ -374,17 +374,26 @@ def calculate_holdings(df_tx):
 
     rows = []
     for sym, symbol_lots in lots.items():
-        for lot in symbol_lots:
-            if lot['Quantity'] > 0.0001:
-                rows.append({
-                    'Symbol': sym,
-                    'Quantity': lot['Quantity'],
-                    'Purchase Price': lot['Purchase Price'],
-                    'Trade Date': lot['Trade Date'],
-                    'Commission': lot['Commission'],
-                    'Currency': lot['Currency']
-                })
-    
+        valid_lots = [lot for lot in symbol_lots if lot['Quantity'] > 0.0001]
+        if not valid_lots:
+            continue
+            
+        total_quantity = sum(lot['Quantity'] for lot in valid_lots)
+        total_cost = sum(lot['Cost'] for lot in valid_lots)
+        total_comm = sum(lot['Commission'] for lot in valid_lots)
+        
+        # Find latest valid trade date
+        dates = pd.to_datetime([l['Trade Date'] for l in valid_lots], errors='coerce').dropna()
+        latest_date = dates.max() if not dates.empty else None
+        
+        rows.append({
+            'Symbol': sym,
+            'Quantity': total_quantity,
+            'Purchase Price': total_cost / total_quantity if total_quantity > 0 else 0,
+            'Trade Date': latest_date,
+            'Commission': total_comm,
+            'Currency': valid_lots[0]['Currency']
+        })
     return pd.DataFrame(rows), realized_pnl
 
 def prepare_portfolio_df(holdings_df):
