@@ -83,6 +83,7 @@ export default function PnLPage() {
     const { data, loading, error } = usePortfolio();
     const [realized, setRealized] = useState<RealizedRow[]>([]);
     const [realizedLoading, setRealizedLoading] = useState(true);
+    const [symbolAccounts, setSymbolAccounts] = useState<Record<string, { broker: string; account_type: string }[]>>({});
 
     // Sort state — unrealized table
     const [uSort, setUSort] = useState<SortCfg>({ key: "pnl", dir: "desc" });
@@ -102,6 +103,10 @@ export default function PnLPage() {
             .then(d => setRealized(d))
             .catch(() => { })
             .finally(() => setRealizedLoading(false));
+        fetch(`${API_BASE_URL}/api/symbol-accounts`)
+            .then(r => r.json())
+            .then(d => setSymbolAccounts(d))
+            .catch(() => { });
     }, []);
 
     if (loading) return (
@@ -238,6 +243,7 @@ export default function PnLPage() {
                         <thead className="bg-white/5 text-zinc-400 text-xs uppercase tracking-wider">
                             <tr>
                                 <SortTh label="Symbol" sortKey="symbol" cfg={uSort} onSort={handleUSort} align="left" />
+                                <th className="p-4 text-left text-zinc-400 text-xs uppercase tracking-wider whitespace-nowrap">Broker / Account</th>
                                 <SortTh label="Qty" sortKey="qty" cfg={uSort} onSort={handleUSort} />
                                 <SortTh label="Avg Cost" sortKey="avgCost" cfg={uSort} onSort={handleUSort} />
                                 <SortTh label="Current Price" sortKey="currentPrice" cfg={uSort} onSort={handleUSort} />
@@ -250,11 +256,33 @@ export default function PnLPage() {
                         <tbody className="divide-y divide-white/5">
                             {rows.map((r) => {
                                 const isWin = r.pnl >= 0;
+                                const accounts = symbolAccounts[r.symbol] ?? [];
                                 return (
                                     <tr key={r.symbol} className="hover:bg-white/5 transition-colors">
                                         <td className="p-4">
                                             <div className="font-bold text-blue-400">{r.symbol}</div>
                                             <div className="text-xs text-zinc-500">{r.currency}</div>
+                                        </td>
+                                        {/* Broker / Account badges */}
+                                        <td className="p-4">
+                                            <div className="flex flex-wrap gap-1">
+                                                {accounts.length > 0 ? accounts.map((a, ai) => {
+                                                    const bc = BROKER_COLORS[a.broker] ?? DEFAULT_BROKER_COLOR;
+                                                    const ac = ACCOUNT_COLORS[a.account_type] ?? DEFAULT_ACCOUNT_COLOR;
+                                                    return (
+                                                        <span key={ai} className="inline-flex gap-0.5">
+                                                            <span style={{ background: bc.bg, color: bc.text, border: `1px solid ${bc.border}` }}
+                                                                className="px-1.5 py-0.5 rounded-l-md text-xs font-bold">
+                                                                {a.broker}
+                                                            </span>
+                                                            <span style={{ background: ac.bg, color: ac.text, border: `1px solid ${ac.border}` }}
+                                                                className="px-1.5 py-0.5 rounded-r-md text-xs font-semibold">
+                                                                {a.account_type}
+                                                            </span>
+                                                        </span>
+                                                    );
+                                                }) : <span className="text-zinc-600 text-xs">—</span>}
+                                            </div>
                                         </td>
                                         <td className="p-4 text-right text-zinc-400">{r.qty.toLocaleString()}</td>
                                         <td className="p-4 text-right text-zinc-400">{r.currencyPrefix}{r.avgCost.toFixed(2)}</td>
@@ -274,7 +302,7 @@ export default function PnLPage() {
                         </tbody>
                         <tfoot className="bg-white/5 font-bold border-t border-white/10">
                             <tr>
-                                <td className="p-4 text-zinc-300" colSpan={4}>Portfolio Total</td>
+                                <td className="p-4 text-zinc-300" colSpan={5}>Portfolio Total</td>
                                 <td className="p-4 text-right text-zinc-300">${totalCostBasis.toLocaleString("en-CA", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
                                 <td className="p-4 text-right text-zinc-300">${(totalCostBasis + totalUnrealizedPnL).toLocaleString("en-CA", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
                                 <td className={`p-4 text-right ${totalUnrealizedPnL >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{fmt(totalUnrealizedPnL)}</td>
