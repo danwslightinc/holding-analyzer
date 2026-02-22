@@ -296,8 +296,117 @@ class Transaction(BaseModel):
     Quantity: float
     Commission: float = 0.0
     Trade_Date: str  # Format: YYYY/MM/DD
-    Transaction_Type: str = "Buy" # Buy or Sell
+    Transaction_Type: str = "Buy" # Buy, Sell, DRIP
     Comment: Optional[str] = ""
+
+# Symbols excluded from realized PnL (pure FX instruments)
+_NORBERT_GAMBIT_EXCLUDE = {"DLR", "DLR.TO"}
+
+# Canonical action map (same as data_loader.py)
+_TYPE_NORMALIZE = {
+    'Buy': 'BUY', 'BUY': 'BUY',
+    'Sell': 'SELL', 'SELL': 'SELL',
+    'DRIP': 'BUY',
+    'Dividend': 'DIV', 'DIV': 'DIV',
+    'Transf In': 'BUY', 'Transfer In': 'BUY',
+}
+
+def _recalculate_realized_pnl_for_symbol(session: Session, symbol: str) -> None:
+    """
+    Runs an in-memory FIFO on all DB transactions for `symbol`,
+    then upserts a RealizedPnL row (source="db_transaction").
+    Skips Norbert's Gambit symbols.
+    Called after any Sell is inserted or any transaction is deleted.
+    """
+    if symbol in _NORBERT_GAMBIT_EXCLUDE:
+        return
+
+    # Pull all transactions for this symbol (sorted by date)
+    db_txs = session.exec(
+        select(DBTransaction)
+        .where(DBTransaction.symbol == symbol)
+        .order_by(DBTransaction.date)
+    ).all()
+
+    if not db_txs:
+        # No transactions left — clean up any existing DB-source rows
+        existing = session.exec(
+            select(RealizedPnL)
+            .where(RealizedPnL.symbol == symbol)
+            .where(RealizedPnL.source == "db_transaction")
+        ).all()
+        for r in existing:
+            session.delete(r)
+        session.commit()
+        return
+
+    # --- FIFO calculation ---
+    lots: dict = {}       # symbol -> [{qty, cost, currency}]
+    realized: dict = {}   # (currency,) -> {pnl, cost_basis}
+
+    for db_tx in db_txs:
+        action = _TYPE_NORMALIZE.get(db_tx.type, db_tx.type.upper())
+        qty = db_tx.quantity or 0.0
+        curr = db_tx.currency or ("CAD" if symbol.endswith(".TO") else "USD")
+
+        if qty <= 0:
+            continue
+
+        if action == "BUY":
+            amt = abs(db_tx.amount) if db_tx.amount else (qty * (db_tx.price or 0) + (db_tx.commission or 0))
+            lots.setdefault(symbol, []).append({"qty": qty, "cost": amt, "currency": curr})
+
+        elif action == "SELL":
+            if symbol not in lots or not lots[symbol]:
+                continue
+            total_proceeds = db_tx.amount if db_tx.amount else (qty * (db_tx.price or 0) - (db_tx.commission or 0))
+            remaining = qty
+            key = curr
+
+            while remaining > 0 and lots[symbol]:
+                lot = lots[symbol][0]
+                sold = min(lot["qty"], remaining)
+                frac = sold / qty
+                cost_piece = lot["cost"] * (sold / lot["qty"])
+                proceeds_piece = total_proceeds * frac
+
+                realized.setdefault(key, {"pnl": 0.0, "cost_basis": 0.0})
+                realized[key]["pnl"] += proceeds_piece - cost_piece
+                realized[key]["cost_basis"] += cost_piece
+
+                lot["qty"] -= sold
+                lot["cost"] -= cost_piece
+                remaining -= sold
+                if lot["qty"] <= 1e-6:
+                    lots[symbol].pop(0)
+
+    # --- Upsert results ---
+    # Delete old db_transaction rows for this symbol
+    existing = session.exec(
+        select(RealizedPnL)
+        .where(RealizedPnL.symbol == symbol)
+        .where(RealizedPnL.source == "db_transaction")
+    ).all()
+    for r in existing:
+        session.delete(r)
+
+    for curr, vals in realized.items():
+        pnl = vals["pnl"]
+        cb  = vals["cost_basis"]
+        if pd.isna(pnl) or cb == 0:
+            continue
+        session.add(RealizedPnL(
+            symbol=symbol,
+            currency=curr,
+            pnl_amount=float(pnl),
+            cost_basis_sold=float(cb),
+            broker="Manual",
+            account_type="Manual",
+            source="db_transaction",
+        ))
+
+    session.commit()
+    print(f"  [PnL] Recalculated realized P&L for {symbol}: {realized}")
 
 @app.get("/api/transactions")
 def get_transactions():
@@ -355,6 +464,10 @@ def add_transaction(tx: Transaction):
             )
             session.add(db_tx)
             session.commit()
+
+            # 3. If Sell, recalculate realized P&L for this symbol
+            if tx.Transaction_Type in ("Sell", "SELL"):
+                _recalculate_realized_pnl_for_symbol(session, tx.Symbol)
             
             clear_all_caches()
             return {"status": "success", "id": db_tx.id}
@@ -370,9 +483,13 @@ def delete_transaction(id: int):
             if not tx:
                 raise HTTPException(status_code=404, detail="Transaction not found")
             
+            symbol = tx.symbol
             session.delete(tx)
             session.commit()
-            
+
+            # Recalculate realized P&L after any deletion (deleting a buy changes future sell PnL too)
+            _recalculate_realized_pnl_for_symbol(session, symbol)
+
             clear_all_caches()
             return {"status": "success"}
     except Exception as e:
