@@ -35,6 +35,15 @@ const BROKER_COLORS: Record<string, { bg: string; text: string; border: string }
 };
 const DEFAULT_BROKER_COLOR = { bg: "rgba(255,255,255,0.08)", text: "#a1a1aa", border: "rgba(255,255,255,0.15)" };
 
+/** Account-type color scheme — each account type has its own look */
+const ACCOUNT_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+    TFSA: { bg: "rgba(20,184,166,0.15)", text: "#2dd4bf", border: "rgba(20,184,166,0.40)" }, // teal  — tax-free growth
+    RRSP: { bg: "rgba(139,92,246,0.15)", text: "#a78bfa", border: "rgba(139,92,246,0.40)" }, // purple — retirement
+    Open: { bg: "rgba(249,115,22,0.15)", text: "#fb923c", border: "rgba(249,115,22,0.40)" }, // orange — taxable/open
+    Manual: { bg: "rgba(255,255,255,0.08)", text: "#a1a1aa", border: "rgba(255,255,255,0.15)" },
+};
+const DEFAULT_ACCOUNT_COLOR = { bg: "rgba(255,255,255,0.08)", text: "#a1a1aa", border: "rgba(255,255,255,0.15)" };
+
 /** Clickable sort header */
 function SortTh({ label, sortKey, cfg, onSort, align = "right" }: {
     label: string; sortKey: string;
@@ -325,10 +334,10 @@ export default function PnLPage() {
                                         </td>
                                         <td className="p-4">
                                             {(() => {
-                                                const c = BROKER_COLORS[r.broker] ?? DEFAULT_BROKER_COLOR;
+                                                const c = ACCOUNT_COLORS[r.account_type] ?? DEFAULT_ACCOUNT_COLOR;
                                                 return (
-                                                    <span style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}`, opacity: 0.85 }}
-                                                        className="px-2.5 py-0.5 rounded-lg text-xs font-medium">
+                                                    <span style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}` }}
+                                                        className="px-2.5 py-0.5 rounded-lg text-xs font-semibold">
                                                         {r.account_type}
                                                     </span>
                                                 );
