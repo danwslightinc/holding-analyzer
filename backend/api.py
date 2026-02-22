@@ -16,7 +16,7 @@ load_dotenv()
 # Add parent directory to path to import existing modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from data_loader import load_portfolio_holdings, load_portfolio_from_db
+from data_loader import load_portfolio_from_db
 from market_data import get_current_prices, get_fundamental_data, get_technical_data, get_dividend_calendar, get_usd_to_cad_rate, get_portfolio_history, get_latest_news
 from analysis import calculate_metrics
 from backend.ticker_performance import get_ticker_performance
@@ -36,38 +36,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-CSV_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "portfolio.csv")
-THESIS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "thesis.json")
 TARGET_CAGR = float(os.getenv("TARGET_CAGR", 0.08))
 
-# Load data from environment variables if present (for Render/Cloud deployment)
-PORTFOLIO_CSV_CONTENT = os.getenv("PORTFOLIO_CSV_CONTENT")
-if PORTFOLIO_CSV_CONTENT:
-    try:
-        with open(CSV_PATH, 'w') as f:
-            f.write(PORTFOLIO_CSV_CONTENT)
-        print("Loaded portfolio.csv from environment variable")
-    except Exception as e:
-        print(f"Error writing portfolio.csv from environment: {e}")
-
-THESIS_JSON_CONTENT = os.getenv("THESIS_JSON_CONTENT")
-if THESIS_JSON_CONTENT:
-    try:
-        with open(THESIS_PATH, 'w') as f:
-            f.write(THESIS_JSON_CONTENT)
-        print("Loaded thesis.json from environment variable")
-    except Exception as e:
-        print(f"Error writing thesis.json from environment: {e}")
-
-# Load thesis data once at startup
-THESIS_DATA = {}
-try:
-    if os.path.exists(THESIS_PATH):
-        with open(THESIS_PATH, 'r') as f:
-            THESIS_DATA = json.load(f)
-        print(f"Loaded thesis data for {len(THESIS_DATA)} symbols")
-except Exception as e:
-    print(f"Warning: Could not load thesis.json: {e}")
 
 @app.get("/")
 def read_root():
