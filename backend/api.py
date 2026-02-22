@@ -424,15 +424,21 @@ def get_realized_pnl():
     """Return all realized P&L rows from broker CSV history"""
     try:
         with Session(engine) as session:
-            rows = session.exec(select(RealizedPnL).order_by(RealizedPnL.symbol)).all()
-            return [
-                {
+            rows = session.exec(select(RealizedPnL).order_by(RealizedPnL.broker, RealizedPnL.symbol)).all()
+            result = []
+            for r in rows:
+                cb = r.cost_basis_sold or 0
+                pnl_pct = (r.pnl_amount / cb * 100) if cb != 0 else None
+                result.append({
                     "symbol": r.symbol,
                     "currency": r.currency,
                     "pnl_amount": r.pnl_amount,
+                    "cost_basis_sold": cb,
+                    "pnl_pct": round(pnl_pct, 2) if pnl_pct is not None else None,
+                    "broker": r.broker,
+                    "account_type": r.account_type,
                     "source": r.source,
-                }
-                for r in rows
-            ]
+                })
+            return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
