@@ -36,6 +36,10 @@ jobs:
         echo "$PORTFOLIO_CSV" > portfolio.csv
         echo "$THESIS_JSON" > thesis.json
     
+    - name: Migrate CSV to Database
+      run: |
+        python scripts/migrate_to_db.py
+    
     - name: Run Analysis and Send Email
       env:
         SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}

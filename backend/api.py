@@ -21,7 +21,7 @@ from market_data import get_current_prices, get_fundamental_data, get_technical_
 from analysis import calculate_metrics
 from backend.ticker_performance import get_ticker_performance
 from backend.cache import clear_all_caches
-from backend.database import engine, get_session
+from backend.database import engine, get_session, create_db_and_tables
 from backend.models import Holding, Transaction as DBTransaction, RealizedPnL
 from sqlmodel import Session, select
 
@@ -37,6 +37,9 @@ app.add_middleware(
 )
 
 TARGET_CAGR = float(os.getenv("TARGET_CAGR", 0.08))
+@app.on_event("startup")
+def on_startup():
+    create_db_and_tables()
 
 
 @app.get("/")
