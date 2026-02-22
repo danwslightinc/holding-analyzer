@@ -7,12 +7,12 @@ from transaction_parser import load_all_transactions, calculate_holdings
 
 # Import DB internal modules with absolute or relative paths depending on how it's called
 try:
-    from backend.database import engine
+    from backend.database import engine, create_db_and_tables
     from backend.models import Holding, Transaction
     from backend.cache import cache_result, portfolio_cache
 except ImportError:
     # Fallback for scripts running from root
-    from .backend.database import engine
+    from .backend.database import engine, create_db_and_tables
     from .backend.models import Holding, Transaction
     from .backend.cache import cache_result, portfolio_cache
 
@@ -23,6 +23,9 @@ def load_portfolio_from_db():
     compatible with the existing analysis logic.
     """
     mental_cols = ['Thesis', 'Catalyst', 'Kill Switch', 'Conviction', 'Timeframe']
+    
+    # Ensure tables exist
+    create_db_and_tables()
     
     with Session(engine) as session:
         # 1. Fetch Holdings
