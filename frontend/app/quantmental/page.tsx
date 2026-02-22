@@ -156,7 +156,7 @@ export default function QuantmentalPage() {
                         </thead>
                         <tbody>
                             {sortedData.map((row: QuantmentalData, idx: number) => (
-                                <tr key={row.Symbol} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                                <tr key={`${row.Symbol}-${idx}`} className="border-b border-white/5 hover:bg-white/5 transition-colors">
                                     <td className="p-4 font-bold text-blue-600">{row.Symbol}</td>
                                     <td className="p-4 max-w-md">
                                         <div
