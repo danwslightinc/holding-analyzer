@@ -22,7 +22,7 @@ from analysis import calculate_metrics
 from backend.ticker_performance import get_ticker_performance
 from backend.cache import clear_all_caches
 from backend.database import engine, get_session
-from backend.models import Holding, Transaction as DBTransaction
+from backend.models import Holding, Transaction as DBTransaction, RealizedPnL
 from sqlmodel import Session, select
 
 app = FastAPI(title="Holding Analyzer API")
@@ -418,3 +418,21 @@ def force_sync():
     """Clear all caches to force fresh data fetches"""
     clear_all_caches()
     return {"status": "success", "message": "All caches cleared"}
+
+@app.get("/api/realized-pnl")
+def get_realized_pnl():
+    """Return all realized P&L rows from broker CSV history"""
+    try:
+        with Session(engine) as session:
+            rows = session.exec(select(RealizedPnL).order_by(RealizedPnL.symbol)).all()
+            return [
+                {
+                    "symbol": r.symbol,
+                    "currency": r.currency,
+                    "pnl_amount": r.pnl_amount,
+                    "source": r.source,
+                }
+                for r in rows
+            ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

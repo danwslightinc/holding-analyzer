@@ -37,6 +37,14 @@ class Transaction(SQLModel, table=True):
     
     holding: Optional[Holding] = Relationship(back_populates="transactions")
 
+class RealizedPnL(SQLModel, table=True):
+    """Stores realized (closed) P&L computed from broker CSV transaction history."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    symbol: str = Field(index=True)
+    currency: str = "CAD"        # The currency of the pnl_amount (CAD or USD)
+    pnl_amount: float = 0.0      # Realized gain/loss in the above currency
+    source: str = "broker_csv"   # e.g. "broker_csv" or "manual"
+
 class UserSettings(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     key: str = Field(unique=True)
