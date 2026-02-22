@@ -18,12 +18,17 @@ elif "supabase" in DATABASE_URL:
     # Adding SSL requirements for cloud DBs
     if "?" not in DATABASE_URL:
         DATABASE_URL += "?sslmode=require"
+    
+    # Log connection attempt (redacted)
+    from urllib.parse import urlparse
+    parsed = urlparse(DATABASE_URL)
+    print(f"DEBUG: Attempting connection to {parsed.hostname} on port {parsed.port}")
 
 engine = create_engine(
     DATABASE_URL, 
     connect_args=connect_args,
-    pool_pre_ping=True,      # Check connection health before using
-    pool_recycle=300         # Recycle connections every 5 mins
+    pool_pre_ping=True,
+    pool_recycle=300
 )
 
 def create_db_and_tables():
