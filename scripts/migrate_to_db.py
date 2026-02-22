@@ -113,34 +113,58 @@ def migrate():
         
         session.commit()
         
-        # 4. Load Transactions
-        print("Loading transactions from CSVs...")
-        df_txs = load_all_transactions(TX_DIR)
-        print(f"Found {len(df_txs)} transactions.")
+        # 4. Load Transactions from portfolio.csv
+        print("Loading transactions from portfolio.csv...")
         
         def clean_val(val, default=None):
             if pd.isna(val): return default
             return float(val)
 
-        for _, row in df_txs.iterrows():
-            # Find holding
-            symbol = row['Symbol']
-            h = session.exec(select(Holding).where(Holding.symbol == symbol)).first()
-            
-            tx = Transaction(
-                holding_id=h.id if h else None,
-                symbol=symbol,
-                date=pd.to_datetime(row['Date']),
-                type=row['Action'],
-                quantity=clean_val(row.get('Quantity'), 0.0),
-                price=clean_val(row.get('Price'), 0.0),
-                commission=clean_val(row.get('Commission'), 0.0),
-                amount=clean_val(row.get('Amount'), 0.0),
-                currency=row.get('Currency', 'CAD'),
-                description=row.get('Description'),
-                source=row.get('Source', 'Unknown')
-            )
-            session.add(tx)
+        if not df_manual.empty:
+            for _, row in df_manual.iterrows():
+                symbol = str(row.get('Symbol', '')).strip()
+                qty_val = row.get('Quantity')
+                if pd.isna(qty_val) or symbol == '': 
+                    continue
+                
+                h = session.exec(select(Holding).where(Holding.symbol == symbol)).first()
+                if not h:
+                    continue
+                
+                t_date = row.get('Trade Date')
+                try:
+                    # Clean the date, try YYYYMMDD first
+                    if pd.notna(t_date) and str(t_date).replace('.0', '').isdigit():
+                        date_val = pd.to_datetime(str(int(float(t_date))), format='%Y%m%d')
+                    else:
+                        date_val = pd.to_datetime(t_date, errors='coerce')
+                    if pd.isna(date_val):
+                        date_val = pd.Timestamp.now()
+                except:
+                    date_val = pd.Timestamp.now()
+                
+                tx_type = str(row.get('Transaction Type'))
+                if tx_type == 'nan' or tx_type.strip() == '':
+                    tx_type = 'Buy'
+                
+                qty = clean_val(qty_val, 0.0)
+                price = clean_val(row.get('Purchase Price'), 0.0)
+                comm = clean_val(row.get('Commission'), 0.0)
+                
+                tx = Transaction(
+                    holding_id=h.id,
+                    symbol=symbol,
+                    date=date_val,
+                    type=tx_type,
+                    quantity=qty,
+                    price=price,
+                    commission=comm,
+                    amount=(qty * price) + comm,
+                    currency='CAD' if symbol.endswith('.TO') else 'USD',
+                    description=str(row.get('Comment', '')),
+                    source='Manual'
+                )
+                session.add(tx)
             
         session.commit()
         print("Migration complete!")
