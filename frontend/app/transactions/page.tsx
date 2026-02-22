@@ -174,6 +174,7 @@ export default function TransactionsPage() {
                             >
                                 <option value="Buy">Buy</option>
                                 <option value="Sell">Sell</option>
+                                <option value="DRIP">DRIP (Dividend Reinvestment)</option>
                             </select>
                         </div>
                         <div className="space-y-2">
@@ -239,7 +240,10 @@ export default function TransactionsPage() {
                                     <td className="p-4 font-bold text-blue-400">{tx.Symbol}</td>
                                     <td className="p-4 text-zinc-400">{tx["Trade Date"]}</td>
                                     <td className="p-4">
-                                        <span className={`px-2 py-1 rounded text-xs font-bold ${tx["Transaction Type"] === 'Sell' ? 'bg-rose-500/20 text-rose-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
+                                        <span className={`px-2 py-1 rounded text-xs font-bold ${tx["Transaction Type"] === 'Sell' ? 'bg-rose-500/20 text-rose-400' :
+                                                tx["Transaction Type"] === 'DRIP' ? 'bg-blue-500/20 text-blue-400' :
+                                                    'bg-emerald-500/20 text-emerald-400'
+                                            }`}>
                                             {tx["Transaction Type"] || 'Buy'}
                                         </span>
                                     </td>
