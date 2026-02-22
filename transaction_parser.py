@@ -117,8 +117,9 @@ def parse_td(file_path):
     Parses TD Activity CSV.
     Columns: Trade Date, Settle Date, Description, Action, Quantity, Price, Commission, Net Amount, Security Type, Currency
     """
-    # Header starts at row 4 (0-indexed 3)
-    df = pd.read_csv(file_path, skiprows=3)
+    # Header starts at row 4 (0-indexed 3). index_col=False prevents 
+    # pandas from misaligning columns due to trailing commas in TD exports.
+    df = pd.read_csv(file_path, skiprows=3, index_col=False)
     
     # TD Symbols are in the Description or Symbol column? 
     # In the sample, Symbol is NOT a column, it's in Description. 
