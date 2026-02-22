@@ -12,7 +12,6 @@ from visualize import generate_dashboard, generate_static_preview
 load_dotenv()
 
 # Constants
-CSV_PATH = "portfolio.csv"
 TARGET_CAGR = float(os.getenv("TARGET_CAGR", 0.08))
 
 def main():
