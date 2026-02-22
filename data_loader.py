@@ -35,12 +35,25 @@ def load_portfolio_from_db():
         if not transactions:
             return pd.DataFrame(), {}
             
+        # Normalize type strings to the canonical action values expected by calculate_holdings
+        TYPE_NORMALIZE = {
+            'Buy': 'BUY',
+            'BUY': 'BUY',
+            'Sell': 'SELL',
+            'SELL': 'SELL',
+            'DRIP': 'BUY',       # Dividend Reinvestment → treated as a BUY
+            'Dividend': 'DIV',
+            'DIV': 'DIV',
+            'Transf In': 'BUY',
+            'Transfer In': 'BUY',
+        }
+
         data = []
         for tx in transactions:
             data.append({
                 'Symbol': tx.symbol,
                 'Date': tx.date,
-                'Action': tx.type,
+                'Action': TYPE_NORMALIZE.get(tx.type, tx.type.upper()),
                 'Quantity': tx.quantity,
                 'Price': tx.price,
                 'Commission': tx.commission,
