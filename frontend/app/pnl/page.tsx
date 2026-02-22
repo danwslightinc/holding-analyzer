@@ -136,7 +136,7 @@ export default function PnLPage() {
                             tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
                         />
                         <Tooltip
-                            formatter={(v: number) => [`$${v.toLocaleString("en-CA")} CAD`, "Unrealized PnL"]}
+                            formatter={(v: number | undefined) => [`$${(v ?? 0).toLocaleString("en-CA")} CAD`, "Unrealized PnL"]}
                             contentStyle={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "12px", color: "#e2e8f0" }}
                         />
                         <ReferenceLine y={0} stroke="rgba(255,255,255,0.2)" strokeWidth={1} />
