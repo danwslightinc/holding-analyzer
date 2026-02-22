@@ -564,32 +564,60 @@ def get_realized_pnl():
 def get_symbol_accounts():
     """
     Returns a mapping of symbol -> list of {broker, account_type}
-    derived from manual transaction descriptions stored in the DB.
-    The description column contains strings like "CIBC Open" or "RBC TFSA".
+    by merging manual descriptions from DB AND parsing open lots from broker CSVs.
     """
-    try:
-        with Session(engine) as session:
-            # Fetch all manual transactions (source == "Manual")
-            manual_txs = session.exec(
-                select(DBTransaction)
-                .where(DBTransaction.source == "Manual")
-            ).all()
+    import glob
+    from transaction_parser import parse_cibc, parse_rbc, parse_td, calculate_holdings, clean_symbol
+    
+    result: dict = {}
+    
+    def add_entry(sym, broker, account_type):
+        if not sym or not broker or not account_type: return
+        entry = {"broker": broker, "account_type": account_type}
+        if sym not in result:
+            result[sym] = []
+        if entry not in result[sym]:
+            result[sym].append(entry)
 
-            result: dict = {}
+    try:
+        # First, grab anything listed explicitly in the DB's manual descriptions
+        with Session(engine) as session:
+            manual_txs = session.exec(select(DBTransaction).where(DBTransaction.source == "Manual")).all()
             for tx in manual_txs:
-                sym = tx.symbol
-                # Description may be empty; skip if not parsable
-                if not tx.description:
-                    continue
-                parts = tx.description.strip().split()
-                if len(parts) < 2:
-                    continue
-                broker, account_type = parts[0], parts[1]
-                entry = {"broker": broker, "account_type": account_type}
-                if sym not in result:
-                    result[sym] = []
-                if entry not in result[sym]:
-                    result[sym].append(entry)
-            return result
+                if tx.description:
+                    parts = tx.description.strip().split()
+                    if len(parts) >= 2:
+                        add_entry(tx.symbol, parts[0], parts[1])
+
+        # Second, parse live broker CSVs to catch any newly dropped files
+        TX_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "transactions")
+        
+        def _file_meta(fname):
+            name = fname.upper()
+            if "CIBC" in name: return "CIBC", "TFSA" if "TFSA" in name else "Open"
+            elif "RBC" in name: return "RBC", "RRSP" if "RRSP" in name else "TFSA"
+            elif "TD" in name: return "TD", "RRSP" if "RRSP" in name else "TFSA"
+            return "Unknown", "Unknown"
+
+        for f in sorted(glob.glob(os.path.join(TX_DIR, "*.csv"))):
+            fname = os.path.basename(f)
+            broker, account = _file_meta(fname)
+            try:
+                if "CIBC" in fname: df = parse_cibc(f)
+                elif "RBC" in fname: df = parse_rbc(f)
+                elif "TD" in fname: df = parse_td(f)
+                else: continue
+
+                df["Symbol"] = df.apply(lambda r: clean_symbol(r["Symbol"], broker, r.get("Description", "")), axis=1)
+                df = df[df["Symbol"].str.strip() != ""]
+                
+                # Check current active holdings in the CSV
+                holdings_df, _ = calculate_holdings(df)
+                for _, row in holdings_df.iterrows():
+                    add_entry(row["Symbol"], broker, account)
+            except Exception:
+                pass
+
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
