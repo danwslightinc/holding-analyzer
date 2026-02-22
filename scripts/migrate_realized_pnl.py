@@ -24,6 +24,9 @@ from transaction_parser import parse_cibc, parse_rbc, parse_td, load_all_transac
 
 TX_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "transactions")
 
+# Symbols used purely for Norbert's Gambit FX conversion — exclude from P&L
+NORBERT_GAMBIT_EXCLUDE = {"DLR", "DLR.TO"}
+
 
 # -----------------------------------------------------------------------
 # Filename → (broker, account_type)
@@ -161,6 +164,9 @@ def migrate():
             realized = compute_realized_fifo(df)
 
             for (sym, curr), vals in realized.items():
+                if sym in NORBERT_GAMBIT_EXCLUDE:
+                    print(f"    {sym:12s} [{curr}]  Skipped (Norbert's Gambit)")
+                    continue
                 pnl = vals["pnl"]
                 cb  = vals["cost_basis"]
                 if pd.isna(pnl):
