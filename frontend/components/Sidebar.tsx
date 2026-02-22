@@ -56,12 +56,12 @@ export default function Sidebar() {
             {/* Footer / Theme Toggle & Refresh */}
             <div className="p-4 border-t border-white/10 space-y-2">
                 <button
-                    onClick={() => refresh()}
+                    onClick={() => refresh(true)}
                     disabled={loading}
                     className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-gray-400 hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 transition-colors group disabled:opacity-50"
                 >
                     <RefreshCw className={`w-5 h-5 group-hover:text-blue-400 transition-all ${loading ? 'animate-spin' : ''}`} />
-                    <span className="font-medium">{loading ? 'Syncing...' : 'Sync Data'}</span>
+                    <span className="font-medium">{loading ? 'Force Syncing...' : 'Force Sync Data'}</span>
                 </button>
 
                 <button

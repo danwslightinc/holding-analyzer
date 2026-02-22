@@ -10,7 +10,7 @@ interface PortfolioContextType {
     history: any;
     loading: boolean;
     error: any;
-    refresh: () => Promise<void>;
+    refresh: (forceRefresh?: boolean) => Promise<void>;
 }
 
 const PortfolioContext = createContext<PortfolioContextType | undefined>(undefined);
@@ -23,8 +23,14 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<any>(null);
 
-    const fetchData = useCallback(async () => {
+    const fetchData = useCallback(async (forceRefresh = false) => {
         try {
+            setLoading(true);
+
+            if (forceRefresh) {
+                await fetch(`${API_BASE_URL}/api/sync`, { method: "POST" });
+            }
+
             const [portRes, divRes, perfRes, histRes] = await Promise.all([
                 fetch(`${API_BASE_URL}/api/portfolio`),
                 fetch(`${API_BASE_URL}/api/dividends`),
@@ -55,7 +61,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     }, []);
 
     useEffect(() => {
-        fetchData();
+        fetchData(false);
     }, [fetchData]);
 
     return (

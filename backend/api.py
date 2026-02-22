@@ -412,3 +412,9 @@ def update_holding(symbol: str, data: dict = Body(...)):
             return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/sync")
+def force_sync():
+    """Clear all caches to force fresh data fetches"""
+    clear_all_caches()
+    return {"status": "success", "message": "All caches cleared"}
