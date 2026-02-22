@@ -260,7 +260,16 @@ export default function Dashboard() {
                     {/* Placeholders for fields we don't have yet */}
                     <div className="flex justify-between items-center text-sm">
                         <span className="text-gray-400">Dividends (YTD):</span>
-                        <span className="text-gray-400">--</span>
+                        <span className="text-foreground">
+                            {(() => {
+                                if (!divRaw || !divRaw.calendar) return "--";
+                                const currentMonth = new Date().getMonth() + 1; // 1-12
+                                const ytd = divRaw.calendar
+                                    .filter((c: any) => c.month_index <= currentMonth)
+                                    .reduce((sum: number, c: any) => sum + c.total, 0);
+                                return `$${ytd.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+                            })()}
+                        </span>
                     </div>
                 </div>
             </div>
@@ -407,7 +416,9 @@ export default function Dashboard() {
                                     <tr key={h.Symbol} className="hover:bg-white/5 transition-colors group">
                                         <td className="p-4">
                                             <div className="font-bold text-foreground">{h.Symbol}</div>
-                                            <div className="text-xs text-gray-500">{h.Quantity} shares</div>
+                                            <div className="text-xs text-gray-500">
+                                                {h.Quantity.toLocaleString(undefined, { maximumFractionDigits: 4 })} shares
+                                            </div>
                                         </td>
                                         <td className="p-4 text-right text-gray-400">
                                             {allocation.toFixed(1)}%

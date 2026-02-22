@@ -222,8 +222,8 @@ export default function PerformancePage() {
                         {(() => {
                             if (chartData.length < 2) return <span className="text-gray-500 text-lg">--</span>;
 
-                            const start = new Date(chartData[0].Date);
-                            const end = new Date(chartData[chartData.length - 1].Date);
+                            const start = new Date(chartData[0].date);
+                            const end = new Date(chartData[chartData.length - 1].date);
                             const diffTime = end.getTime() - start.getTime();
                             const years = diffTime / (1000 * 60 * 60 * 24 * 365.25);
 
