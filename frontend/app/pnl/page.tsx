@@ -115,8 +115,8 @@ export default function PnLPage() {
     );
 
     const usdCad = data.summary?.usd_cad_rate ?? 1.36;
-    const brokers = ['All', ...Array.from(new Set((data.holdings as any[]).map(h => h.Broker).filter(Boolean)))];
-    const accountTypes = ['All', ...Array.from(new Set((data.holdings as any[]).map(h => h.Account_Type).filter(Boolean)))];
+    const brokers = ['All', ...Array.from(new Set((data.holdings as any[]).map((h: any) => h.Broker).filter(Boolean)))];
+    const accountTypes = ['All', ...Array.from(new Set((data.holdings as any[]).map((h: any) => h.Account_Type).filter(Boolean)))];
 
     const filteredHoldings = (data.holdings as any[]).filter((h: any) => {
         const bMatch = selectedBroker === 'All' || h.Broker === selectedBroker;
@@ -174,12 +174,12 @@ export default function PnLPage() {
         return m[k];
     });
 
-    const winners = rawRows.filter(r => r.pnl >= 0);
-    const losers = rawRows.filter(r => r.pnl < 0);
-    const totalUnrealizedPnL = rawRows.reduce((s, r) => s + r.pnl, 0);
-    const totalCostBasis = rawRows.reduce((s, r) => s + r.costBasis, 0);
+    const winners = rawRows.filter((r: any) => r.pnl >= 0);
+    const losers = rawRows.filter((r: any) => r.pnl < 0);
+    const totalUnrealizedPnL = rawRows.reduce((s: number, r: any) => s + r.pnl, 0);
+    const totalCostBasis = rawRows.reduce((s: number, r: any) => s + r.costBasis, 0);
     const totalPct = totalCostBasis > 0 ? (totalUnrealizedPnL / totalCostBasis) * 100 : 0;
-    const chartData = [...rawRows].sort((a, b) => b.pnl - a.pnl).map(r => ({ name: r.symbol, pnl: parseFloat(r.pnl.toFixed(0)) }));
+    const chartData = [...rawRows].sort((a: any, b: any) => b.pnl - a.pnl).map((r: any) => ({ name: r.symbol, pnl: parseFloat(r.pnl.toFixed(0)) }));
 
     // ---- Realized rows ----
     const filteredRealized = realized.filter((r: any) => {
@@ -202,7 +202,7 @@ export default function PnLPage() {
         return m[k];
     });
 
-    const totalRealizedCAD = filteredRealized.reduce((sum, r) => {
+    const totalRealizedCAD = filteredRealized.reduce((sum: number, r: any) => {
         return sum + (r.currency === "USD" ? r.pnl_amount * usdCad : r.pnl_amount);
     }, 0);
 
@@ -260,7 +260,7 @@ export default function PnLPage() {
                     { label: "Realized P&L (Closed)", value: fmt(totalRealizedCAD), sub: "CAD equiv. from broker history", icon: Archive, color: totalRealizedCAD >= 0 ? "text-emerald-400" : "text-rose-400", bg: totalRealizedCAD >= 0 ? "from-emerald-500/10 to-emerald-500/5 border-emerald-500/20" : "from-rose-500/10 to-rose-500/5 border-rose-500/20" },
                     { label: "Open Winners", value: `${winners.length} positions`, sub: `+$${winners.reduce((s, r) => s + r.pnl, 0).toLocaleString("en-CA", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`, icon: TrendingUp, color: "text-emerald-400", bg: "from-emerald-500/10 to-emerald-500/5 border-emerald-500/20" },
                     { label: "Open Losers", value: `${losers.length} positions`, sub: `-$${Math.abs(losers.reduce((s, r) => s + r.pnl, 0)).toLocaleString("en-CA", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`, icon: TrendingDown, color: "text-rose-400", bg: "from-rose-500/10 to-rose-500/5 border-rose-500/20" },
-                ].map((card, i) => (
+                ].map((card: any, i: number) => (
                     <div key={i} className={`glass-panel rounded-2xl p-5 bg-gradient-to-br ${card.bg} border`}>
                         <div className="flex items-center justify-between mb-3">
                             <span className="text-xs text-zinc-400 font-medium uppercase tracking-wider">{card.label}</span>
@@ -317,7 +317,7 @@ export default function PnLPage() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
-                            {rows.map((r) => {
+                            {rows.map((r: any) => {
                                 const isWin = r.pnl >= 0;
                                 const accounts = symbolAccounts[r.symbol] ?? [];
                                 return (
@@ -330,8 +330,8 @@ export default function PnLPage() {
                                         <td className="p-4">
                                             <div className="flex flex-wrap gap-1">
                                                 {accounts.length > 0 ? accounts
-                                                    .filter(a => (selectedBroker === 'All' || a.broker === selectedBroker) && (selectedAccountType === 'All' || a.account_type === selectedAccountType))
-                                                    .map((a, ai) => {
+                                                    .filter((a: any) => (selectedBroker === 'All' || a.broker === selectedBroker) && (selectedAccountType === 'All' || a.account_type === selectedAccountType))
+                                                    .map((a: any, ai: number) => {
                                                         const bc = BROKER_COLORS[a.broker] ?? DEFAULT_BROKER_COLOR;
                                                         const ac = ACCOUNT_COLORS[a.account_type] ?? DEFAULT_ACCOUNT_COLOR;
                                                         return (
@@ -405,7 +405,7 @@ export default function PnLPage() {
                         <tbody className="divide-y divide-white/5">
                             {realizedLoading ? (
                                 <tr><td className="p-6 text-zinc-500 animate-pulse" colSpan={7}>Loading realized data...</td></tr>
-                            ) : realizedSorted.map((r, i) => {
+                            ) : realizedSorted.map((r: any, i: number) => {
                                 const isWin = r.pnl_amount >= 0;
                                 const inCad = r.currency === "USD" ? r.pnl_amount * usdCad : r.pnl_amount;
                                 const cbDisplay = r.cost_basis_sold > 0
