@@ -287,14 +287,18 @@ def calculate_holdings(df_tx):
     Calculates current holdings and realized PnL from transactions.
     Using FIFO for Tax Lots to be more accurate for CAGR.
     """
-    # symbol -> list of [date, qty, price, comm_per_share, currency]
+    # (symbol, broker, account_type) -> list of lots
     lots = {} 
-    realized_pnl = {} # symbol -> { 'CAD': 0, 'USD': 0 }
-    merger_basis_carryover = {} # {Symbol: cost}
+    realized_pnl = {} # (symbol, broker, account_type) -> { 'CAD': 0, 'USD': 0 }
+    merger_basis_carryover = {} # {(Symbol, broker, account): cost}
 
-    # Group by symbol and process sorted transactions
+    # Group by symbol and broker/account and process sorted transactions
     for _, tx in df_tx.iterrows():
         sym = tx['Symbol']
+        broker = tx.get('Broker')
+        account = tx.get('Account_Type')
+        key = (sym, broker, account)
+        
         action = tx['Action']
         qty = tx['Quantity']
         price = tx['Price']
@@ -302,33 +306,34 @@ def calculate_holdings(df_tx):
         curr = tx['Currency']
         
         if action == 'BUY':
-            if sym not in lots: lots[sym] = []
+            if key not in lots: lots[key] = []
             desc = str(tx.get('Description', '')).upper()
             
-            # Calculate cost basis from Amount if possible (CIBC buys are negative amounts)
+            # Calculate cost basis from Amount if possible
             cost = abs(tx['Amount']) if tx['Amount'] != 0 and not pd.isna(tx['Amount']) else (qty * price + comm)
             
             # SPECIAL CASE: Merger receipt
             if 'RECEIVED' in desc and ('MERGER' in desc or 'ADJUSTMENT' in desc or 'REORG' in desc):
-                if sym in merger_basis_carryover:
-                    cost += merger_basis_carryover.pop(sym)
-                elif 'WCP' in sym and 'WCP' in merger_basis_carryover:
-                    # Specific hack for WCP/VEREN if needed, but the mapping should handle it
-                    cost += merger_basis_carryover.pop('WCP')
+                if key in merger_basis_carryover:
+                    cost += merger_basis_carryover.pop(key)
+                elif (sym, broker, account) in merger_basis_carryover:
+                    cost += merger_basis_carryover.pop((sym, broker, account))
 
-            lots[sym].append({
+            lots[key].append({
                 'Trade Date': tx['Date'],
                 'Quantity': qty,
                 'Cost': cost,
                 'Purchase Price': cost / qty if qty > 0 else price,
                 'Commission': comm,
                 'Currency': curr,
-                'Description': desc
+                'Description': desc,
+                'Broker': broker,
+                'Account_Type': account
             })
         elif action == 'SELL':
-            if sym in lots:
+            if key in lots:
                 remaining_sell_qty = qty
-                if sym not in realized_pnl: realized_pnl[sym] = {}
+                if key not in realized_pnl: realized_pnl[key] = {}
                 
                 # Proceeds from Amount if possible
                 total_proceeds = tx['Amount'] if tx['Amount'] != 0 and not pd.isna(tx['Amount']) else (qty * price - comm)
@@ -336,8 +341,8 @@ def calculate_holdings(df_tx):
                 desc = str(tx.get('Description', '')).upper()
                 is_merger_surrender = 'SURRENDERED' in desc and ('MERGER' in desc or 'ADJUSTMENT' in desc or 'REORG' in desc)
                 
-                while remaining_sell_qty > 0 and lots[sym]:
-                    lot = lots[sym][0]
+                while remaining_sell_qty > 0 and lots[key]:
+                    lot = lots[key][0]
                     if lot['Quantity'] <= remaining_sell_qty:
                         # Full lot sold
                         sold_qty = lot['Quantity']
@@ -345,14 +350,14 @@ def calculate_holdings(df_tx):
                         share_of_proceeds = total_proceeds * (sold_qty / qty)
                         
                         if is_merger_surrender:
-                            if sym not in merger_basis_carryover: merger_basis_carryover[sym] = 0.0
-                            merger_basis_carryover[sym] += cost_basis
+                            if key not in merger_basis_carryover: merger_basis_carryover[key] = 0.0
+                            merger_basis_carryover[key] += cost_basis
                         else:
-                            if curr not in realized_pnl[sym]: realized_pnl[sym][curr] = 0.0
-                            realized_pnl[sym][curr] += (share_of_proceeds - cost_basis)
+                            if curr not in realized_pnl[key]: realized_pnl[key][curr] = 0.0
+                            realized_pnl[key][curr] += (share_of_proceeds - cost_basis)
                         
                         remaining_sell_qty -= sold_qty
-                        lots[sym].pop(0)
+                        lots[key].pop(0)
                     else:
                         # Partial lot sold
                         sold_qty = remaining_sell_qty
@@ -360,11 +365,11 @@ def calculate_holdings(df_tx):
                         share_of_proceeds = total_proceeds * (sold_qty / qty)
                         
                         if is_merger_surrender:
-                            if sym not in merger_basis_carryover: merger_basis_carryover[sym] = 0.0
-                            merger_basis_carryover[sym] += cost_basis
+                            if key not in merger_basis_carryover: merger_basis_carryover[key] = 0.0
+                            merger_basis_carryover[key] += cost_basis
                         else:
-                            if curr not in realized_pnl[sym]: realized_pnl[sym][curr] = 0.0
-                            realized_pnl[sym][curr] += (share_of_proceeds - cost_basis)
+                            if curr not in realized_pnl[key]: realized_pnl[key][curr] = 0.0
+                            realized_pnl[key][curr] += (share_of_proceeds - cost_basis)
                         
                         lot['Quantity'] -= sold_qty
                         lot['Cost'] -= cost_basis
@@ -374,7 +379,8 @@ def calculate_holdings(df_tx):
                 pass
 
     rows = []
-    for sym, symbol_lots in lots.items():
+    for key, symbol_lots in lots.items():
+        sym, broker, account = key
         valid_lots = [lot for lot in symbol_lots if lot['Quantity'] > 0.0001]
         if not valid_lots:
             continue
@@ -389,6 +395,8 @@ def calculate_holdings(df_tx):
         
         rows.append({
             'Symbol': sym,
+            'Broker': broker,
+            'Account_Type': account,
             'Quantity': total_quantity,
             'Purchase Price': total_cost / total_quantity if total_quantity > 0 else 0,
             'Trade Date': latest_date,
@@ -397,7 +405,7 @@ def calculate_holdings(df_tx):
         })
     df_out = pd.DataFrame(rows)
     if df_out.empty:
-        df_out = pd.DataFrame(columns=['Symbol', 'Quantity', 'Purchase Price', 'Trade Date', 'Commission', 'Currency'])
+        df_out = pd.DataFrame(columns=['Symbol', 'Broker', 'Account_Type', 'Quantity', 'Purchase Price', 'Trade Date', 'Commission', 'Currency'])
     return df_out, realized_pnl
 
 def prepare_portfolio_df(holdings_df):
