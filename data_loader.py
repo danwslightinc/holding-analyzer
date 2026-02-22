@@ -8,12 +8,12 @@ from transaction_parser import load_all_transactions, calculate_holdings
 # Import DB internal modules with absolute or relative paths depending on how it's called
 try:
     from backend.database import engine, create_db_and_tables
-    from backend.models import Holding, Transaction
+    from backend.models import Holding, Transaction, InvestmentThesis
     from backend.cache import cache_result, portfolio_cache
 except ImportError:
     # Fallback for scripts running from root
     from .backend.database import engine, create_db_and_tables
-    from .backend.models import Holding, Transaction
+    from .backend.models import Holding, Transaction, InvestmentThesis
     from .backend.cache import cache_result, portfolio_cache
 
 @cache_result(portfolio_cache)
@@ -71,43 +71,59 @@ def load_portfolio_from_db():
         df_tx = pd.DataFrame(data)
         df_h_holdings, realized_pnl = calculate_holdings(df_tx)
         
-        # 3. Enrich with Mental Data from Holding table
+        # 3. Enrich with Mental Data from InvestmentThesis table
+        theses = session.exec(select(InvestmentThesis)).all()
+        
         # Create map of symbol -> mental data
-        mental_map = {h.symbol: {
-            'Thesis': h.thesis or "",
-            'Catalyst': getattr(h, 'catalyst', ""), # In case I add it later
-            'Kill Switch': h.kill_switch or "",
-            'Conviction': h.conviction or "",
-            'Timeframe': h.timeframe or ""
-        } for h in holdings}
+        mental_map = {t.symbol: {
+            'Thesis': t.thesis or "",
+            'Catalyst': "", # Placeholder, potentially add field in future
+            'Kill Switch': t.kill_switch or "",
+            'Conviction': t.conviction or "",
+            'Timeframe': t.timeframe or ""
+        } for t in theses}
         
         # Special case: Catalyst might be news-fetched, but we check if it's in the DB
         # Actually, if Catalyst isn't in the Holding model, we'll let the API handle it as before.
         
-        # Merge manual overrides from Holding table if they exist (for cases like "CAD=X")
+        # 4. Combine and Enrich
+        # We start with the calculated holdings from transactions
         rows = []
-        for symbol, h_info in mental_map.items():
-            # Check if this ticker has a position in calculated holdings
-            h_rows = df_h_holdings[df_h_holdings['Symbol'] == symbol]
+        processed_symbols = set()
+        
+        for _, r in df_h_holdings.iterrows():
+            sym = r['Symbol']
+            d = r.to_dict()
+            # Attach thesis data if it exists
+            d.update(mental_map.get(sym, {
+                'Thesis': "", 'Catalyst': "", 'Kill Switch': "", 
+                'Conviction': "", 'Timeframe': ""
+            }))
+            rows.append(d)
+            processed_symbols.add(sym)
             
-            if not h_rows.empty:
-                for _, r in h_rows.iterrows():
-                    d = r.to_dict()
-                    d.update(h_info)
-                    rows.append(d)
-            else:
-                # Ticker in Holding table but no transactions found? 
-                # Check if it was a manual entry in the database
-                h_obj = next((h for h in holdings if h.symbol == symbol), None)
-                if h_obj and h_obj.quantity and h_obj.quantity > 0:
-                    rows.append({
-                        'Symbol': symbol,
-                        'Purchase Price': h_obj.purchase_price,
-                        'Quantity': h_obj.quantity,
-                        'Commission': h_obj.commission or 0.0,
-                        'Trade Date': h_obj.trade_date,
-                        **h_info
-                    })
+        # Add manual entries from Holding table that weren't in transactions
+        for h in holdings:
+            if h.symbol in processed_symbols:
+                continue
+            
+            if h.quantity and h.quantity > 0:
+                d = {
+                    'Symbol': h.symbol,
+                    'Broker': h.broker,
+                    'Account_Type': h.account_type,
+                    'Purchase Price': h.purchase_price,
+                    'Quantity': h.quantity,
+                    'Commission': h.commission or 0.0,
+                    'Trade Date': h.trade_date,
+                }
+                # Attach thesis data
+                d.update(mental_map.get(h.symbol, {
+                    'Thesis': "", 'Catalyst': "", 'Kill Switch': "", 
+                    'Conviction': "", 'Timeframe': ""
+                }))
+                rows.append(d)
+                processed_symbols.add(h.symbol)
 
         if not rows:
             return pd.DataFrame(), realized_pnl
