@@ -26,6 +26,15 @@ interface SortCfg { key: string; dir: SortDir }
 const fmt = (n: number) =>
     `${n < 0 ? "-" : "+"}$${Math.abs(n).toLocaleString("en-CA", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
+/** Official bank brand colors extracted from live websites */
+const BROKER_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+    TD: { bg: "rgba(0,138,0,0.15)", text: "#00b300", border: "rgba(0,138,0,0.40)" },  // td.com #008A00
+    CIBC: { bg: "rgba(196,31,62,0.15)", text: "#e84464", border: "rgba(196,31,62,0.40)" }, // cibc.com #C41F3E
+    RBC: { bg: "rgba(0,106,195,0.15)", text: "#3da5ff", border: "rgba(0,106,195,0.40)" }, // rbc.com #006AC3
+    Manual: { bg: "rgba(255,255,255,0.08)", text: "#a1a1aa", border: "rgba(255,255,255,0.15)" },
+};
+const DEFAULT_BROKER_COLOR = { bg: "rgba(255,255,255,0.08)", text: "#a1a1aa", border: "rgba(255,255,255,0.15)" };
+
 /** Clickable sort header */
 function SortTh({ label, sortKey, cfg, onSort, align = "right" }: {
     label: string; sortKey: string;
@@ -304,10 +313,26 @@ export default function PnLPage() {
                                     <tr key={i} className="hover:bg-white/5 transition-colors">
                                         <td className="p-4 font-bold text-blue-400">{r.symbol}</td>
                                         <td className="p-4">
-                                            <span className="px-2 py-0.5 rounded-lg bg-white/10 text-xs font-medium text-zinc-300">{r.broker}</span>
+                                            {(() => {
+                                                const c = BROKER_COLORS[r.broker] ?? DEFAULT_BROKER_COLOR;
+                                                return (
+                                                    <span style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}` }}
+                                                        className="px-2.5 py-0.5 rounded-lg text-xs font-bold tracking-wide">
+                                                        {r.broker}
+                                                    </span>
+                                                );
+                                            })()}
                                         </td>
                                         <td className="p-4">
-                                            <span className="px-2 py-0.5 rounded-lg bg-blue-500/15 text-xs font-medium text-blue-400">{r.account_type}</span>
+                                            {(() => {
+                                                const c = BROKER_COLORS[r.broker] ?? DEFAULT_BROKER_COLOR;
+                                                return (
+                                                    <span style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}`, opacity: 0.85 }}
+                                                        className="px-2.5 py-0.5 rounded-lg text-xs font-medium">
+                                                        {r.account_type}
+                                                    </span>
+                                                );
+                                            })()}
                                         </td>
                                         <td className="p-4 text-right text-zinc-400">{cbDisplay}</td>
                                         <td className={`p-4 text-right font-semibold ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
