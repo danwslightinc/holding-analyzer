@@ -493,8 +493,11 @@ def get_fundamental_data(symbols):
         'CAD=X': 'Currency', 'CASH.TO': 'Cash & Equivalents', 'NVDA': 'Technology',
         'MSFT': 'Technology', 'CRM': 'Technology', 'COST': 'Consumer Defensive',
         'V': 'Financial Services', 'UNH': 'Healthcare', 'TD.TO': 'Financial Services',
-        'CM.TO': 'Financial Services', 'AC.TO': 'Industrials',        'WCP.TO': 'Energy', 'VDY.TO': 'Canadian Dividends',
-        'AVUV': 'US Small Cap Value', 'JPST': 'Short-Term Fixed Income'
+        'CM.TO': 'Financial Services', 'AC.TO': 'Industrials', 'WCP.TO': 'Energy', 'VDY.TO': 'Canadian Dividends',
+        'AVUV': 'US Small Cap Value', 'JPST': 'Short-Term Fixed Income',
+        'QQQ': 'US Technology',   # Nasdaq-100 ETF — yahooquery category field is often missing
+        'XQQ': 'US Technology',   # TSX-listed equivalent without .TO suffix
+        'SMH': 'US Semiconductors', # VanEck Semiconductor ETF
     }
 
     try:
