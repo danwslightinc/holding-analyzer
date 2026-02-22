@@ -9,11 +9,14 @@ from transaction_parser import load_all_transactions, calculate_holdings
 try:
     from backend.database import engine
     from backend.models import Holding, Transaction
+    from backend.cache import cache_result, portfolio_cache
 except ImportError:
     # Fallback for scripts running from root
     from .backend.database import engine
     from .backend.models import Holding, Transaction
+    from .backend.cache import cache_result, portfolio_cache
 
+@cache_result(portfolio_cache)
 def load_portfolio_from_db():
     """
     Loads portfolio data from the SQL database and returns it in a format 

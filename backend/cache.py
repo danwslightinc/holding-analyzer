@@ -29,6 +29,7 @@ news_cache = TTLCache(ttl_seconds=600)         # News update every 10 mins
 dividend_cache = TTLCache(ttl_seconds=3600)    # Dividends update every 1 hour
 history_cache = TTLCache(ttl_seconds=3600)     # History update every 1 hour
 fx_cache = TTLCache(ttl_seconds=300)          # FX update every 5 mins
+portfolio_cache = TTLCache(ttl_seconds=3600)  # Portfolio data (cleared on write)
 
 def cache_result(cache_obj):
     def decorator(func):
@@ -46,6 +47,7 @@ def cache_result(cache_obj):
             return result
         return wrapper
     return decorator
+
 def clear_all_caches():
     prices_cache.clear()
     fundamentals_cache.clear()
@@ -54,4 +56,5 @@ def clear_all_caches():
     dividend_cache.clear()
     history_cache.clear()
     fx_cache.clear()
+    portfolio_cache.clear()
     print("All caches cleared")
