@@ -21,6 +21,8 @@ interface Holding {
     CAGR: number;
     Status: string;
     Currency: string;
+    Broker: string;
+    Account_Type: string;
     [key: string]: any;
 }
 
@@ -48,29 +50,57 @@ interface DividendData {
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF1919'];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+/** Official bank brand colors extracted from live websites */
+const BROKER_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+    TD: { bg: "rgba(0,138,0,0.15)", text: "#00b300", border: "rgba(0,138,0,0.40)" },  // td.com #008A00
+    CIBC: { bg: "rgba(196,31,62,0.15)", text: "#e84464", border: "rgba(196,31,62,0.40)" }, // cibc.com #C41F3E
+    RBC: { bg: "rgba(0,106,195,0.15)", text: "#3da5ff", border: "rgba(0,106,195,0.40)" }, // rbc.com #006AC3
+    Manual: { bg: "rgba(255,255,255,0.08)", text: "#a1a1aa", border: "rgba(255,255,255,0.15)" },
+};
+const DEFAULT_BROKER_COLOR = { bg: "rgba(255,255,255,0.08)", text: "#a1a1aa", border: "rgba(255,255,255,0.15)" };
+
+/** Account-type color scheme — each account type has its own look */
+const ACCOUNT_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+    TFSA: { bg: "rgba(20,184,166,0.15)", text: "#2dd4bf", border: "rgba(20,184,166,0.40)" }, // teal  — tax-free growth
+    RRSP: { bg: "rgba(139,92,246,0.15)", text: "#a78bfa", border: "rgba(139,92,246,0.40)" }, // purple — retirement
+    Open: { bg: "rgba(249,115,22,0.15)", text: "#fb923c", border: "rgba(249,115,22,0.40)" }, // orange — taxable/open
+    Manual: { bg: "rgba(255,255,255,0.08)", text: "#a1a1aa", border: "rgba(255,255,255,0.15)" },
+};
+const DEFAULT_ACCOUNT_COLOR = { bg: "rgba(255,255,255,0.08)", text: "#a1a1aa", border: "rgba(255,255,255,0.15)" };
+
 export default function Dashboard() {
-    const { data: portData, dividends: divRaw, tickerPerf, loading: portLoading, error: portError } = usePortfolio();
+    const { data: portData, dividends: divRaw, tickerPerf, symbolAccounts, loading: portLoading, error: portError } = usePortfolio();
     const [divs, setDivs] = useState<any>(null);
     const [isMounted, setIsMounted] = useState(false);
     const [selectedMetric, setSelectedMetric] = useState<string>('Gain (Value)');
     const [selectedTimeframe, setSelectedTimeframe] = useState<string>('All');
+    const [selectedBroker, setSelectedBroker] = useState<string>('All');
+    const [selectedAccountType, setSelectedAccountType] = useState<string>('All');
     const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'Market_Value', direction: 'desc' });
 
     // Move processDividends before useEffect so it is hoisted/accessible
-    const processDividends = (divRaw: any, portData: PortfolioData) => {
-        const chartData = MONTHS.map((m: string) => ({ name: m }) as any);
-        const symbols = Object.keys(divRaw);
-        const shareMap: Record<string, number> = {};
-        portData.holdings.forEach((h: Holding) => shareMap[h.Symbol] = h.Quantity);
+    const processDividends = (divData: any, holdings: any[]) => {
+        if (!divData || !holdings) return;
 
-        symbols.forEach((sym: string) => {
-            const d = divRaw[sym];
-            if (d && d.Months) {
-                const shares = shareMap[sym] || 0;
-                const amt = shares * d.Rate;
-                d.Months.forEach((m: number) => {
+        const chartData = MONTHS.map((m: string) => ({ name: m }) as any);
+        const symbols = Array.from(new Set(holdings.map(h => h.Symbol)));
+
+        // Create a lookup for dividend info per symbol from the API response
+        const divLookup: Record<string, any> = {};
+        if (divData.holdings) {
+            divData.holdings.forEach((dh: any) => {
+                divLookup[dh.symbol] = dh;
+            });
+        }
+
+        holdings.forEach((h: any) => {
+            const d = divLookup[h.Symbol];
+            if (d && d.months) {
+                const monthlyAmt = h.Quantity * d.dividend_rate;
+                d.months.forEach((m: number) => {
                     if (m >= 1 && m <= 12) {
-                        chartData[m - 1][sym] = amt;
+                        const monthKey = MONTHS[m - 1];
+                        chartData[m - 1][h.Symbol] = (chartData[m - 1][h.Symbol] || 0) + monthlyAmt;
                     }
                 });
             }
@@ -81,20 +111,45 @@ export default function Dashboard() {
     useEffect(() => {
         setIsMounted(true);
         if (portData && divRaw) {
-            processDividends(divRaw, portData);
+            // Re-process dividends whenever filtered results might change
+            processDividends(divRaw, filteredHoldings);
         }
-    }, [portData, divRaw]);
+    }, [portData, divRaw, selectedBroker, selectedAccountType]);
 
     if (portLoading && !portData) return <div className="p-10 text-center animate-pulse">Loading Dashboard...</div>;
     if (portError) return <div className="p-10 text-center text-red-500">Failed to load data. Ensure Backend is running.</div>;
     if (!portData) return null;
 
     const data = portData;
+    const brokers = ['All', ...Array.from(new Set(data.holdings.map((h: any) => h.Broker).filter(Boolean)))];
+    const accountTypes = ['All', ...Array.from(new Set(data.holdings.map((h: any) => h.Account_Type).filter(Boolean)))];
 
-    // Derived Metrics
-    const totalValue = data.summary.total_value;
-    const totalPnL = data.summary.total_pnl;
-    const totalCost = data.summary.total_cost;
+    const filteredHoldings = data.holdings.filter((h: Holding) => {
+        const bMatch = selectedBroker === 'All' || h.Broker === selectedBroker;
+        const aMatch = selectedAccountType === 'All' || h.Account_Type === selectedAccountType;
+        return bMatch && aMatch;
+    });
+
+    // Group filtered results by symbol for display
+    const groupedMap = filteredHoldings.reduce((acc: any, h: Holding) => {
+        if (!acc[h.Symbol]) {
+            acc[h.Symbol] = { ...h };
+        } else {
+            const prev = acc[h.Symbol];
+            const prevCost = (prev.Market_Value - prev.PnL);
+            const currCost = (h.Market_Value - h.PnL);
+            prev.Quantity += h.Quantity;
+            prev.Market_Value += h.Market_Value;
+            prev.PnL += h.PnL;
+            prev['Purchase Price'] = (prevCost + currCost) / prev.Quantity;
+        }
+        return acc;
+    }, {});
+    const displayedHoldings = Object.values(groupedMap) as Holding[];
+
+    const totalValue = filteredHoldings.reduce((sum: number, h: any) => sum + (h.Market_Value || 0), 0);
+    const totalPnL = filteredHoldings.reduce((sum: number, h: any) => sum + (h.PnL || 0), 0);
+    const totalCost = totalValue - totalPnL;
     const pnlPercent = totalCost > 0 ? (totalPnL / totalCost) * 100 : 0;
 
     // Process holdings for the chart based on selected metric and timeframe
@@ -107,7 +162,7 @@ export default function Dashboard() {
         setSortConfig({ key, direction });
     };
 
-    const sortedHoldings = [...data.holdings].sort((a: Holding, b: Holding) => {
+    const sortedHoldings = [...displayedHoldings].sort((a: Holding, b: Holding) => {
         let aValue: any;
         let bValue: any;
 
@@ -137,6 +192,13 @@ export default function Dashboard() {
                 aValue = a.Market_Value > 0 ? (a.PnL / (a.Market_Value - a.PnL)) : 0;
                 bValue = b.Market_Value > 0 ? (b.PnL / (b.Market_Value - b.PnL)) : 0;
                 break;
+            case 'Broker':
+                // For combined view, sorting by primary broker might be best
+                const primary = symbolAccounts?.[a.Symbol]?.[0];
+                aValue = primary?.broker || '';
+                const primaryB = symbolAccounts?.[b.Symbol]?.[0];
+                bValue = primaryB?.broker || '';
+                break;
             default:
                 aValue = (a as any)[sortConfig.key];
                 bValue = (b as any)[sortConfig.key];
@@ -148,36 +210,23 @@ export default function Dashboard() {
     });
 
     const getChartData = () => {
-        // Debug logging
-        console.log('Selected Timeframe:', selectedTimeframe);
-        console.log('Selected Metric:', selectedMetric);
-        console.log('Ticker Perf Available:', !!tickerPerf);
-        if (tickerPerf && data.holdings.length > 0) {
-            const firstSymbol = data.holdings[0].Symbol;
-            console.log(`Sample ${firstSymbol} data:`, tickerPerf[firstSymbol]);
-        }
-
-        // Helper to get timeframe-specific performance
         const getTimeframeValue = (symbol: string, metric: 'value' | 'percent') => {
             if (!tickerPerf || !tickerPerf[symbol]) return 0;
-
             const perfData = tickerPerf[symbol][selectedTimeframe];
             if (!perfData) return 0;
-
             return metric === 'percent' ? perfData.change_pct : perfData.change_value;
         };
 
         switch (selectedMetric) {
             case 'Gain (%)':
-                return data.holdings.map((h: Holding) => {
-                    // Use timeframe-specific % change if available, otherwise use total P&L %
+                return displayedHoldings.map((h: Holding) => {
                     let pnlPercent;
                     if (selectedTimeframe !== 'All' && tickerPerf && tickerPerf[h.Symbol]?.[selectedTimeframe]) {
                         pnlPercent = tickerPerf[h.Symbol][selectedTimeframe].change_pct;
                     } else {
-                        pnlPercent = h.Market_Value > 0 ? (h.PnL / (h.Market_Value - h.PnL)) * 100 : 0;
+                        const cost = h.Market_Value - h.PnL;
+                        pnlPercent = cost > 0 ? (h.PnL / cost) * 100 : 0;
                     }
-
                     return {
                         name: h.Symbol,
                         value: pnlPercent,
@@ -186,26 +235,23 @@ export default function Dashboard() {
                 }).sort((a: any, b: any) => b.value - a.value);
 
             case 'Weight':
-                const filteredTotal = data.holdings.reduce((sum: number, h: Holding) => sum + h.Market_Value, 0);
-                return data.holdings.map((h: Holding) => ({
+                const filteredTotal = displayedHoldings.reduce((sum: number, h: Holding) => sum + h.Market_Value, 0);
+                return displayedHoldings.map((h: Holding) => ({
                     name: h.Symbol,
                     value: filteredTotal > 0 ? (h.Market_Value / filteredTotal) * 100 : 0,
-                    fill: '#3b82f6' // Blue for weight
+                    fill: '#3b82f6'
                 })).sort((a: any, b: any) => b.value - a.value);
 
             case 'Gain (Value)':
             default:
-                return data.holdings.map((h: Holding) => {
-                    // Use timeframe-specific $ change if available, otherwise use total P&L
+                return displayedHoldings.map((h: Holding) => {
                     let pnlValue;
                     if (selectedTimeframe !== 'All' && tickerPerf && tickerPerf[h.Symbol]?.[selectedTimeframe]) {
-                        // Calculate position-level change: change_per_share * quantity
-                        const changePerShare = tickerPerf[h.Symbol][selectedTimeframe].change_value;
-                        pnlValue = changePerShare * h.Quantity;
+                        // Weighted timeframe value for grouped symbol
+                        pnlValue = tickerPerf[h.Symbol][selectedTimeframe].change_value * h.Quantity;
                     } else {
                         pnlValue = h.PnL;
                     }
-
                     return {
                         name: h.Symbol,
                         value: pnlValue,
@@ -254,20 +300,33 @@ export default function Dashboard() {
                         <span className="text-foreground">${totalCost.toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between items-center text-sm">
-                        <span className="text-gray-400">Holdings Count:</span>
-                        <span className="text-foreground">{data.holdings.length}</span>
+                        <span className="text-gray-400">Position Count:</span>
+                        <span className="text-foreground">{displayedHoldings.length}</span>
                     </div>
                     {/* Placeholders for fields we don't have yet */}
                     <div className="flex justify-between items-center text-sm">
                         <span className="text-gray-400">Dividends (YTD):</span>
                         <span className="text-foreground">
                             {(() => {
-                                if (!divRaw || !divRaw.calendar) return "--";
-                                const currentMonth = new Date().getMonth() + 1; // 1-12
-                                const ytd = divRaw.calendar
-                                    .filter((c: any) => c.month_index <= currentMonth)
-                                    .reduce((sum: number, c: any) => sum + c.total, 0);
-                                return `$${ytd.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+                                if (!divRaw || !divRaw.holdings || !filteredHoldings) return "--";
+                                const currentMonth = new Date().getMonth() + 1;
+
+                                // Lookup map for dividend info
+                                const divLookup: Record<string, any> = {};
+                                divRaw.holdings.forEach((dh: any) => {
+                                    divLookup[dh.symbol] = dh;
+                                });
+
+                                let ytdTotal = 0;
+                                filteredHoldings.forEach((h: any) => {
+                                    const d = divLookup[h.Symbol];
+                                    if (d && d.months) {
+                                        const paidMonths = d.months.filter((m: number) => m <= currentMonth).length;
+                                        ytdTotal += h.Quantity * d.dividend_rate * paidMonths;
+                                    }
+                                });
+
+                                return `$${ytdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
                             })()}
                         </span>
                     </div>
@@ -299,33 +358,74 @@ export default function Dashboard() {
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <h3 className="text-xl font-bold">Performance Map</h3>
 
-                    {/* Controls Container */}
-                    <div className="flex flex-col xl:flex-row gap-4">
-                        {/* Metric Selector */}
-                        <div className="flex gap-1 text-sm bg-white/5 p-1 rounded-lg">
-                            {['Gain (Value)', 'Gain (%)', 'Weight'].map((m: string) => (
-                                <button
-                                    key={m}
-                                    onClick={() => setSelectedMetric(m)}
-                                    className={`px-3 py-1 rounded-md transition-all ${m === selectedMetric ? 'bg-black/10 dark:bg-white/10 text-foreground shadow-sm' : 'text-gray-400 hover:text-foreground'}`}
-                                >
-                                    {m}
-                                </button>
-                            ))}
+                    {/* Filters Container */}
+                    <div className="flex flex-wrap items-end gap-4">
+                        {/* Bank Filter */}
+                        <div className="flex flex-col gap-1.5 min-w-[140px]">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Bank</label>
+                            <select
+                                value={selectedBroker}
+                                onChange={(e) => setSelectedBroker(e.target.value)}
+                                className="bg-white/5 border border-white/10 text-foreground text-sm rounded-xl block w-full p-2.5 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all hover:bg-white/10"
+                            >
+                                {brokers.map((b: any) => (
+                                    <option key={b} value={b} className="bg-neutral-900">{b === 'All' ? 'All Banks' : b}</option>
+                                ))}
+                            </select>
                         </div>
 
-                        {/* Time Range Selector - Currently shows total P&L (all holdings) */}
-                        <div className="flex gap-1 text-sm bg-white/5 p-1 rounded-lg overflow-x-auto scrollbar-hide">
-                            {['1d', '1w', '1m', '3m', '6m', 'YTD', '1y', 'All'].map((t: string) => (
-                                <button
-                                    key={t}
-                                    onClick={() => setSelectedTimeframe(t)}
-                                    className={`px-3 py-1 rounded-md transition-all whitespace-nowrap ${t === selectedTimeframe ? 'bg-black/10 dark:bg-white/10 text-foreground shadow-sm' : 'text-gray-400 hover:text-foreground'}`}
-                                >
-                                    {t}
-                                </button>
-                            ))}
+                        {/* Account Type Filter */}
+                        <div className="flex flex-col gap-1.5 min-w-[140px]">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Account Type</label>
+                            <select
+                                value={selectedAccountType}
+                                onChange={(e) => setSelectedAccountType(e.target.value)}
+                                className="bg-white/5 border border-white/10 text-foreground text-sm rounded-xl block w-full p-2.5 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all hover:bg-white/10"
+                            >
+                                {accountTypes.map((at: any) => (
+                                    <option key={at} value={at} className="bg-neutral-900">{at === 'All' ? 'All Accounts' : at}</option>
+                                ))}
+                            </select>
                         </div>
+
+                        {/* Metric Selector */}
+                        <div className="flex flex-col gap-1.5">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Metric</label>
+                            <div className="flex bg-white/5 p-1 rounded-xl border border-white/10 h-[42px] items-center">
+                                {['Gain (Value)', 'Gain (%)', 'Weight'].map((m: string) => (
+                                    <button
+                                        key={m}
+                                        onClick={() => setSelectedMetric(m)}
+                                        className={`px-4 py-1.5 rounded-lg transition-all text-xs h-full font-medium ${m === selectedMetric ? 'bg-blue-600 text-white shadow-md' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-black/5 dark:hover:bg-white/5'}`}
+                                    >
+                                        {m}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Time Range Selector */}
+                        <div className="flex flex-col gap-1.5">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Timeframe</label>
+                            <div className="flex bg-white/5 p-1 rounded-xl border border-white/10 h-[42px] items-center overflow-x-auto scrollbar-hide">
+                                {['1d', '1w', '1m', '3m', '6m', 'YTD', '1y', 'All'].map((t: string) => (
+                                    <button
+                                        key={t}
+                                        onClick={() => setSelectedTimeframe(t)}
+                                        className={`px-3 py-1.5 rounded-lg transition-all text-xs h-full whitespace-nowrap font-medium ${t === selectedTimeframe ? 'bg-blue-600 text-white shadow-md' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-black/5 dark:hover:bg-white/5'}`}
+                                    >
+                                        {t}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={() => { setSelectedBroker('All'); setSelectedAccountType('All'); setSelectedMetric('Gain (Value)'); setSelectedTimeframe('All'); }}
+                            className="h-[42px] px-4 text-xs font-medium text-gray-500 hover:text-white transition-colors"
+                        >
+                            Reset
+                        </button>
                     </div>
                 </div>
 
@@ -377,6 +477,7 @@ export default function Dashboard() {
                             <tr>
                                 {[
                                     { label: 'Ticker', key: 'Symbol', align: 'left' },
+                                    { label: 'Broker / Account', key: 'Broker', align: 'left' },
                                     { label: 'Allocation', key: 'Market_Value', align: 'right' },
                                     { label: 'Price', key: 'Price', align: 'right' },
                                     { label: 'Avg Cost', key: 'AvgCost', align: 'right' },
@@ -418,6 +519,28 @@ export default function Dashboard() {
                                             <div className="font-bold text-foreground">{h.Symbol}</div>
                                             <div className="text-xs text-gray-500">
                                                 {h.Quantity.toLocaleString(undefined, { maximumFractionDigits: 4 })} shares
+                                            </div>
+                                        </td>
+                                        <td className="p-4">
+                                            <div className="flex flex-wrap gap-1">
+                                                {symbolAccounts && symbolAccounts[h.Symbol] ? symbolAccounts[h.Symbol]
+                                                    .filter((a: any) => (selectedBroker === 'All' || a.broker === selectedBroker) && (selectedAccountType === 'All' || a.account_type === selectedAccountType))
+                                                    .map((a: any, ai: number) => {
+                                                        const bc = BROKER_COLORS[a.broker] ?? DEFAULT_BROKER_COLOR;
+                                                        const ac = ACCOUNT_COLORS[a.account_type] ?? DEFAULT_ACCOUNT_COLOR;
+                                                        return (
+                                                            <span key={ai} className="inline-flex gap-0.5">
+                                                                <span style={{ background: bc.bg, color: bc.text, border: `1px solid ${bc.border}` }}
+                                                                    className="px-1.5 py-0.5 rounded-l-md text-xs font-bold border-y border-l">
+                                                                    {a.broker}
+                                                                </span>
+                                                                <span style={{ background: ac.bg, color: ac.text, border: `1px solid ${ac.border}` }}
+                                                                    className="px-1.5 py-0.5 rounded-r-md text-xs font-semibold border-y border-r">
+                                                                    {a.account_type}
+                                                                </span>
+                                                            </span>
+                                                        );
+                                                    }) : <span className="text-zinc-600 text-xs">—</span>}
                                             </div>
                                         </td>
                                         <td className="p-4 text-right text-gray-400">

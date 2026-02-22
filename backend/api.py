@@ -564,7 +564,7 @@ def get_realized_pnl():
 def get_symbol_accounts():
     """
     Returns a mapping of symbol -> list of {broker, account_type}
-    read strictly from the Database (Transaction table descriptions).
+    read strictly from the Database (Transaction table broker/account columns).
     """
     result: dict = {}
     
@@ -578,13 +578,11 @@ def get_symbol_accounts():
 
     try:
         with Session(engine) as session:
-            # Source of truth is the DB
+            # Source of truth is the DB columns
             manual_txs = session.exec(select(DBTransaction).where(DBTransaction.source == "Manual")).all()
             for tx in manual_txs:
-                if tx.description:
-                    parts = tx.description.strip().split()
-                    if len(parts) >= 2:
-                        add_entry(tx.symbol, parts[0], parts[1])
+                if tx.broker and tx.account_type:
+                    add_entry(tx.symbol, tx.broker, tx.account_type)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

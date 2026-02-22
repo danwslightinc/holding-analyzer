@@ -4,12 +4,14 @@ from sqlmodel import SQLModel, Field, Relationship
 
 class Holding(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    symbol: str = Field(index=True, unique=True)
+    symbol: str = Field(index=True)
     thesis: Optional[str] = None
     conviction: Optional[str] = None
     timeframe: Optional[str] = None
     kill_switch: Optional[str] = None
     comment: Optional[str] = None
+    broker: Optional[str] = None
+    account_type: Optional[str] = None
     
     # Manual override fields (from portfolio.csv)
     purchase_price: Optional[float] = None
@@ -33,6 +35,8 @@ class Transaction(SQLModel, table=True):
     amount: float = 0.0 # Total amount in transaction currency
     currency: str = "CAD"
     description: Optional[str] = None
+    broker: Optional[str] = None
+    account_type: Optional[str] = None
     source: str = "Manual" # CIBC, RBC, TD, Manual
     
     holding: Optional[Holding] = Relationship(back_populates="transactions")

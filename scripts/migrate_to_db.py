@@ -39,43 +39,35 @@ def migrate():
             df_manual = pd.read_csv(CSV_PATH)
             
         # 3. Process Holdings
-        symbols = set()
         if not df_manual.empty:
-            symbols.update(df_manual['Symbol'].unique())
-        
-        print(f"Migrating {len(symbols)} symbols...")
-        
-        for symbol in symbols:
-            # Check if exists
-            existing = session.exec(select(Holding).where(Holding.symbol == symbol)).first()
-            if existing: continue
+            # Group by Symbol and Comment to handle different accounts (e.g. CIBC TFSA vs RBC RRSP)
+            groups = df_manual.groupby(['Symbol', 'Comment'], dropna=False)
+            print(f"Migrating {len(groups)} position/account combinations...")
             
-            h = Holding(symbol=symbol)
-            
-            # Add thesis info
-            t_info = thesis_data.get(symbol, {})
-            h.thesis = t_info.get("Thesis")
-            h.conviction = t_info.get("Conviction")
-            h.timeframe = t_info.get("Timeframe")
-            h.kill_switch = t_info.get("Kill Switch")
-            
-            # Add manual position info if present
-            if not df_manual.empty and symbol in df_manual['Symbol'].values:
-                # Get all rows for the symbol
-                rows = df_manual[df_manual['Symbol'] == symbol]
+            for (symbol, comment), rows in groups:
+                if pd.isna(symbol): continue
+                symbol = str(symbol).strip()
+                comment_str = str(comment).strip() if pd.notna(comment) else ""
                 
-                # Aggregate quantity and calculate weighted average price
+                h = Holding(symbol=symbol)
+                
+                # Add thesis info (tied to symbol, not account)
+                t_info = thesis_data.get(symbol, {})
+                h.thesis = t_info.get("Thesis")
+                h.conviction = t_info.get("Conviction")
+                h.timeframe = t_info.get("Timeframe")
+                h.kill_switch = t_info.get("Kill Switch")
+                
+                # Aggregate quantity for THIS specific account/symbol combination
                 valid_qty_rows = rows.dropna(subset=['Quantity'])
                 if not valid_qty_rows.empty:
-                    # Filter out non-numeric quantities or parse strings gracefully if needed
-                    # pandas handles numbers fine, but let's be safe
                     valid_qty_rows['Quantity'] = pd.to_numeric(valid_qty_rows['Quantity'], errors='coerce')
                     valid_qty_rows = valid_qty_rows.dropna(subset=['Quantity'])
                     
                     if not valid_qty_rows.empty:
                         h.quantity = float(valid_qty_rows['Quantity'].sum())
                         
-                        # Calculate weighted average purchase price
+                        # Calculate weighted average purchase price for this account
                         price_qty_rows = valid_qty_rows.dropna(subset=['Purchase Price'])
                         price_qty_rows['Purchase Price'] = pd.to_numeric(price_qty_rows['Purchase Price'], errors='coerce')
                         price_qty_rows = price_qty_rows.dropna(subset=['Purchase Price'])
@@ -92,24 +84,26 @@ def migrate():
                         else:
                             h.commission = 0.0
                 
-                # Take the first available comment if any
-                if 'Comment' in rows:
-                    comments = rows['Comment'].dropna()
-                    h.comment = comments.iloc[0] if not comments.empty else None
+                # Set account details
+                if comment_str:
+                    h.comment = comment_str
+                    parts = comment_str.split()
+                    if len(parts) >= 2:
+                        h.broker = parts[0]
+                        h.account_type = parts[1]
                 
-                # Get the latest trade date
+                # Get the latest trade date for this account
                 if 'Trade Date' in rows:
                     valid_dates = rows['Trade Date'].dropna()
                     if not valid_dates.empty:
                         try:
-                            # Handle mixed formats safely
                             parsed_dates = pd.to_datetime(valid_dates, errors='coerce').dropna()
                             if not parsed_dates.empty:
                                 h.trade_date = parsed_dates.max()
                         except:
                             pass
-            
-            session.add(h)
+                
+                session.add(h)
         
         session.commit()
         
@@ -127,7 +121,8 @@ def migrate():
                 if pd.isna(qty_val) or symbol == '': 
                     continue
                 
-                h = session.exec(select(Holding).where(Holding.symbol == symbol)).first()
+                comment = str(row.get('Comment', '')).strip()
+                h = session.exec(select(Holding).where(Holding.symbol == symbol).where(Holding.comment == comment)).first()
                 if not h:
                     continue
                 
@@ -151,6 +146,13 @@ def migrate():
                 price = clean_val(row.get('Purchase Price'), 0.0)
                 comm = clean_val(row.get('Commission'), 0.0)
                 
+                b_val, a_val = None, None
+                if comment:
+                    parts = comment.split()
+                    if len(parts) >= 2:
+                        b_val = parts[0]
+                        a_val = parts[1]
+                
                 tx = Transaction(
                     holding_id=h.id,
                     symbol=symbol,
@@ -161,7 +163,9 @@ def migrate():
                     commission=comm,
                     amount=(qty * price) + comm,
                     currency='CAD' if symbol.endswith('.TO') else 'USD',
-                    description=str(row.get('Comment', '')),
+                    description=comment,
+                    broker=b_val,
+                    account_type=a_val,
                     source='Manual'
                 )
                 session.add(tx)

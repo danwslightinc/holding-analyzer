@@ -8,6 +8,7 @@ interface PortfolioContextType {
     dividends: any;
     tickerPerf: any;
     history: any;
+    symbolAccounts: any;
     loading: boolean;
     error: any;
     refresh: (forceRefresh?: boolean) => Promise<void>;
@@ -20,6 +21,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     const [dividends, setDividends] = useState<any>(null);
     const [tickerPerf, setTickerPerf] = useState<any>(null);
     const [history, setHistory] = useState<any>(null);
+    const [symbolAccounts, setSymbolAccounts] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<any>(null);
 
@@ -31,26 +33,29 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
                 await fetch(`${API_BASE_URL}/api/sync`, { method: "POST" });
             }
 
-            const [portRes, divRes, perfRes, histRes] = await Promise.all([
+            const [portRes, divRes, perfRes, histRes, accRes] = await Promise.all([
                 fetch(`${API_BASE_URL}/api/portfolio`),
                 fetch(`${API_BASE_URL}/api/dividends`),
                 fetch(`${API_BASE_URL}/api/ticker-performance`),
-                fetch(`${API_BASE_URL}/api/performance`)
+                fetch(`${API_BASE_URL}/api/performance`),
+                fetch(`${API_BASE_URL}/api/symbol-accounts`)
             ]);
 
             if (!portRes.ok) throw new Error("Failed to fetch portfolio");
 
-            const [p, d, t, h] = await Promise.all([
+            const [p, d, t, h, a] = await Promise.all([
                 portRes.json(),
                 divRes.json(),
                 perfRes.json(),
-                histRes.json()
+                histRes.json(),
+                accRes.json()
             ]);
 
             setData(p);
             setDividends(d);
             setTickerPerf(t);
             setHistory(h);
+            setSymbolAccounts(a);
             setError(null);
         } catch (err) {
             console.error("Context fetch error:", err);
@@ -65,7 +70,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     }, [fetchData]);
 
     return (
-        <PortfolioContext.Provider value={{ data, dividends, tickerPerf, history, loading, error, refresh: fetchData }}>
+        <PortfolioContext.Provider value={{ data, dividends, tickerPerf, history, symbolAccounts, loading, error, refresh: fetchData }}>
             {children}
         </PortfolioContext.Provider>
     );

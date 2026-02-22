@@ -80,10 +80,11 @@ function sortRows<T>(rows: T[], cfg: SortCfg, getValue: (row: T, key: string) =>
 }
 
 export default function PnLPage() {
-    const { data, loading, error } = usePortfolio();
+    const { data, loading, symbolAccounts, error } = usePortfolio();
     const [realized, setRealized] = useState<RealizedRow[]>([]);
     const [realizedLoading, setRealizedLoading] = useState(true);
-    const [symbolAccounts, setSymbolAccounts] = useState<Record<string, { broker: string; account_type: string }[]>>({});
+    const [selectedBroker, setSelectedBroker] = useState<string>('All');
+    const [selectedAccountType, setSelectedAccountType] = useState<string>('All');
 
     // Sort state — unrealized table
     const [uSort, setUSort] = useState<SortCfg>({ key: "pnl", dir: "desc" });
@@ -98,15 +99,12 @@ export default function PnLPage() {
     ), []);
 
     useEffect(() => {
+        setRealizedLoading(true);
         fetch(`${API_BASE_URL}/api/realized-pnl`)
             .then(r => r.json())
             .then(d => setRealized(d))
             .catch(() => { })
             .finally(() => setRealizedLoading(false));
-        fetch(`${API_BASE_URL}/api/symbol-accounts`)
-            .then(r => r.json())
-            .then(d => setSymbolAccounts(d))
-            .catch(() => { });
     }, []);
 
     if (loading) return (
@@ -116,23 +114,46 @@ export default function PnLPage() {
         <div className="p-10 text-center text-rose-400">Failed to load data. Ensure backend is running.</div>
     );
 
-    const holdings = data.holdings as any[];
     const usdCad = data.summary?.usd_cad_rate ?? 1.36;
+    const brokers = ['All', ...Array.from(new Set((data.holdings as any[]).map(h => h.Broker).filter(Boolean)))];
+    const accountTypes = ['All', ...Array.from(new Set((data.holdings as any[]).map(h => h.Account_Type).filter(Boolean)))];
+
+    const filteredHoldings = (data.holdings as any[]).filter((h: any) => {
+        const bMatch = selectedBroker === 'All' || h.Broker === selectedBroker;
+        const aMatch = selectedAccountType === 'All' || h.Account_Type === selectedAccountType;
+        return bMatch && aMatch;
+    });
+
+    const groupedMap: Record<string, any> = {};
+    filteredHoldings.forEach((h: any) => {
+        const sym = h.Symbol;
+        if (!groupedMap[sym]) {
+            groupedMap[sym] = { ...h };
+        } else {
+            const prev = groupedMap[sym];
+            const prevCost = (prev.Market_Value - prev.PnL);
+            const currCost = (h.Market_Value - h.PnL);
+            prev.Quantity += h.Quantity;
+            prev.Market_Value += h.Market_Value;
+            prev.PnL += h.PnL;
+            prev['Purchase Price'] = (prevCost + currCost) / prev.Quantity;
+        }
+    });
 
     // ---- Build unrealized rows ----
-    const rawRows = holdings.map((h: any) => {
-        const costBasis = h["Cost Basis"] ?? 0;
-        const pnl = h["PnL"] ?? 0;
+    const rawRows = Object.values(groupedMap).map((h: any) => {
+        const costBasis = h.Market_Value - h.PnL;
+        const pnl = h.PnL;
         const pnlPct = costBasis > 0 ? (pnl / costBasis) * 100 : 0;
-        const currency = h["Currency"] ?? "USD";
+        const currency = h.Currency ?? "USD";
         return {
             symbol: h.Symbol,
             currency,
             currencyPrefix: currency === "USD" ? "US$" : "$",
-            qty: h["Quantity"] ?? 0,
+            qty: h.Quantity ?? 0,
             avgCost: h["Purchase Price"] ?? 0,
             currentPrice: h["Current Price"] ?? 0,
-            marketValue: h["Market_Value"] ?? 0,
+            marketValue: h.Market_Value ?? 0,
             costBasis,
             pnl,
             pnlPct,
@@ -161,7 +182,13 @@ export default function PnLPage() {
     const chartData = [...rawRows].sort((a, b) => b.pnl - a.pnl).map(r => ({ name: r.symbol, pnl: parseFloat(r.pnl.toFixed(0)) }));
 
     // ---- Realized rows ----
-    const realizedSorted = sortRows(realized, rSort, (r, k) => {
+    const filteredRealized = realized.filter((r: any) => {
+        const bMatch = selectedBroker === 'All' || r.broker === selectedBroker;
+        const aMatch = selectedAccountType === 'All' || r.account_type === selectedAccountType;
+        return bMatch && aMatch;
+    });
+
+    const realizedSorted = sortRows(filteredRealized, rSort, (r, k) => {
         const inCad = r.currency === "USD" ? r.pnl_amount * usdCad : r.pnl_amount;
         const m: Record<string, any> = {
             symbol: r.symbol,
@@ -175,8 +202,8 @@ export default function PnLPage() {
         return m[k];
     });
 
-    const totalRealizedCAD = realized.reduce((s, r) => {
-        return s + (r.currency === "USD" ? r.pnl_amount * usdCad : r.pnl_amount);
+    const totalRealizedCAD = filteredRealized.reduce((sum, r) => {
+        return sum + (r.currency === "USD" ? r.pnl_amount * usdCad : r.pnl_amount);
     }, 0);
 
     return (
@@ -188,6 +215,42 @@ export default function PnLPage() {
                     Profit & Loss
                 </h1>
                 <p className="text-zinc-400 mt-1">Unrealized and realized gains/losses across your portfolio</p>
+            </div>
+
+            {/* Filters */}
+            <div className="flex flex-wrap items-center gap-6">
+                <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Bank</label>
+                    <select
+                        value={selectedBroker}
+                        onChange={(e) => setSelectedBroker(e.target.value)}
+                        className="bg-white/5 border border-white/10 text-zinc-300 text-xs rounded-xl block w-full p-2.5 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all hover:bg-white/10"
+                    >
+                        {brokers.map((b: any) => (
+                            <option key={b} value={b} className="bg-zinc-900">{b === 'All' ? 'All Banks' : b}</option>
+                        ))}
+                    </select>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Account Type</label>
+                    <select
+                        value={selectedAccountType}
+                        onChange={(e) => setSelectedAccountType(e.target.value)}
+                        className="bg-white/5 border border-white/10 text-zinc-300 text-xs rounded-xl block w-full p-2.5 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all hover:bg-white/10"
+                    >
+                        {accountTypes.map((at: any) => (
+                            <option key={at} value={at} className="bg-zinc-900">{at === 'All' ? 'All Accounts' : at}</option>
+                        ))}
+                    </select>
+                </div>
+
+                <button
+                    onClick={() => { setSelectedBroker('All'); setSelectedAccountType('All'); }}
+                    className="self-end mb-1 px-4 py-2 text-xs font-medium text-zinc-500 hover:text-white transition-colors"
+                >
+                    Reset Filters
+                </button>
             </div>
 
             {/* Summary Cards */}
@@ -266,22 +329,24 @@ export default function PnLPage() {
                                         {/* Broker / Account badges */}
                                         <td className="p-4">
                                             <div className="flex flex-wrap gap-1">
-                                                {accounts.length > 0 ? accounts.map((a, ai) => {
-                                                    const bc = BROKER_COLORS[a.broker] ?? DEFAULT_BROKER_COLOR;
-                                                    const ac = ACCOUNT_COLORS[a.account_type] ?? DEFAULT_ACCOUNT_COLOR;
-                                                    return (
-                                                        <span key={ai} className="inline-flex gap-0.5">
-                                                            <span style={{ background: bc.bg, color: bc.text, border: `1px solid ${bc.border}` }}
-                                                                className="px-1.5 py-0.5 rounded-l-md text-xs font-bold">
-                                                                {a.broker}
+                                                {accounts.length > 0 ? accounts
+                                                    .filter(a => (selectedBroker === 'All' || a.broker === selectedBroker) && (selectedAccountType === 'All' || a.account_type === selectedAccountType))
+                                                    .map((a, ai) => {
+                                                        const bc = BROKER_COLORS[a.broker] ?? DEFAULT_BROKER_COLOR;
+                                                        const ac = ACCOUNT_COLORS[a.account_type] ?? DEFAULT_ACCOUNT_COLOR;
+                                                        return (
+                                                            <span key={ai} className="inline-flex gap-0.5">
+                                                                <span style={{ background: bc.bg, color: bc.text, border: `1px solid ${bc.border}` }}
+                                                                    className="px-1.5 py-0.5 rounded-l-md text-xs font-bold">
+                                                                    {a.broker}
+                                                                </span>
+                                                                <span style={{ background: ac.bg, color: ac.text, border: `1px solid ${ac.border}` }}
+                                                                    className="px-1.5 py-0.5 rounded-r-md text-xs font-semibold">
+                                                                    {a.account_type}
+                                                                </span>
                                                             </span>
-                                                            <span style={{ background: ac.bg, color: ac.text, border: `1px solid ${ac.border}` }}
-                                                                className="px-1.5 py-0.5 rounded-r-md text-xs font-semibold">
-                                                                {a.account_type}
-                                                            </span>
-                                                        </span>
-                                                    );
-                                                }) : <span className="text-zinc-600 text-xs">—</span>}
+                                                        );
+                                                    }) : <span className="text-zinc-600 text-xs">—</span>}
                                             </div>
                                         </td>
                                         <td className="p-4 text-right text-zinc-400">{r.qty.toLocaleString()}</td>

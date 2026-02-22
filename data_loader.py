@@ -60,6 +60,8 @@ def load_portfolio_from_db():
                 'Amount': tx.amount,
                 'Currency': tx.currency,
                 'Description': tx.description,
+                'Broker': tx.broker,
+                'Account_Type': tx.account_type,
                 'Source': tx.source
             })
         
@@ -109,7 +111,7 @@ def load_portfolio_from_db():
 
         df = pd.DataFrame(rows)
         # Standardize columns
-        desired_cols = ['Symbol', 'Purchase Price', 'Quantity', 'Commission', 'Trade Date'] + mental_cols
+        desired_cols = ['Symbol', 'Broker', 'Account_Type', 'Purchase Price', 'Quantity', 'Commission', 'Trade Date'] + mental_cols
         cols = [c for c in desired_cols if c in df.columns]
         return df[cols], realized_pnl
 
