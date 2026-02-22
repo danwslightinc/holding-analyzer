@@ -394,7 +394,10 @@ def calculate_holdings(df_tx):
             'Commission': total_comm,
             'Currency': valid_lots[0]['Currency']
         })
-    return pd.DataFrame(rows), realized_pnl
+    df_out = pd.DataFrame(rows)
+    if df_out.empty:
+        df_out = pd.DataFrame(columns=['Symbol', 'Quantity', 'Purchase Price', 'Trade Date', 'Commission', 'Currency'])
+    return df_out, realized_pnl
 
 def prepare_portfolio_df(holdings_df):
     """
