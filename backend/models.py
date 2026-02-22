@@ -5,10 +5,6 @@ from sqlmodel import SQLModel, Field, Relationship
 class Holding(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     symbol: str = Field(index=True)
-    thesis: Optional[str] = None
-    conviction: Optional[str] = None
-    timeframe: Optional[str] = None
-    kill_switch: Optional[str] = None
     comment: Optional[str] = None
     broker: Optional[str] = None
     account_type: Optional[str] = None
@@ -21,6 +17,24 @@ class Holding(SQLModel, table=True):
     
     # Relations
     transactions: List["Transaction"] = Relationship(back_populates="holding")
+    
+    # Thesis data is now linked via Symbol to the InvestmentThesis table
+    investment_thesis: Optional["InvestmentThesis"] = Relationship(
+        sa_relationship_kwargs={
+            "primaryjoin": "Holding.symbol == foreign(InvestmentThesis.symbol)",
+            "uselist": False,
+            "viewonly": True
+        }
+    )
+
+class InvestmentThesis(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    symbol: str = Field(index=True, unique=True)
+    thesis: Optional[str] = None
+    conviction: Optional[str] = None
+    timeframe: Optional[str] = None
+    kill_switch: Optional[str] = None
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 class Transaction(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

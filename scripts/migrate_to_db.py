@@ -9,7 +9,7 @@ from sqlmodel import Session, select
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backend.database import engine, create_db_and_tables
-from backend.models import Holding, Transaction
+from backend.models import Holding, Transaction, InvestmentThesis
 from transaction_parser import load_all_transactions
 
 CSV_PATH = "portfolio.csv"
@@ -25,13 +25,27 @@ def migrate():
         from sqlmodel import delete
         session.exec(delete(Transaction))
         session.exec(delete(Holding))
+        session.exec(delete(InvestmentThesis))
         session.commit()
         
-        # 1. Load thesis.json
+        # 1. Load thesis.json and migrate to InvestmentThesis table
+        print("Migrating theses from thesis.json...")
         thesis_data = {}
         if os.path.exists(THESIS_PATH):
             with open(THESIS_PATH, 'r') as f:
                 thesis_data = json.load(f)
+            
+            for symbol, data in thesis_data.items():
+                if not symbol: continue
+                it = InvestmentThesis(
+                    symbol=symbol,
+                    thesis=data.get("Thesis"),
+                    conviction=data.get("Conviction"),
+                    timeframe=data.get("Timeframe"),
+                    kill_switch=data.get("Kill Switch")
+                )
+                session.add(it)
+        session.commit()
         
         # 2. Load portfolio.csv
         df_manual = pd.DataFrame()
@@ -51,12 +65,7 @@ def migrate():
                 
                 h = Holding(symbol=symbol)
                 
-                # Add thesis info (tied to symbol, not account)
-                t_info = thesis_data.get(symbol, {})
-                h.thesis = t_info.get("Thesis")
-                h.conviction = t_info.get("Conviction")
-                h.timeframe = t_info.get("Timeframe")
-                h.kill_switch = t_info.get("Kill Switch")
+                # Thesis info is now handled by the InvestmentThesis table
                 
                 # Aggregate quantity for THIS specific account/symbol combination
                 valid_qty_rows = rows.dropna(subset=['Quantity'])
