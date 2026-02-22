@@ -41,9 +41,12 @@ class RealizedPnL(SQLModel, table=True):
     """Stores realized (closed) P&L computed from broker CSV transaction history."""
     id: Optional[int] = Field(default=None, primary_key=True)
     symbol: str = Field(index=True)
-    currency: str = "CAD"        # The currency of the pnl_amount (CAD or USD)
-    pnl_amount: float = 0.0      # Realized gain/loss in the above currency
-    source: str = "broker_csv"   # e.g. "broker_csv" or "manual"
+    currency: str = "CAD"         # Native currency of the pnl_amount
+    pnl_amount: float = 0.0       # Realized gain/loss in native currency
+    cost_basis_sold: float = 0.0  # Total cost basis of shares sold (for % calc)
+    broker: str = ""              # e.g. "TD", "RBC", "CIBC"
+    account_type: str = ""        # e.g. "TFSA", "RRSP", "Open"
+    source: str = "broker_csv"
 
 class UserSettings(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

@@ -13,6 +13,10 @@ interface RealizedRow {
     symbol: string;
     currency: string;
     pnl_amount: number;
+    cost_basis_sold: number;
+    pnl_pct: number | null;
+    broker: string;
+    account_type: string;
     source: string;
 }
 
@@ -220,7 +224,7 @@ export default function PnLPage() {
                 <div className="p-6 border-b border-white/10 flex items-center justify-between">
                     <div>
                         <h2 className="text-lg font-bold">Closed Trades — Realized P&L</h2>
-                        <p className="text-xs text-zinc-500 mt-1">Computed via FIFO from your broker CSV exports (RBC, CIBC, TD)</p>
+                        <p className="text-xs text-zinc-500 mt-1">FIFO cost-basis from broker exports (RBC, CIBC, TD) — grouped by broker & account</p>
                     </div>
                     <span className={`text-xl font-bold ${totalRealizedCAD >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
                         {fmt(totalRealizedCAD)} CAD
@@ -231,24 +235,45 @@ export default function PnLPage() {
                         <thead className="bg-white/5 text-zinc-400 text-xs uppercase tracking-wider">
                             <tr>
                                 <th className="p-4">Symbol</th>
+                                <th className="p-4">Broker / Account</th>
+                                <th className="p-4 text-right">Cost Basis</th>
                                 <th className="p-4 text-right">Realized P&L (Native)</th>
-                                <th className="p-4 text-right">Currency</th>
-                                <th className="p-4 text-right">Realized P&L (CAD equiv.)</th>
+                                <th className="p-4 text-right">Return %</th>
+                                <th className="p-4 text-right">Realized P&L (CAD)</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
                             {realizedLoading ? (
-                                <tr><td className="p-6 text-zinc-500 animate-pulse" colSpan={4}>Loading realized data...</td></tr>
-                            ) : realizedSorted.map((r) => {
+                                <tr><td className="p-6 text-zinc-500 animate-pulse" colSpan={6}>Loading realized data...</td></tr>
+                            ) : realizedSorted.map((r, i) => {
                                 const isWin = r.pnl_amount >= 0;
                                 const inCad = r.currency === "USD" ? r.pnl_amount * usdCad : r.pnl_amount;
+                                const cbDisplay = r.cost_basis_sold > 0
+                                    ? `${r.currency === "USD" ? "US$" : "$"}${r.cost_basis_sold.toLocaleString("en-CA", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                                    : "—";
                                 return (
-                                    <tr key={`${r.symbol}-${r.currency}`} className="hover:bg-white/5 transition-colors">
+                                    <tr key={i} className="hover:bg-white/5 transition-colors">
                                         <td className="p-4 font-bold text-blue-400">{r.symbol}</td>
+                                        <td className="p-4">
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/10 text-xs font-medium text-zinc-300">
+                                                {r.broker}
+                                            </span>
+                                            <span className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-blue-500/15 text-xs font-medium text-blue-400">
+                                                {r.account_type}
+                                            </span>
+                                        </td>
+                                        <td className="p-4 text-right text-zinc-400">{cbDisplay}</td>
                                         <td className={`p-4 text-right font-semibold ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
                                             {r.currency === "USD" ? "US$" : "$"}{r.pnl_amount >= 0 ? "+" : ""}{r.pnl_amount.toFixed(2)}
                                         </td>
-                                        <td className="p-4 text-right text-zinc-400">{r.currency}</td>
+                                        <td className={`p-4 text-right font-semibold ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
+                                            {r.pnl_pct !== null
+                                                ? <span className="flex items-center justify-end gap-1">
+                                                    {isWin ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
+                                                    {r.pnl_pct >= 0 ? "+" : ""}{r.pnl_pct.toFixed(2)}%
+                                                </span>
+                                                : "—"}
+                                        </td>
                                         <td className={`p-4 text-right font-semibold ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
                                             {fmt(inCad)}
                                         </td>
@@ -258,7 +283,7 @@ export default function PnLPage() {
                         </tbody>
                         <tfoot className="bg-white/5 font-bold border-t border-white/10">
                             <tr>
-                                <td className="p-4 text-zinc-300" colSpan={3}>Total Realized (CAD equiv.)</td>
+                                <td className="p-4 text-zinc-300" colSpan={5}>Total Realized (CAD equiv.)</td>
                                 <td className={`p-4 text-right ${totalRealizedCAD >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
                                     {fmt(totalRealizedCAD)}
                                 </td>
