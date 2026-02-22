@@ -4,6 +4,7 @@ import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { PortfolioProvider } from "@/lib/PortfolioContext";
+import { NextAuthProvider } from "@/components/NextAuthProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,16 +32,18 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         suppressHydrationWarning
       >
-        <ThemeProvider>
-          <PortfolioProvider>
-            <div className="flex h-screen overflow-hidden">
-              <Sidebar />
-              <main className="flex-1 overflow-y-auto relative">
-                {children}
-              </main>
-            </div>
-          </PortfolioProvider>
-        </ThemeProvider>
+        <NextAuthProvider>
+          <ThemeProvider>
+            <PortfolioProvider>
+              <div className="flex h-screen overflow-hidden">
+                <Sidebar />
+                <main className="flex-1 overflow-y-auto relative">
+                  {children}
+                </main>
+              </div>
+            </PortfolioProvider>
+          </ThemeProvider>
+        </NextAuthProvider>
       </body>
     </html>
   );

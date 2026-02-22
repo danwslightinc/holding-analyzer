@@ -1,10 +1,11 @@
 "use client";
 
-import { Home, TrendingUp, PieChart, DollarSign, Sun, Moon, Brain, List, RefreshCw, BarChart2 } from "lucide-react";
+import { Home, TrendingUp, PieChart, DollarSign, Sun, Moon, Brain, List, RefreshCw, BarChart2, LogOut } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "./ThemeProvider";
 import { usePortfolio } from "@/lib/PortfolioContext";
+import { useSession, signOut } from "next-auth/react";
 
 const NAV_ITEMS = [
     { name: "Home", icon: Home, href: "/" },
@@ -20,6 +21,7 @@ export default function Sidebar() {
     const pathname = usePathname();
     const { theme, toggleTheme } = useTheme();
     const { refresh, loading } = usePortfolio();
+    const { data: session } = useSession();
 
     return (
         <aside className="w-64 h-full glass-panel border-r border-white/10 flex flex-col hidden md:flex">
@@ -35,7 +37,7 @@ export default function Sidebar() {
             </div>
 
             {/* Navigation */}
-            <nav className="flex-1 p-4 space-y-2">
+            <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
                 {NAV_ITEMS.map((item: any) => {
                     const isActive = pathname === item.href;
                     return (
@@ -54,7 +56,7 @@ export default function Sidebar() {
                 })}
             </nav>
 
-            {/* Footer / Theme Toggle & Refresh */}
+            {/* Footer / Theme Toggle & Refresh & User */}
             <div className="p-4 border-t border-white/10 space-y-2">
                 <button
                     onClick={() => refresh(true)}
@@ -76,6 +78,24 @@ export default function Sidebar() {
                     )}
                     <span className="font-medium">{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
                 </button>
+
+                {session && (
+                    <div className="pt-2 mt-2 border-t border-white/10">
+                        <div className="flex items-center justify-between px-2 py-2">
+                            <div className="flex flex-col truncate pr-2">
+                                <span className="text-sm font-semibold text-zinc-200 truncate">{session.user?.name}</span>
+                                <span className="text-xs text-zinc-500 truncate">{session.user?.email}</span>
+                            </div>
+                            <button
+                                onClick={() => signOut({ callbackUrl: "/login" })}
+                                className="p-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors flex-shrink-0"
+                                title="Sign Out"
+                            >
+                                <LogOut className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
         </aside>
     );
