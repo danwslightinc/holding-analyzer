@@ -89,22 +89,42 @@ def load_portfolio_from_db():
         # 4. Combine and Enrich
         # We start with the calculated holdings from transactions
         rows = []
-        processed_symbols = set()
+        processed_keys = set()
         
+        # Create a map for quick lookup of manual holdings
+        manual_holdings_map = { (h.symbol, h.broker, h.account_type): h for h in holdings }
+
         for _, r in df_h_holdings.iterrows():
             sym = r['Symbol']
+            broker = r.get('Broker')
+            account = r.get('Account_Type')
+            key = (sym, broker, account)
+            
             d = r.to_dict()
+            
+            # OVERRIDE with manual entry if exists for this specific account
+            if key in manual_holdings_map:
+                h = manual_holdings_map[key]
+                if h.quantity is not None:
+                    d['Quantity'] = float(h.quantity)
+                if h.purchase_price is not None:
+                    d['Purchase Price'] = float(h.purchase_price)
+                if h.trade_date:
+                    d['Trade Date'] = h.trade_date
+                if h.commission is not None:
+                    d['Commission'] = float(h.commission)
+
             # Attach thesis data if it exists
             d.update(mental_map.get(sym, {
                 'Thesis': "", 'Catalyst': "", 'Kill Switch': "", 
                 'Conviction': "", 'Timeframe': ""
             }))
             rows.append(d)
-            processed_symbols.add(sym)
+            processed_keys.add(key)
             
         # Add manual entries from Holding table that weren't in transactions
-        for h in holdings:
-            if h.symbol in processed_symbols:
+        for key, h in manual_holdings_map.items():
+            if key in processed_keys:
                 continue
             
             if h.quantity and h.quantity > 0:
@@ -123,7 +143,7 @@ def load_portfolio_from_db():
                     'Conviction': "", 'Timeframe': ""
                 }))
                 rows.append(d)
-                processed_symbols.add(h.symbol)
+                processed_keys.add(key)
 
         if not rows:
             return pd.DataFrame(), realized_pnl
