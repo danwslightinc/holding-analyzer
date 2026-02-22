@@ -412,8 +412,12 @@ export default function Dashboard() {
                                         <td className="p-4 text-right text-gray-400">
                                             {allocation.toFixed(1)}%
                                         </td>
-                                        <td className="p-4 text-right text-gray-400">${(h['Current Price'] || 0).toFixed(2)}</td>
-                                        <td className="p-4 text-right text-gray-400">${avgCost.toFixed(2)}</td>
+                                        <td className="p-4 text-right text-gray-400">
+                                            {h.Currency === 'USD' ? 'US$' : '$'}{(h['Current Price'] || 0).toFixed(2)}
+                                        </td>
+                                        <td className="p-4 text-right text-gray-400">
+                                            {h.Currency === 'USD' ? 'US$' : '$'}{(h['Purchase Price'] || 0).toFixed(2)}
+                                        </td>
                                         <td className={`p-4 text-right font-medium ${isProfit ? 'text-emerald-400' : 'text-rose-400'}`}>
                                             ${h.PnL.toLocaleString()}
                                         </td>
