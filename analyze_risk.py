@@ -1,6 +1,6 @@
 import pandas as pd
 import yfinance as yf
-from data_loader import load_portfolio_holdings
+from data_loader import load_portfolio_from_db
 from tabulate import tabulate
 
 MSG_DEAD = "Likely 'Dead' (Loss > 90%)"
@@ -11,8 +11,7 @@ MSG_SAFE = "Seemingly Normal"
 
 def check_fishy_stocks():
     # Load Portfolio
-    csv_path = "/Users/mingli/Documents/Ming/Investment/Yahoo/portfolio.csv"
-    df = load_portfolio_holdings(csv_path)
+    df, _ = load_portfolio_from_db()
     
     if df.empty: return
 

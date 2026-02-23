@@ -81,7 +81,7 @@ const CustomTooltip = ({ active, payload, totalValue }: any) => {
                 <p className="font-bold text-gray-900 dark:text-white mb-1">{data.name}</p>
                 <div className="flex items-center gap-2">
                     <span className="text-sm font-mono text-gray-700 dark:text-gray-300">
-                        ${data.value.toLocaleString()}
+                        ${data.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CAD
                     </span>
                     <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400">
                         {percent}%
@@ -100,9 +100,11 @@ export default function AllocationPage() {
     if (error) return <div className="p-10 text-center text-red-500">Failed to load data.</div>;
     if (!data) return null;
 
-    // Process Data into Groups (Sector & Geo)
+    // Process Data into Groups (Sector & Geo & Holding)
     const sectorMap: Record<string, number> = {};
     const geoMap: Record<string, number> = {};
+    const holdingMap: Record<string, number> = {};
+    const holdingSectorMap: Record<string, string> = {};
 
     data.holdings.forEach((h: Holding) => {
         const s = h.Sector || "Unknown";
@@ -110,6 +112,10 @@ export default function AllocationPage() {
 
         const g = h.Country || "Unknown";
         geoMap[g] = (geoMap[g] || 0) + h.Market_Value;
+
+        const sym = h.Symbol;
+        holdingMap[sym] = (holdingMap[sym] || 0) + h.Market_Value;
+        holdingSectorMap[sym] = s;
     });
 
     const sectorData = Object.keys(sectorMap)
@@ -120,16 +126,18 @@ export default function AllocationPage() {
         .map((key: string) => ({ name: key, value: geoMap[key] }))
         .sort((a: any, b: any) => b.value - a.value);
 
-    // Treemap Data Structure (Flat for simpler visualization or Nested if needed)
-    // Recharts Treemap takes a flat list or tree. Let's do flat tickers for now, but grouped visually would be better.
-    // Actually, Recharts Treemap is simple. Let's just mapping tickers as children of a root.
+    const holdingData = Object.keys(holdingMap)
+        .map((key: string) => ({ name: key, value: holdingMap[key] }))
+        .sort((a: any, b: any) => b.value - a.value);
+
+    // Treemap Data Structure
     const treemapData = [
         {
             name: 'Portfolio',
-            children: data.holdings.map((h: Holding) => ({
-                name: h.Symbol,
-                value: h.Market_Value,
-                sector: h.Sector
+            children: Object.keys(holdingMap).map((key: string) => ({
+                name: key,
+                value: holdingMap[key],
+                sector: holdingSectorMap[key]
             }))
         }
     ];
@@ -140,7 +148,7 @@ export default function AllocationPage() {
                 Asset Allocation
             </h1>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Sector Breakout (Donut) */}
                 <div className="glass-panel p-6 rounded-2xl h-[400px] flex flex-col">
                     <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -202,6 +210,36 @@ export default function AllocationPage() {
                     </div>
                 </div>
 
+                {/* Individual Holding Allocation (Donut) */}
+                <div className="glass-panel p-6 rounded-2xl h-[400px] flex flex-col">
+                    <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                        <Tag className="w-5 h-5 text-orange-400" /> By Holding
+                    </h3>
+                    <div className="flex-1 min-h-0 relative">
+                        <div className="absolute inset-0">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie
+                                        data={holdingData}
+                                        dataKey="value"
+                                        nameKey="name"
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={80}
+                                        outerRadius={120}
+                                        paddingAngle={2}
+                                    >
+                                        {holdingData.map((entry: any, index: number) => (
+                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip content={<CustomTooltip totalValue={data.summary.total_value} />} />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+                </div>
+
             </div>
 
             {/* Holdings Treemap */}
@@ -243,9 +281,9 @@ export default function AllocationPage() {
                         </thead>
                         <tbody className="divide-y divide-white/5">
                             {sectorData.map((s: any, idx: number) => {
-                                const sectorHoldings = data.holdings
-                                    .filter((h: Holding) => h.Sector === s.name)
-                                    .sort((a: Holding, b: Holding) => b.Market_Value - a.Market_Value);
+                                const sectorHoldings = holdingData
+                                    .filter((h: any) => holdingSectorMap[h.name] === s.name)
+                                    .sort((a: any, b: any) => b.value - a.value);
                                 const top = sectorHoldings[0];
                                 const weight = (s.value / data.summary.total_value) * 100;
 
@@ -255,10 +293,10 @@ export default function AllocationPage() {
                                             <span className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS.length] }}></span>
                                             {s.name}
                                         </td>
-                                        <td className="p-4 text-right font-mono">${s.value.toLocaleString()}</td>
+                                        <td className="p-4 text-right font-mono">${s.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                         <td className="p-4 text-right">{weight.toFixed(1)}%</td>
                                         <td className="p-4 text-gray-400">
-                                            {top ? `${top.Symbol} (${((top.Market_Value / s.value) * 100).toFixed(0)}%)` : '-'}
+                                            {top ? `${top.name} (${((top.value / s.value) * 100).toFixed(0)}%)` : '-'}
                                         </td>
                                     </tr>
                                 )
