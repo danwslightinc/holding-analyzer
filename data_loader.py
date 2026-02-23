@@ -102,17 +102,8 @@ def load_portfolio_from_db():
             
             d = r.to_dict()
             
-            # OVERRIDE with manual entry if exists for this specific account
-            if key in manual_holdings_map:
-                h = manual_holdings_map[key]
-                if h.quantity is not None:
-                    d['Quantity'] = float(h.quantity)
-                if h.purchase_price is not None:
-                    d['Purchase Price'] = float(h.purchase_price)
-                if h.trade_date:
-                    d['Trade Date'] = h.trade_date
-                if h.commission is not None:
-                    d['Commission'] = float(h.commission)
+            # Transaction table is the source of truth for quantity and cost.
+            # We no longer override with the Holding table.
 
             # Attach thesis data if it exists
             d.update(mental_map.get(sym, {

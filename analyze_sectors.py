@@ -1,6 +1,6 @@
 import pandas as pd
 import yfinance as yf
-from data_loader import load_portfolio_holdings
+from data_loader import load_portfolio_from_db
 from market_data import get_current_prices, get_usd_to_cad_rate
 from tabulate import tabulate
 import matplotlib.pyplot as plt
@@ -35,7 +35,7 @@ def analyze_sectors():
     Analyzes portfolio sector distribution.
     """
     # Load portfolio
-    df = load_portfolio_holdings('portfolio.csv')
+    df, _ = load_portfolio_from_db()
     
     if df.empty:
         print("No valid holdings found.")

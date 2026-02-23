@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime
 from tabulate import tabulate
 from dotenv import load_dotenv
-from data_loader import load_portfolio_holdings, load_portfolio_from_db
+from data_loader import load_portfolio_from_db
 from market_data import get_current_prices, get_weekly_changes, get_usd_to_cad_rate, get_market_indices_change, get_fundamental_data, get_technical_data, get_latest_news, get_dividend_calendar
 from analysis import calculate_metrics, analyze_restructuring, analyze_pnl, get_top_movers, get_market_summary, analyze_sector_exposure
 from visualize import generate_dashboard, generate_static_preview
