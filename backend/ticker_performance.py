@@ -62,6 +62,18 @@ def get_ticker_performance(symbols, timeframes=['1d', '1w', '1m', '3m', '6m', 'Y
             current_price = hist['Close'].iloc[-1]
             
             for tf in timeframes:
+                if tf == '1d' and len(hist) > 1:
+                    start_price = hist['Close'].iloc[-2]
+                    change_value = current_price - start_price
+                    change_pct = (change_value / start_price) * 100 if start_price > 0 else 0
+                    results[symbol][tf] = {
+                        'change_pct': round(change_pct, 2),
+                        'change_value': round(change_value, 2),
+                        'current_price': round(current_price, 2),
+                        'start_price': round(start_price, 2)
+                    }
+                    continue
+
                 days = timeframe_map.get(tf, 30)
                 
                 # Get price from N days ago
