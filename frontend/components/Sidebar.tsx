@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, TrendingUp, PieChart, DollarSign, Sun, Moon, Brain, List, RefreshCw, BarChart2, LogOut } from "lucide-react";
+import { Home, TrendingUp, PieChart, DollarSign, Sun, Moon, Brain, List, RefreshCw, BarChart2, LogOut, Activity } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "./ThemeProvider";
@@ -11,6 +11,7 @@ const NAV_ITEMS = [
     { name: "Home", icon: Home, href: "/" },
     { name: "Performance", icon: TrendingUp, href: "/performance" },
     { name: "P&L", icon: BarChart2, href: "/pnl" },
+    { name: "Trade Analysis", icon: Activity, href: "/trade-analysis" },
     { name: "Allocation", icon: PieChart, href: "/allocation" },
     { name: "Dividends", icon: DollarSign, href: "/dividends" },
     { name: "Quant-mental", icon: Brain, href: "/quantmental" },
