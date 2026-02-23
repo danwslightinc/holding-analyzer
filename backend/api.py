@@ -521,18 +521,25 @@ def update_holding(symbol: str, data: dict = Body(...)):
     """Update thesis/mental data for a holding"""
     try:
         with Session(engine) as session:
-            h = session.exec(select(Holding).where(Holding.symbol == symbol)).first()
-            if not h:
-                h = Holding(symbol=symbol)
-                session.add(h)
+            # 1. Update the Thesis data
+            it = session.exec(select(InvestmentThesis).where(InvestmentThesis.symbol == symbol)).first()
+            if not it:
+                it = InvestmentThesis(symbol=symbol)
+                session.add(it)
             
-            if 'Thesis' in data: h.thesis = data['Thesis']
-            if 'Conviction' in data: h.conviction = data['Conviction']
-            if 'Timeframe' in data: h.timeframe = data['Timeframe']
-            if 'Kill Switch' in data: h.kill_switch = data['Kill Switch']
-            if 'Comment' in data: h.comment = data['Comment']
+            if 'Thesis' in data: it.thesis = data['Thesis']
+            if 'Conviction' in data: it.conviction = data['Conviction']
+            if 'Timeframe' in data: it.timeframe = data['Timeframe']
+            if 'Kill Switch' in data: it.kill_switch = data['Kill Switch']
+            session.add(it)
             
-            session.add(h)
+            # 2. Update Holding comment if provided (rare now, but keeping for compatibility)
+            if 'Comment' in data:
+                h = session.exec(select(Holding).where(Holding.symbol == symbol)).first()
+                if h:
+                    h.comment = data['Comment']
+                    session.add(h)
+
             session.commit()
             clear_all_caches()
             return {"status": "success"}
