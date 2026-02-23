@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { ExternalLink, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { ExternalLink, TrendingUp, TrendingDown, Minus, Edit2, Save, X } from "lucide-react";
 import { API_BASE_URL } from "@/lib/api";
 import { usePortfolio } from "@/lib/PortfolioContext";
 
@@ -24,9 +24,47 @@ interface QuantmentalData {
 }
 
 export default function QuantmentalPage() {
-    const { data: portData, loading, error } = usePortfolio();
+    const { data: portData, loading, error, refresh } = usePortfolio();
     const [sortField, setSortField] = useState<string>("");
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+    const [editingSymbol, setEditingSymbol] = useState<string | null>(null);
+    const [saving, setSaving] = useState(false);
+    const [editForm, setEditForm] = useState({
+        Thesis: "",
+        "Kill Switch": "",
+        Conviction: "Medium",
+        Timeframe: "Long-term"
+    });
+
+    const handleEdit = (row: QuantmentalData) => {
+        setEditingSymbol(row.Symbol);
+        setEditForm({
+            Thesis: row.Thesis || "",
+            "Kill Switch": row["Kill Switch"] || "",
+            Conviction: row.Conviction || "Medium",
+            Timeframe: row.Timeframe || "Long-term"
+        });
+    };
+
+    const handleSave = async (symbol: string) => {
+        setSaving(true);
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/holdings/${symbol}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(editForm)
+            });
+            if (response.ok) {
+                setEditingSymbol(null);
+                await refresh(true);
+            }
+        } catch (error) {
+            console.error("Failed to update", error);
+        } finally {
+            setSaving(false);
+        }
+    };
 
     const data = useMemo(() => {
         if (!portData) return [];
@@ -140,83 +178,164 @@ export default function QuantmentalPage() {
                     <table className="w-full">
                         <thead className="bg-white/5 sticky top-0">
                             <tr>
-                                {['Symbol', 'Thesis', 'Catalyst', 'Kill Switch', 'Conviction', 'RSI', 'Tech Scorecard', 'Next Earnings', 'Ex-Div', 'Yield', 'Timeframe', 'PEG Ratio', 'Growth', 'Rec'].map((header: string) => (
+                                {['Symbol', 'Thesis', 'Catalyst', 'Kill Switch', 'Conviction', 'RSI', 'Tech Scorecard', 'Next Earnings', 'Ex-Div', 'Yield', 'Timeframe', 'PEG Ratio', 'Growth', 'Rec', 'Action'].map((header: string) => (
                                     <th
                                         key={header}
-                                        onClick={() => handleSort(header)}
-                                        className="p-4 text-left font-semibold cursor-pointer hover:bg-white/10 transition-colors select-none"
+                                        onClick={() => header !== 'Action' && handleSort(header)}
+                                        className={`p-4 font-semibold select-none ${header === 'Action' ? 'text-center cursor-default text-gray-400' : 'text-left cursor-pointer hover:bg-white/10 transition-colors'}`}
                                     >
-                                        <div className="flex items-center gap-2">
+                                        <div className={`flex items-center gap-2 ${header === 'Action' ? 'justify-center' : ''}`}>
                                             {header}
-                                            <span className="text-gray-500 text-xs">↕</span>
+                                            {header !== 'Action' && <span className="text-gray-500 text-xs">↕</span>}
                                         </div>
                                     </th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
-                            {sortedData.map((row: QuantmentalData, idx: number) => (
-                                <tr key={`${row.Symbol}-${idx}`} className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                                    <td className="p-4 font-bold text-blue-600">{row.Symbol}</td>
-                                    <td className="p-4 max-w-md">
-                                        <div
-                                            className="text-sm font-bold leading-relaxed line-clamp-2"
+                            {sortedData.map((row: QuantmentalData, idx: number) => {
+                                const isEditing = editingSymbol === row.Symbol;
+
+                                return (
+                                    <tr key={`${row.Symbol}-${idx}`} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                                        <td className="p-4 font-bold text-blue-600">{row.Symbol}</td>
+
+                                        <td className="p-4 max-w-md">
+                                            {isEditing ? (
+                                                <textarea
+                                                    className="w-full bg-white/5 border border-white/20 rounded p-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500 min-h-[60px]"
+                                                    value={editForm.Thesis}
+                                                    onChange={e => setEditForm({ ...editForm, Thesis: e.target.value })}
+                                                />
+                                            ) : (
+                                                <div
+                                                    className="text-sm font-bold leading-relaxed line-clamp-2"
+                                                    style={{ color: '#000' }}
+                                                    title={row.Thesis}
+                                                >
+                                                    {row.Thesis || <span style={{ color: '#999', fontStyle: 'italic', fontWeight: 'normal' }}>--</span>}
+                                                </div>
+                                            )}
+                                        </td>
+
+                                        <td className="p-4 max-w-sm">
+                                            {row.Catalyst ? (
+                                                <a
+                                                    href={row.CatalystLink}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-sm text-gray-700 dark:text-gray-400 line-clamp-2 flex items-center gap-2 hover:text-blue-500 transition-colors"
+                                                >
+                                                    {row.Catalyst}
+                                                    <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                                                </a>
+                                            ) : <span className="text-gray-400 italic">--</span>}
+                                        </td>
+
+                                        <td className="p-4 max-w-xs">
+                                            {isEditing ? (
+                                                <input
+                                                    className="w-full bg-white/5 border border-white/20 rounded p-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                    value={editForm["Kill Switch"]}
+                                                    onChange={e => setEditForm({ ...editForm, "Kill Switch": e.target.value })}
+                                                />
+                                            ) : (
+                                                <div className="text-sm text-gray-700 dark:text-gray-400 font-medium line-clamp-2" title={row["Kill Switch"]}>{row["Kill Switch"] || <span className="text-gray-400">--</span>}</div>
+                                            )}
+                                        </td>
+
+                                        <td className="p-4">
+                                            {isEditing ? (
+                                                <select
+                                                    className="bg-white/5 border border-white/20 rounded p-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                    value={editForm.Conviction}
+                                                    onChange={e => setEditForm({ ...editForm, Conviction: e.target.value })}
+                                                >
+                                                    <option value="High" className="text-black">High</option>
+                                                    <option value="Medium" className="text-black">Medium</option>
+                                                    <option value="Low" className="text-black">Low</option>
+                                                </select>
+                                            ) : row.Conviction ? (
+                                                <span className={`px-2 py-1 rounded-md text-xs font-bold border ${getConvictionBadge(row.Conviction)}`}>
+                                                    {row.Conviction}
+                                                </span>
+                                            ) : <span className="text-gray-400">--</span>}
+                                        </td>
+
+                                        <td className="p-4 text-sm">
+                                            <span style={getRSIColor(row.RSI)}>
+                                                {row.RSI}
+                                            </span>
+                                        </td>
+                                        <td
+                                            className="p-4 text-sm font-bold"
                                             style={{ color: '#000' }}
-                                            title={row.Thesis}
                                         >
-                                            {row.Thesis || <span style={{ color: '#999', fontStyle: 'italic', fontWeight: 'normal' }}>--</span>}
-                                        </div>
-                                    </td>
-                                    <td className="p-4 max-w-sm">
-                                        {row.Catalyst ? (
-                                            <a
-                                                href={row.CatalystLink}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-sm text-gray-700 dark:text-gray-400 line-clamp-2 flex items-center gap-2 hover:text-blue-500 transition-colors"
-                                            >
-                                                {row.Catalyst}
-                                                <ExternalLink className="w-3 h-3 flex-shrink-0" />
-                                            </a>
-                                        ) : <span className="text-gray-400 italic">--</span>}
-                                    </td>
-                                    <td className="p-4 text-sm text-gray-700 dark:text-gray-400 font-medium">{row["Kill Switch"] || <span className="text-gray-400">--</span>}</td>
-                                    <td className="p-4">
-                                        {row.Conviction ? (
-                                            <span className={`px-2 py-1 rounded-md text-xs font-bold border ${getConvictionBadge(row.Conviction)}`}>
-                                                {row.Conviction}
-                                            </span>
-                                        ) : <span className="text-gray-400">--</span>}
-                                    </td>
-                                    <td className="p-4 text-sm">
-                                        <span style={getRSIColor(row.RSI)}>
-                                            {row.RSI}
-                                        </span>
-                                    </td>
-                                    <td
-                                        className="p-4 text-sm font-bold"
-                                        style={{ color: '#000' }}
-                                    >
-                                        {row["Tech Scorecard"]}
-                                    </td>
-                                    <td className="p-4 text-sm font-medium" style={{ color: '#333' }}>{row["Next Earnings"]}</td>
-                                    <td className="p-4 text-sm font-medium" style={{ color: '#333' }}>{row["Ex-Div"]}</td>
-                                    <td className="p-4 text-sm font-bold" style={{ color: '#059669' }}>{row.Yield}</td>
-                                    <td className="p-4 text-sm font-medium" style={{ color: '#666' }}>{row.Timeframe || '--'}</td>
-                                    <td className="p-4 text-sm font-bold">
-                                        {typeof row["PEG Ratio"] === 'number' && (
-                                            <span style={{ color: row["PEG Ratio"] < 1 ? '#059669' : row["PEG Ratio"] > 2 ? '#e11d48' : '#000' }}>
-                                                {row["PEG Ratio"].toFixed(2)}
-                                            </span>
-                                        )}
-                                        {row["PEG Ratio"] === 'N/A' && <span style={{ color: '#999' }}>--</span>}
-                                    </td>
-                                    <td className="p-4 text-sm font-bold" style={{ color: '#000' }}>{row.Growth}</td>
-                                    <td className={`p-4 text-sm font-bold ${getRecommendationColor(row.Rec)}`} style={!getRecommendationColor(row.Rec) ? { color: '#000' } : {}}>
-                                        {row.Rec}
-                                    </td>
-                                </tr>
-                            ))}
+                                            {row["Tech Scorecard"]}
+                                        </td>
+                                        <td className="p-4 text-sm font-medium" style={{ color: '#333' }}>{row["Next Earnings"]}</td>
+                                        <td className="p-4 text-sm font-medium" style={{ color: '#333' }}>{row["Ex-Div"]}</td>
+                                        <td className="p-4 text-sm font-bold" style={{ color: '#059669' }}>{row.Yield}</td>
+
+                                        <td className="p-4">
+                                            {isEditing ? (
+                                                <input
+                                                    className="w-24 bg-white/5 border border-white/20 rounded p-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                    value={editForm.Timeframe}
+                                                    onChange={e => setEditForm({ ...editForm, Timeframe: e.target.value })}
+                                                    placeholder="e.g. Long-term"
+                                                />
+                                            ) : (
+                                                <span className="text-sm font-medium" style={{ color: '#666' }}>{row.Timeframe || '--'}</span>
+                                            )}
+                                        </td>
+
+                                        <td className="p-4 text-sm font-bold">
+                                            {typeof row["PEG Ratio"] === 'number' && (
+                                                <span style={{ color: row["PEG Ratio"] < 1 ? '#059669' : row["PEG Ratio"] > 2 ? '#e11d48' : '#000' }}>
+                                                    {row["PEG Ratio"].toFixed(2)}
+                                                </span>
+                                            )}
+                                            {row["PEG Ratio"] === 'N/A' && <span style={{ color: '#999' }}>--</span>}
+                                        </td>
+                                        <td className="p-4 text-sm font-bold" style={{ color: '#000' }}>{row.Growth}</td>
+                                        <td className={`p-4 text-sm font-bold ${getRecommendationColor(row.Rec)}`} style={!getRecommendationColor(row.Rec) ? { color: '#000' } : {}}>
+                                            {row.Rec}
+                                        </td>
+
+                                        <td className="p-4 text-center">
+                                            {isEditing ? (
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <button
+                                                        onClick={() => handleSave(row.Symbol)}
+                                                        disabled={saving}
+                                                        className="p-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded transition-colors disabled:opacity-50"
+                                                        title="Save"
+                                                    >
+                                                        <Save className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setEditingSymbol(null)}
+                                                        disabled={saving}
+                                                        className="p-1.5 bg-gray-500 hover:bg-gray-600 text-white rounded transition-colors disabled:opacity-50"
+                                                        title="Cancel"
+                                                    >
+                                                        <X className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    onClick={() => handleEdit(row)}
+                                                    className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-white/5 rounded transition-colors"
+                                                    title="Edit Thesis Data"
+                                                >
+                                                    <Edit2 className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                )
+                            })}
                         </tbody>
                     </table>
                 </div>
