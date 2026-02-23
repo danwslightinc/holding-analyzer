@@ -300,6 +300,8 @@ class Transaction(BaseModel):
     Commission: float = 0.0
     Trade_Date: str  # Format: YYYY/MM/DD
     Transaction_Type: str = "Buy" # Buy, Sell, DRIP
+    Broker: str = "Manual"
+    Account_Type: str = "Manual"
     Comment: Optional[str] = ""
 
 # Symbols excluded from realized PnL (pure FX instruments)
@@ -429,6 +431,8 @@ def get_transactions():
                     "Commission": tx.commission,
                     "Trade Date": tx.date.strftime('%Y/%m/%d'),
                     "Transaction Type": tx.type,
+                    "Broker": tx.broker or "Manual",
+                    "Account Type": tx.account_type or "Manual",
                     "Comment": tx.description or ""
                 })
             return formatted
@@ -463,6 +467,8 @@ def add_transaction(tx: Transaction):
                 amount=(tx.Purchase_Price * tx.Quantity) + tx.Commission,
                 currency="CAD" if tx.Symbol.endswith(".TO") else "USD",
                 description=tx.Comment,
+                broker=tx.Broker,
+                account_type=tx.Account_Type,
                 source="Manual"
             )
             session.add(db_tx)
