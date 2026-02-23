@@ -7,6 +7,7 @@ from typing import Optional
 import pandas as pd
 import json
 import numpy as np
+import math
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -438,6 +439,133 @@ def get_transactions():
             return formatted
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/closed-trades")
+def get_closed_trades():
+    """Fetch individually matched closed trades from full broker CSV history (FIFO basis)"""
+    try:
+        from transaction_parser import load_all_transactions
+        import os
+        tx_dir = os.path.join(os.path.dirname(__file__), "..", "transactions")
+        if not os.path.exists(tx_dir):
+            return []
+            
+        df_tx = load_all_transactions(tx_dir)
+        if df_tx.empty:
+            return []
+            
+        # Ensure chronological order
+        df_tx = df_tx.sort_values(by=['Date'])
+        
+        lots = {}
+        closed_trades = []
+        
+        for _, tx in df_tx.iterrows():
+            sym = tx['Symbol']
+            action = str(tx['Action']).upper()
+            qty = tx['Quantity']
+            price = tx['Price']
+            comm = tx['Commission']
+            date = tx['Date']
+            curr = tx['Currency']
+            amt = tx['Amount']
+            desc = str(tx.get('Description', '')).upper()
+            
+            if pd.isna(qty) or qty <= 0:
+                continue
+            
+            # Exclude Norbert's Gambit currency conversions
+            if str(sym).upper() in ["DLR.TO", "DLR.U.TO", "DLR"]:
+                continue
+                
+            if action in ['BUY', 'DIV', 'DRIP'] or 'TRANSF' in action or ('RECEIVED' in desc and ('MERGER' in desc or 'ADJUSTMENT' in desc or 'REORG' in desc)):
+                if sym not in lots: lots[sym] = []
+                cost = abs(amt) if amt != 0 and pd.notna(amt) else ((qty * price) + comm)
+                lots[sym].append({'qty': float(qty), 'cost': float(cost), 'date': date, 'currency': curr})
+                
+            elif action == 'SELL':
+                if sym not in lots or len(lots[sym]) == 0:
+                    continue
+                    
+                remaining_sell = float(qty)
+                total_proceeds = float(amt) if amt != 0 and pd.notna(amt) else ((remaining_sell * price) - comm)
+                
+                trade_cost = 0.0
+                trade_qty = 0.0
+                first_buy_date = None
+                
+                while remaining_sell > 0 and len(lots[sym]) > 0:
+                    lot = lots[sym][0]
+                    sold_qty = min(lot['qty'], remaining_sell)
+                    frac = sold_qty / lot['qty']
+                    cost_portion = lot['cost'] * frac
+                    
+                    if first_buy_date is None:
+                        first_buy_date = lot['date']
+                        
+                    trade_cost += cost_portion
+                    trade_qty += sold_qty
+                    
+                    lot['qty'] -= sold_qty
+                    lot['cost'] -= cost_portion
+                    remaining_sell -= sold_qty
+                    
+                    if lot['qty'] <= 1e-4:
+                        lots[sym].pop(0)
+                        
+                if trade_qty > 0:
+                    frac_of_sell = trade_qty / float(qty)
+                    proceeds = total_proceeds * frac_of_sell
+                    pnl = proceeds - trade_cost
+                    return_pct = (pnl / trade_cost * 100) if trade_cost > 0 else 0
+                    
+                    if pd.notna(date) and pd.notna(first_buy_date):
+                        days = max(1, (date - first_buy_date).days)
+                    else:
+                        days = 1
+                        
+                    # Filter out Merger Surrenders so they aren't marked as 100% loss trades
+                    is_merger_surrender = 'SURRENDERED' in desc and ('MERGER' in desc or 'ADJUSTMENT' in desc or 'REORG' in desc)
+                        
+                    ann_ret = 0.0
+                    if days > 0 and trade_cost > 0:
+                        raw_ret = pnl / trade_cost
+                        if raw_ret > -1:
+                            if days < 30:
+                                # For extremely short trades (e.g. 1 day flips), compounding `(1+r)^365` 
+                                # artificially inflates returns to +1000% or -99.9%. 
+                                # Just default to the raw return to keep averages realistic.
+                                ann_ret = return_pct
+                            else:
+                                ann_ret = ((1 + raw_ret) ** (365/days) - 1) * 100
+                        else:
+                            ann_ret = -100
+                    
+                    def safe_float(v):
+                        return float(v) if math.isfinite(v) else 0.0
+                    
+                    if not is_merger_surrender:
+                        closed_trades.append({
+                            'symbol': str(sym),
+                            'buyDate': first_buy_date.strftime('%Y/%m/%d') if pd.notna(first_buy_date) else 'Unknown',
+                            'sellDate': date.strftime('%Y/%m/%d') if pd.notna(date) else 'Unknown',
+                            'quantity': safe_float(trade_qty),
+                            'costBasis': safe_float(trade_cost),
+                            'proceeds': safe_float(proceeds),
+                            'pnl': safe_float(pnl),
+                            'returnPct': safe_float(return_pct),
+                            'holdingDays': int(days),
+                            'annualizedReturn': safe_float(ann_ret),
+                            'isWin': bool(pnl >= 0) if math.isfinite(pnl) else False,
+                            'currency': str(curr) if pd.notna(curr) else 'CAD'
+                        })
+        
+        # Sort descending by sellDate
+        closed_trades.sort(key=lambda x: x['sellDate'], reverse=True)
+        return closed_trades
+    except Exception as e:
+        import traceback
+        return {"error": str(e), "trace": traceback.format_exc()}
 
 @app.post("/api/transactions")
 def add_transaction(tx: Transaction):
