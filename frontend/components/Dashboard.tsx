@@ -133,15 +133,14 @@ export default function Dashboard() {
     // Group filtered results by symbol for display
     const groupedMap = filteredHoldings.reduce((acc: any, h: Holding) => {
         if (!acc[h.Symbol]) {
-            acc[h.Symbol] = { ...h };
+            acc[h.Symbol] = { ...h, BaseCostSum: h['Purchase Price'] * h.Quantity };
         } else {
             const prev = acc[h.Symbol];
-            const prevCost = (prev.Market_Value - prev.PnL);
-            const currCost = (h.Market_Value - h.PnL);
             prev.Quantity += h.Quantity;
             prev.Market_Value += h.Market_Value;
             prev.PnL += h.PnL;
-            prev['Purchase Price'] = (prevCost + currCost) / prev.Quantity;
+            prev.BaseCostSum += h['Purchase Price'] * h.Quantity;
+            prev['Purchase Price'] = prev.BaseCostSum / prev.Quantity;
         }
         return acc;
     }, {});

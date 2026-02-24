@@ -242,27 +242,7 @@ export default function AllocationPage() {
 
             </div>
 
-            {/* Holdings Treemap */}
-            <div className="glass-panel p-6 rounded-2xl h-[500px] flex flex-col">
-                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <Layers className="w-5 h-5 text-purple-400" /> Holdings Weight
-                </h3>
-                <div className="flex-1 min-h-0 relative">
-                    <div className="absolute inset-0">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <Treemap
-                                data={treemapData}
-                                dataKey="value"
-                                aspectRatio={4 / 3}
-                                stroke="#fff"
-                                content={<CustomizedTreemapContent colors={COLORS} />}
-                            >
-                                <Tooltip content={<CustomTooltip totalValue={data.summary.total_value} />} />
-                            </Treemap>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-            </div>
+
 
             {/* Detailed Allocation Table */}
             <div className="glass-panel rounded-2xl overflow-hidden">
