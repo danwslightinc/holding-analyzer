@@ -182,6 +182,28 @@ def get_weekly_changes(symbols):
         print(f"Error fetching weekly changes: {e}")
         return {}
 
+def get_daily_changes(symbols):
+    """
+    Fetches daily % change using yahooquery price module.
+    Returns dict: {Symbol: percent_change_float}
+    """
+    if not symbols: return {}
+    try:
+        t = Ticker(symbols)
+        price_data = t.price
+        changes = {}
+        for sym in symbols:
+            s_data = price_data.get(sym, {})
+            if isinstance(s_data, dict):
+                # regularMarketChangePercent is usually 0.015 for 1.5%
+                changes[sym] = float(s_data.get('regularMarketChangePercent', 0.0)) * 100
+            else:
+                changes[sym] = 0.0
+        return changes
+    except Exception as e:
+        print(f"Error fetching daily changes: {e}")
+        return {}
+
 @cache_result(fx_cache)
 def get_usd_to_cad_rate():
     """

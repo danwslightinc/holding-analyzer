@@ -183,63 +183,56 @@ export default function TransactionsPage() {
 
                             <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                                 <div className="space-y-1.5 lg:col-span-1">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Asset Symbol</label>
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Asset Symbol</label>
                                     <input
                                         required
                                         value={form.Symbol}
                                         onChange={e => setForm({ ...form, Symbol: e.target.value.toUpperCase() })}
-                                        className="w-full h-[56px] bg-white/5 border border-white/10 text-foreground text-xl font-bold uppercase rounded-xl px-4 focus:ring-2 focus:ring-blue-500 outline-none"
-                                        placeholder="EX: VOO"
+                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground text-xl font-bold uppercase rounded-xl px-4 focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
                                     />
                                 </div>
 
                                 <div className="space-y-1.5">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Execution Price</label>
-                                    <div className="relative">
-                                        <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                                        <input
-                                            required
-                                            type="number"
-                                            step="0.0001"
-                                            value={form.Purchase_Price}
-                                            onChange={e => setForm({ ...form, Purchase_Price: e.target.value })}
-                                            className="w-full h-[56px] bg-white/5 border border-white/10 text-foreground font-bold rounded-xl pl-10 focus:ring-2 focus:ring-blue-500 outline-none"
-                                        />
-                                    </div>
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Execution Price</label>
+                                    <input
+                                        required
+                                        type="number"
+                                        step="0.0001"
+                                        value={form.Purchase_Price}
+                                        onChange={e => setForm({ ...form, Purchase_Price: e.target.value })}
+                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
+                                    />
                                 </div>
 
                                 <div className="space-y-1.5">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Volume (Qty)</label>
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Volume (Qty)</label>
                                     <input
                                         required
                                         type="number"
                                         step="0.000001"
                                         value={form.Quantity}
                                         onChange={e => setForm({ ...form, Quantity: e.target.value })}
-                                        className="w-full h-[56px] bg-white/5 border border-white/10 text-foreground font-bold rounded-xl px-4 focus:ring-2 focus:ring-blue-500 outline-none"
+                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
                                     />
                                 </div>
 
                                 <div className="space-y-1.5">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Trade Date</label>
-                                    <div className="relative">
-                                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 z-10" />
-                                        <input
-                                            required
-                                            type="date"
-                                            value={form.Trade_Date.replace(/\//g, "-")}
-                                            onChange={e => setForm({ ...form, Trade_Date: e.target.value.replace(/-/g, "/") })}
-                                            className="w-full h-[56px] bg-white/5 border border-white/10 text-foreground font-bold rounded-xl pl-11 outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark] relative z-0"
-                                        />
-                                    </div>
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Trade Date</label>
+                                    <input
+                                        required
+                                        type="date"
+                                        value={form.Trade_Date.replace(/\//g, "-")}
+                                        onChange={e => setForm({ ...form, Trade_Date: e.target.value.replace(/-/g, "/") })}
+                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:light] dark:[color-scheme:dark] transition-colors"
+                                    />
                                 </div>
 
                                 <div className="space-y-1.5">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Brokerage</label>
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Brokerage</label>
                                     <select
                                         value={form.Broker}
                                         onChange={e => setForm({ ...form, Broker: e.target.value })}
-                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-white/10 text-foreground font-bold rounded-xl px-4 outline-none appearance-none cursor-pointer hover:bg-white/10"
+                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 outline-none appearance-none cursor-pointer hover:bg-slate-200 dark:hover:bg-white/10 transition-colors"
                                     >
                                         <option value="RBC">RBC Direct</option>
                                         <option value="CIBC">CIBC Edge</option>
@@ -250,11 +243,11 @@ export default function TransactionsPage() {
                                 </div>
 
                                 <div className="space-y-1.5">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Account Type</label>
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Account Type</label>
                                     <select
                                         value={form.Account_Type}
                                         onChange={e => setForm({ ...form, Account_Type: e.target.value })}
-                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-white/10 text-foreground font-bold rounded-xl px-4 outline-none appearance-none cursor-pointer hover:bg-white/10"
+                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 outline-none appearance-none cursor-pointer hover:bg-slate-200 dark:hover:bg-white/10 transition-colors"
                                     >
                                         <option value="TFSA">TFSA</option>
                                         <option value="RRSP">RRSP</option>
@@ -264,8 +257,8 @@ export default function TransactionsPage() {
                                 </div>
 
                                 <div className="space-y-1.5 lg:col-span-1">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Action</label>
-                                    <div className="flex bg-white/5 p-1 rounded-xl border border-white/10 h-[56px] items-center">
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Action</label>
+                                    <div className="flex bg-slate-100 dark:bg-white/5 p-1 rounded-xl border border-slate-200 dark:border-white/10 h-[56px] items-center">
                                         {["Buy", "Sell", "DRIP"].map((t) => (
                                             <button
                                                 key={t}
@@ -287,12 +280,12 @@ export default function TransactionsPage() {
                                         whileHover={{ scale: 1.02 }}
                                         whileTap={{ scale: 0.98 }}
                                         type="submit"
-                                        className={`h-[56px] px-8 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-xl ${form.Transaction_Type === 'Sell'
-                                                ? "bg-gradient-to-r from-rose-600 to-rose-500 shadow-rose-900/30"
-                                                : form.Transaction_Type === 'Buy'
-                                                    ? "bg-gradient-to-r from-emerald-600 to-emerald-500 shadow-emerald-900/30"
-                                                    : "bg-gradient-to-r from-blue-600 to-blue-500 shadow-blue-900/30"
-                                            } text-white border border-white/10 group`}
+                                        className={`h-[56px] px-8 w-full rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg text-white ${form.Transaction_Type === 'Sell'
+                                            ? "bg-rose-500 hover:bg-rose-600 shadow-rose-900/10"
+                                            : form.Transaction_Type === 'Buy'
+                                                ? "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-900/10"
+                                                : "bg-blue-600 hover:bg-blue-700 shadow-blue-900/10"
+                                            } border border-transparent dark:border-white/10 group`}
                                     >
                                         <span>Confirm Entry</span>
                                         <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
@@ -306,14 +299,14 @@ export default function TransactionsPage() {
 
             {/* Sub-Header: Search & Intelligence */}
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-                <div className="lg:col-span-3 relative">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                <div className="lg:col-span-3 relative flex items-center">
+                    <Search className="absolute left-4 w-4 h-4 text-gray-500 pointer-events-none" />
                     <input
                         type="text"
                         placeholder="Search by ticker, broker, or notes..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full h-[46px] bg-white/5 border border-white/10 text-foreground text-sm rounded-xl block pl-11 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all hover:bg-white/10"
+                        className="w-full h-[46px] bg-white border border-gray-200 dark:bg-white/5 dark:border-white/10 text-foreground text-sm rounded-xl block pl-11 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all hover:bg-gray-50 dark:hover:bg-white/10"
                     />
                 </div>
 

@@ -17,13 +17,13 @@ load_dotenv()
 # Add parent directory to path to import existing modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from data_loader import load_portfolio_from_db
-from market_data import get_current_prices, get_fundamental_data, get_technical_data, get_dividend_calendar, get_usd_to_cad_rate, get_portfolio_history, get_latest_news
+from data_loader import load_portfolio_from_db, get_processed_transactions
+from market_data import get_current_prices, get_fundamental_data, get_technical_data, get_dividend_calendar, get_usd_to_cad_rate, get_portfolio_history, get_latest_news, get_daily_changes
 from analysis import calculate_metrics
 from backend.ticker_performance import get_ticker_performance
 from backend.cache import clear_all_caches
 from backend.database import engine, get_session, create_db_and_tables
-from backend.models import Holding, Transaction as DBTransaction, RealizedPnL
+from backend.models import Holding, Transaction as DBTransaction
 from sqlmodel import Session, select
 
 app = FastAPI(title="Holding Analyzer API")
@@ -129,6 +129,7 @@ def get_portfolio():
         technical_data = get_technical_data(symbols)
         news_data = get_latest_news(symbols)
         dividend_data = get_dividend_calendar(symbols)
+        daily_changes = get_daily_changes(symbols)
         
         # Add Quant-mental fields to each holding
         holdings_list = []
@@ -137,6 +138,9 @@ def get_portfolio():
             holding_dict = row.to_dict()
             
             # Thesis data is already in row from load_portfolio_from_db()
+            
+            # Add daily change
+            holding_dict['Day Change'] = float(daily_changes.get(sym, 0.0))
             
             # Add technical data
             tech = technical_data.get(sym, {})
@@ -317,102 +321,7 @@ _TYPE_NORMALIZE = {
     'Transf In': 'BUY', 'Transfer In': 'BUY',
 }
 
-def _recalculate_realized_pnl_for_symbol(session: Session, symbol: str) -> None:
-    """
-    Runs an in-memory FIFO on all DB transactions for `symbol`,
-    then upserts a RealizedPnL row (source="db_transaction").
-    Skips Norbert's Gambit symbols.
-    Called after any Sell is inserted or any transaction is deleted.
-    """
-    if symbol in _NORBERT_GAMBIT_EXCLUDE:
-        return
-
-    # Pull all transactions for this symbol (sorted by date)
-    db_txs = session.exec(
-        select(DBTransaction)
-        .where(DBTransaction.symbol == symbol)
-        .order_by(DBTransaction.date)
-    ).all()
-
-    if not db_txs:
-        # No transactions left — clean up any existing DB-source rows
-        existing = session.exec(
-            select(RealizedPnL)
-            .where(RealizedPnL.symbol == symbol)
-            .where(RealizedPnL.source == "db_transaction")
-        ).all()
-        for r in existing:
-            session.delete(r)
-        session.commit()
-        return
-
-    # --- FIFO calculation ---
-    lots: dict = {}       # symbol -> [{qty, cost, currency}]
-    realized: dict = {}   # (currency,) -> {pnl, cost_basis}
-
-    for db_tx in db_txs:
-        action = _TYPE_NORMALIZE.get(db_tx.type, db_tx.type.upper())
-        qty = db_tx.quantity or 0.0
-        curr = db_tx.currency or ("CAD" if symbol.endswith(".TO") else "USD")
-
-        if qty <= 0:
-            continue
-
-        if action == "BUY":
-            amt = abs(db_tx.amount) if db_tx.amount else (qty * (db_tx.price or 0) + (db_tx.commission or 0))
-            lots.setdefault(symbol, []).append({"qty": qty, "cost": amt, "currency": curr})
-
-        elif action == "SELL":
-            if symbol not in lots or not lots[symbol]:
-                continue
-            total_proceeds = db_tx.amount if db_tx.amount else (qty * (db_tx.price or 0) - (db_tx.commission or 0))
-            remaining = qty
-            key = curr
-
-            while remaining > 0 and lots[symbol]:
-                lot = lots[symbol][0]
-                sold = min(lot["qty"], remaining)
-                frac = sold / qty
-                cost_piece = lot["cost"] * (sold / lot["qty"])
-                proceeds_piece = total_proceeds * frac
-
-                realized.setdefault(key, {"pnl": 0.0, "cost_basis": 0.0})
-                realized[key]["pnl"] += proceeds_piece - cost_piece
-                realized[key]["cost_basis"] += cost_piece
-
-                lot["qty"] -= sold
-                lot["cost"] -= cost_piece
-                remaining -= sold
-                if lot["qty"] <= 1e-6:
-                    lots[symbol].pop(0)
-
-    # --- Upsert results ---
-    # Delete old db_transaction rows for this symbol
-    existing = session.exec(
-        select(RealizedPnL)
-        .where(RealizedPnL.symbol == symbol)
-        .where(RealizedPnL.source == "db_transaction")
-    ).all()
-    for r in existing:
-        session.delete(r)
-
-    for curr, vals in realized.items():
-        pnl = vals["pnl"]
-        cb  = vals["cost_basis"]
-        if pd.isna(pnl) or cb == 0:
-            continue
-        session.add(RealizedPnL(
-            symbol=symbol,
-            currency=curr,
-            pnl_amount=float(pnl),
-            cost_basis_sold=float(cb),
-            broker="Manual",
-            account_type="Manual",
-            source="db_transaction",
-        ))
-
-    session.commit()
-    print(f"  [PnL] Recalculated realized P&L for {symbol}: {realized}")
+# _recalculate_realized_pnl_for_symbol removed in favor of dynamic calculation
 
 @app.get("/api/transactions")
 def get_transactions():
@@ -444,13 +353,10 @@ def get_transactions():
 def get_closed_trades():
     """Fetch individually matched closed trades from full broker CSV history (FIFO basis)"""
     try:
-        from transaction_parser import load_all_transactions
-        import os
-        tx_dir = os.path.join(os.path.dirname(__file__), "..", "transactions")
-        if not os.path.exists(tx_dir):
-            return []
+        # Fetch entirely from database transactions instead of CSV
+        with Session(engine) as session:
+            df_tx = get_processed_transactions(session)
             
-        df_tx = load_all_transactions(tx_dir)
         if df_tx.empty:
             return []
             
@@ -544,6 +450,9 @@ def get_closed_trades():
                     def safe_float(v):
                         return float(v) if math.isfinite(v) else 0.0
                     
+                    def safe_str(v, fallback="Unknown"):
+                        return str(v) if pd.notna(v) and str(v).lower() != 'nan' else fallback
+                    
                     if not is_merger_surrender:
                         closed_trades.append({
                             'symbol': str(sym),
@@ -557,7 +466,9 @@ def get_closed_trades():
                             'holdingDays': int(days),
                             'annualizedReturn': safe_float(ann_ret),
                             'isWin': bool(pnl >= 0) if math.isfinite(pnl) else False,
-                            'currency': str(curr) if pd.notna(curr) else 'CAD'
+                            'currency': str(curr) if pd.notna(curr) else 'CAD',
+                            'broker': safe_str(tx.get('Broker'), "Manual"),
+                            'account_type': safe_str(tx.get('Account_Type'), "Manual")
                         })
         
         # Sort descending by sellDate
@@ -602,10 +513,7 @@ def add_transaction(tx: Transaction):
             session.add(db_tx)
             session.commit()
 
-            # 3. If Sell, recalculate realized P&L for this symbol
-            if tx.Transaction_Type in ("Sell", "SELL"):
-                _recalculate_realized_pnl_for_symbol(session, tx.Symbol)
-            
+            # 3. Cache clearing
             clear_all_caches()
             return {"status": "success", "id": db_tx.id}
     except Exception as e:
@@ -624,8 +532,7 @@ def delete_transaction(id: int):
             session.delete(tx)
             session.commit()
 
-            # Recalculate realized P&L after any deletion (deleting a buy changes future sell PnL too)
-            _recalculate_realized_pnl_for_symbol(session, symbol)
+            session.commit()
 
             clear_all_caches()
             return {"status": "success"}
@@ -682,25 +589,38 @@ def force_sync():
 
 @app.get("/api/realized-pnl")
 def get_realized_pnl():
-    """Return all realized P&L rows from broker CSV history"""
+    """Return all realized P&L rows aggregated dynamically from trades"""
     try:
-        with Session(engine) as session:
-            rows = session.exec(select(RealizedPnL).order_by(RealizedPnL.broker, RealizedPnL.symbol)).all()
-            result = []
-            for r in rows:
-                cb = r.cost_basis_sold or 0
-                pnl_pct = (r.pnl_amount / cb * 100) if cb != 0 else None
-                result.append({
-                    "symbol": r.symbol,
-                    "currency": r.currency,
-                    "pnl_amount": r.pnl_amount,
-                    "cost_basis_sold": cb,
-                    "pnl_pct": round(pnl_pct, 2) if pnl_pct is not None else None,
-                    "broker": r.broker,
-                    "account_type": r.account_type,
-                    "source": r.source,
-                })
-            return result
+        trades = get_closed_trades()
+        if isinstance(trades, dict) and "error" in trades:
+            raise HTTPException(status_code=500, detail=trades["error"])
+            
+        realized_map = {}
+        for t in trades:
+            key = (t['symbol'], t['currency'], t['broker'], t['account_type'])
+            if key not in realized_map:
+                realized_map[key] = {
+                    "symbol": t['symbol'],
+                    "currency": t['currency'],
+                    "pnl_amount": 0.0,
+                    "cost_basis_sold": 0.0,
+                    "broker": t['broker'],
+                    "account_type": t['account_type'],
+                    "source": "dynamic_fifo"
+                }
+            realized_map[key]["pnl_amount"] += t['pnl']
+            realized_map[key]["cost_basis_sold"] += t['costBasis']
+            
+        result = []
+        for v in realized_map.values():
+            cb = v["cost_basis_sold"]
+            pnl_pct = (v["pnl_amount"] / cb * 100) if cb > 0 else 0
+            v["pnl_pct"] = round(pnl_pct, 2)
+            result.append(v)
+            
+        # Sort by broker then symbol
+        result.sort(key=lambda x: (x['broker'], x['symbol']))
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

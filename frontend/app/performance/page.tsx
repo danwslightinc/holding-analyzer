@@ -2,9 +2,9 @@
 
 import { useEffect, useState, useMemo } from "react";
 import {
-    LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
+    LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Treemap, Cell
 } from "recharts";
-import { TrendingUp, Filter } from "lucide-react";
+import { TrendingUp, Filter, Layers } from "lucide-react";
 import { API_BASE_URL } from "@/lib/api";
 import { usePortfolio } from "@/lib/PortfolioContext";
 
@@ -24,14 +24,131 @@ const BENCHMARKS = [
     { key: '^GSPTSE', name: 'TSX', color: '#A855F7' }
 ];
 
+const getHeatmapStyle = (perf: number | undefined) => {
+    // 0 or N/A is dark gray
+    if (perf === undefined || isNaN(perf) || perf === 0) return { bg: '#3f3f46', text: '#ffffff' };
+
+    // Up stocks (Finviz style greens)
+    if (perf >= 2) return { bg: '#15803d', text: '#ffffff' }; // green-700
+    if (perf >= 1) return { bg: '#22c55e', text: '#ffffff' }; // green-500
+    if (perf > 0) return { bg: '#4ade80', text: '#022c22' };  // green-400
+
+    // Down stocks (Finviz style reds)
+    if (perf <= -2) return { bg: '#b91c1c', text: '#ffffff' }; // red-700
+    if (perf <= -1) return { bg: '#ef4444', text: '#ffffff' }; // red-500
+    if (perf < 0) return { bg: '#f87171', text: '#450a0a' };   // red-400
+
+    return { bg: '#3f3f46', text: '#ffffff' };
+};
+
+const CustomizedTreemapContent = (props: any) => {
+    const { root, depth, x, y, width, height, index, name, value, dayChange } = props;
+
+    // Only render inner nodes
+    if (depth < 1) return null;
+
+    const style = getHeatmapStyle(dayChange);
+
+    return (
+        <g>
+            <foreignObject x={x} y={y} width={width} height={height}>
+                <div
+                    className="group cursor-pointer border-[1px] border-white dark:border-[#121212]"
+                    style={{
+                        width: '100%',
+                        height: '100%',
+                        backgroundColor: style.bg,
+                        boxSizing: 'border-box',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        overflow: 'hidden',
+                        position: 'relative',
+                        color: style.text
+                    }}
+                >
+                    {/* Overlay for hover effect */}
+                    <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 transition-colors duration-200 pointer-events-none" />
+
+                    <div className="relative z-10 flex flex-col items-center justify-center p-1 pointer-events-none">
+                        {width > 45 && height > 35 && (
+                            <>
+                                <span className={`font-bold ${width > 80 ? 'text-lg' : 'text-sm'} whitespace-nowrap overflow-hidden text-ellipsis max-w-[90%] drop-shadow-sm`}>
+                                    {name}
+                                </span>
+                                {height > 55 && (
+                                    <span className={`font-medium ${width > 80 ? 'text-sm' : 'text-xs'} opacity-90 tracking-wide drop-shadow-sm mt-0.5`}>
+                                        {dayChange !== undefined && !isNaN(dayChange) ? `${dayChange > 0 ? '+' : ''}${dayChange.toFixed(2)}%` : 'N/A'}
+                                    </span>
+                                )}
+                            </>
+                        )}
+                    </div>
+                </div>
+            </foreignObject>
+        </g>
+    );
+};
+
+const CustomTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+        const data = payload[0].payload;
+        if (!data || !data.name) return null;
+        return (
+            <div className="bg-white/95 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-4 rounded-xl shadow-2xl backdrop-blur-md">
+                <p className="font-bold text-gray-900 dark:text-white text-lg mb-2">{data.name}</p>
+                <div className="flex flex-col gap-2">
+                    <div className="flex justify-between gap-4">
+                        <span className="text-sm text-gray-500 dark:text-zinc-400">Market Value</span>
+                        <span className="text-sm font-mono text-gray-900 dark:text-zinc-200">
+                            ${data.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                        <span className="text-sm text-gray-500 dark:text-zinc-400">Day Change</span>
+                        <span className={`text-sm font-bold ${data.dayChange > 0 ? 'text-emerald-500 dark:text-emerald-400' : data.dayChange < 0 ? 'text-rose-500 dark:text-rose-400' : 'text-gray-500 dark:text-zinc-400'}`}>
+                            {data.dayChange !== undefined && !isNaN(data.dayChange) ? `${data.dayChange > 0 ? '+' : ''}${data.dayChange.toFixed(2)}%` : 'N/A'}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+    return null;
+};
+
 export default function PerformancePage() {
-    const { history: rawHistory, loading, error } = usePortfolio();
+    const { history: rawHistory, data, loading, error } = usePortfolio();
     const [range, setRange] = useState("1M");
     const [visibleBenchmarks, setVisibleBenchmarks] = useState<Record<string, boolean>>({
         '^GSPC': true,
         '^IXIC': false,
         '^GSPTSE': false
     });
+
+    const treemapData = useMemo(() => {
+        if (!data || !data.holdings) return [];
+
+        const aggregated = data.holdings.reduce((acc: any, h: any) => {
+            if (!acc[h.Symbol]) {
+                acc[h.Symbol] = {
+                    name: h.Symbol,
+                    value: 0,
+                    dayChange: h["Day Change"],
+                };
+            }
+            acc[h.Symbol].value += h.Market_Value;
+            return acc;
+        }, {});
+
+        return [
+            {
+                name: 'Portfolio',
+                children: Object.values(aggregated) as any[]
+            }
+        ];
+    }, [data]);
 
     const chartData = useMemo(() => {
         if (!rawHistory || rawHistory.length === 0) return [];
@@ -261,6 +378,40 @@ export default function PerformancePage() {
                             }
                             return `${minChange.toFixed(2)}%`;
                         })()}
+                    </div>
+                </div>
+            </div>
+
+            {/* Daily Performance Heatmap */}
+            <div className="glass-panel p-6 rounded-3xl h-[600px] flex flex-col mt-8 shadow-xl border border-zinc-200/50 dark:border-white/10 dark:bg-[#1a1a1a]">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-lg">
+                        <Layers className="w-5 h-5 text-purple-500 dark:text-purple-400" />
+                    </div>
+                    Daily Performance
+                </h3>
+                <div className="flex-1 min-h-0 relative -mx-2">
+                    <div className="absolute inset-0">
+                        {treemapData && treemapData.length > 0 && treemapData[0].children && treemapData[0].children.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <Treemap
+                                    data={treemapData}
+                                    dataKey="value"
+                                    aspectRatio={4 / 3}
+                                    stroke="none"
+                                    isAnimationActive={true}
+                                    animationDuration={800}
+                                    content={<CustomizedTreemapContent />}
+                                >
+                                    <Tooltip content={<CustomTooltip />} wrapperStyle={{ zIndex: 1000 }} cursor={false} />
+                                </Treemap>
+                            </ResponsiveContainer>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center h-full text-zinc-500 dark:text-zinc-600 space-y-4">
+                                <div className="animate-pulse w-12 h-12 rounded-full bg-zinc-200 dark:bg-zinc-800" />
+                                <p className="font-medium tracking-wide">Waiting for daily market data...</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
