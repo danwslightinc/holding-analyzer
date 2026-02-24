@@ -10,7 +10,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backend.database import engine, create_db_and_tables
 from backend.models import Holding, Transaction, InvestmentThesis
-from transaction_parser import load_all_transactions
 
 CSV_PATH = "portfolio.csv"
 THESIS_PATH = "thesis.json"
