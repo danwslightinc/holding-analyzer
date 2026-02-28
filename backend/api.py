@@ -548,9 +548,10 @@ def add_transaction(tx: Transaction):
             session.add(db_tx)
             
             # 3. Update Holding quantity
-            if action == 'BUY' or 'ADD' in action:
+            # Map DRIP and Transfer In to BUY behavior (increase quantity)
+            if action in ['BUY', 'DRIP', 'TRANSFER IN', 'TRANSF IN'] or 'ADD' in action:
                 h.quantity = (h.quantity or 0.0) + qty
-            elif action == 'SELL' or 'REDUCE' in action:
+            elif action in ['SELL'] or 'REDUCE' in action:
                 h.quantity = (h.quantity or 0.0) - qty
             
             # Update trade date to latest
@@ -582,9 +583,10 @@ def delete_transaction(id: int):
                 if h:
                     action = str(tx.type).upper()
                     qty = float(tx.quantity or 0.0)
-                    if action == 'BUY' or 'ADD' in action:
+                    # Match the addition logic exactly to undo it properly
+                    if action in ['BUY', 'DRIP', 'TRANSFER IN', 'TRANSF IN'] or 'ADD' in action:
                         h.quantity = (h.quantity or 0.0) - qty
-                    elif action == 'SELL' or 'REDUCE' in action:
+                    elif action in ['SELL'] or 'REDUCE' in action:
                         h.quantity = (h.quantity or 0.0) + qty
                     session.add(h)
             
