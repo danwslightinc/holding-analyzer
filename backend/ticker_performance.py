@@ -33,7 +33,7 @@ def get_ticker_performance(symbols, timeframes=['1d', '1w', '1m', '3m', '6m', 'Y
         print("Using cached ticker performance data")
         return _performance_cache['data']
     
-    print("Fetching fresh ticker performance data from Yahoo Finance...")
+    print(f"Fetching fresh ticker performance data from Yahoo Finance for {len(symbols)} symbols...")
     results = {}
     
     # Map timeframes to days
@@ -48,68 +48,80 @@ def get_ticker_performance(symbols, timeframes=['1d', '1w', '1m', '3m', '6m', 'Y
         'YTD': (now - datetime(now.year, 1, 1)).days
     }
     
-    for symbol in symbols:
-        try:
-            results[symbol] = {}
-            ticker = yf.Ticker(symbol)
-            
-            # Get max 1 year of data to cover all timeframes
-            hist = ticker.history(period='1y')
-            
-            if hist.empty:
-                continue
-                
-            current_price = hist['Close'].iloc[-1]
-            
-            for tf in timeframes:
-                if tf == '1d' and len(hist) > 1:
-                    start_price = hist['Close'].iloc[-2]
-                    change_value = current_price - start_price
-                    change_pct = (change_value / start_price) * 100 if start_price > 0 else 0
-                    results[symbol][tf] = {
-                        'change_pct': round(change_pct, 2),
-                        'change_value': round(change_value, 2),
-                        'current_price': round(current_price, 2),
-                        'start_price': round(start_price, 2)
-                    }
-                    continue
+    try:
+        from yahooquery import Ticker
+        t = Ticker(symbols, asynchronous=True)
+        # Fetch 1 year of data for all tickers at once
+        all_hist = t.history(period='1y')
+        
+        if all_hist.empty:
+            print("No history data returned from Yahoo Finance")
+            return {}
 
-                days = timeframe_map.get(tf, 30)
-                
-                # Get price from N days ago
-                target_date = now - timedelta(days=days)
-                
-                # Make target_date timezone-aware to match hist.index
-                if hasattr(hist.index, 'tz') and hist.index.tz is not None:
-                    import pytz
-                    target_date = pytz.UTC.localize(target_date.replace(tzinfo=None))
-                
-                # Find closest available date
-                hist_filtered = hist[hist.index >= target_date]
-                
-                if len(hist_filtered) > 0:
-                    start_price = hist_filtered['Close'].iloc[0]
-                    change_value = current_price - start_price
-                    change_pct = (change_value / start_price) * 100 if start_price > 0 else 0
-                    
-                    results[symbol][tf] = {
-                        'change_pct': round(change_pct, 2),
-                        'change_value': round(change_value, 2),
-                        'current_price': round(current_price, 2),
-                        'start_price': round(start_price, 2)
-                    }
+        for symbol in symbols:
+            try:
+                # Handle MultiIndex or single index correctly
+                if isinstance(all_hist.index, pd.MultiIndex):
+                    if symbol not in all_hist.index.levels[0]:
+                        results[symbol] = {}
+                        continue
+                    hist = all_hist.xs(symbol)
                 else:
-                    # Not enough data for this timeframe
-                    results[symbol][tf] = {
-                        'change_pct': 0,
-                        'change_value': 0,
-                        'current_price': round(current_price, 2),
-                        'start_price': round(current_price, 2)
-                    }
+                    if len(symbols) > 1: continue
+                    hist = all_hist
+                
+                if hist.empty:
+                    results[symbol] = {}
+                    continue
                     
-        except Exception as e:
-            print(f"Error fetching performance for {symbol}: {e}")
-            results[symbol] = {}
+                current_price = hist['close'].iloc[-1]
+                
+                results[symbol] = {}
+                for tf in timeframes:
+                    if tf == '1d' and len(hist) > 1:
+                        start_price = hist['close'].iloc[-2]
+                        change_value = current_price - start_price
+                        change_pct = (change_value / start_price) * 100 if start_price > 0 else 0
+                        results[symbol][tf] = {
+                            'change_pct': round(change_pct, 2),
+                            'change_value': round(change_value, 2),
+                            'current_price': round(current_price, 2),
+                            'start_price': round(start_price, 2)
+                        }
+                        continue
+
+                    days = timeframe_map.get(tf, 30)
+                    target_date = now - timedelta(days=days)
+                    
+                    # Convert to pd.Timestamp for comparison with index
+                    target_ts = pd.Timestamp(target_date).tz_localize('UTC') if hist.index.tz else pd.Timestamp(target_date)
+                    
+                    hist_filtered = hist[hist.index >= target_ts]
+                    
+                    if not hist_filtered.empty:
+                        start_price = hist_filtered['close'].iloc[0]
+                        change_value = current_price - start_price
+                        change_pct = (change_value / start_price) * 100 if start_price > 0 else 0
+                        
+                        results[symbol][tf] = {
+                            'change_pct': round(change_pct, 2),
+                            'change_value': round(change_value, 2),
+                            'current_price': round(current_price, 2),
+                            'start_price': round(start_price, 2)
+                        }
+                    else:
+                        results[symbol][tf] = {
+                            'change_pct': 0, 'change_value': 0,
+                            'current_price': round(current_price, 2),
+                            'start_price': round(current_price, 2)
+                        }
+            except Exception as e:
+                print(f"Error processing performance for {symbol}: {e}")
+                results[symbol] = {}
+                
+    except Exception as e:
+        print(f"Error fetching batch performance: {e}")
+        return {}
     
     # Update cache
     _performance_cache['data'] = results

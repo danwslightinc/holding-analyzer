@@ -424,8 +424,11 @@ def get_latest_news(symbols):
         # Fallback for missing symbols: try yfinance for news (often bypasses crumb issues)
         remaining = [s for s in symbols if s not in news_map]
         if remaining:
-            print(f"Using yfinance fallback for news for {len(remaining)} symbols...")
-            for sym in remaining:
+            # ONLY fetch for the first 3 symbols to avoid hanging for a long time
+            # 13+ symbols can take 30+ seconds via yfinance synchronous calls
+            limit = 3
+            print(f"Using yfinance fallback for news for top {min(len(remaining), limit)} symbols...")
+            for sym in remaining[:limit]:
                 try:
                     yt = yf.Ticker(sym)
                     y_news = yt.news
