@@ -50,7 +50,7 @@ export default function TransactionsPage() {
         Quantity: "",
         Commission: "0",
         Trade_Date: new Date().toISOString().split('T')[0].replace(/-/g, '/'),
-        Transaction_Type: "Buy",
+        Transaction_Type: "BUY",
         Broker: "RBC",
         Account_Type: "TFSA",
         Comment: ""
@@ -76,7 +76,7 @@ export default function TransactionsPage() {
         return transactions.filter(tx => {
             const matchesSearch = (tx.Symbol || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
                 (tx.Broker || "").toLowerCase().includes(searchQuery.toLowerCase());
-            const matchesFilter = filterType === "All" || tx["Transaction Type"] === filterType;
+            const matchesFilter = filterType === "All" || (tx["Transaction Type"] || "").toUpperCase() === filterType.toUpperCase();
             return matchesSearch && matchesFilter;
         });
     }, [transactions, searchQuery, filterType]);
@@ -102,7 +102,7 @@ export default function TransactionsPage() {
                     Quantity: "",
                     Commission: "0",
                     Trade_Date: new Date().toISOString().split('T')[0].replace(/-/g, '/'),
-                    Transaction_Type: "Buy",
+                    Transaction_Type: "BUY",
                     Broker: "RBC",
                     Account_Type: "TFSA",
                     Comment: ""
@@ -161,141 +161,134 @@ export default function TransactionsPage() {
             </div>
 
             {/* Inline Form: Appears "Right under Add button" as requested */}
-            <AnimatePresence>
-                {showForm && (
-                    <motion.div
-                        initial={{ height: 0, opacity: 0, y: -20 }}
-                        animate={{ height: 'auto', opacity: 1, y: 0 }}
-                        exit={{ height: 0, opacity: 0, y: -20 }}
-                        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                        className="overflow-hidden"
-                    >
-                        <div className="glass-panel rounded-2xl shadow-2xl p-8 mb-8 border border-blue-500/20 bg-blue-500/5">
-                            <div className="flex items-center justify-between mb-8">
-                                <div>
-                                    <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                                        <History className="w-6 h-6 text-blue-500" />
-                                        Manual Trade Entry
-                                    </h2>
-                                    <p className="text-sm text-gray-500">Document a new security execution for your portfolio history.</p>
-                                </div>
+            {showForm && (
+                <div>
+                    <div className="glass-panel rounded-2xl shadow-2xl p-8 mb-8 border border-blue-500/20 bg-blue-500/5">
+                        <div className="flex items-center justify-between mb-8">
+                            <div>
+                                <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
+                                    <History className="w-6 h-6 text-blue-500" />
+                                    Manual Trade Entry
+                                </h2>
+                                <p className="text-sm text-gray-500">Document a new security execution for your portfolio history.</p>
+                            </div>
+                        </div>
+
+                        <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                            <div className="space-y-1.5 lg:col-span-1">
+                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Asset Symbol</label>
+                                <input
+                                    required
+                                    value={form.Symbol}
+                                    onChange={e => setForm({ ...form, Symbol: e.target.value.toUpperCase() })}
+                                    className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground text-xl font-bold uppercase rounded-xl px-4 focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
+                                />
                             </div>
 
-                            <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                                <div className="space-y-1.5 lg:col-span-1">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Asset Symbol</label>
-                                    <input
-                                        required
-                                        value={form.Symbol}
-                                        onChange={e => setForm({ ...form, Symbol: e.target.value.toUpperCase() })}
-                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground text-xl font-bold uppercase rounded-xl px-4 focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
-                                    />
-                                </div>
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Execution Price</label>
+                                <input
+                                    required
+                                    type="number"
+                                    step="0.0001"
+                                    value={form.Purchase_Price}
+                                    onChange={e => setForm({ ...form, Purchase_Price: e.target.value })}
+                                    className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
+                                />
+                            </div>
 
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Execution Price</label>
-                                    <input
-                                        required
-                                        type="number"
-                                        step="0.0001"
-                                        value={form.Purchase_Price}
-                                        onChange={e => setForm({ ...form, Purchase_Price: e.target.value })}
-                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
-                                    />
-                                </div>
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Volume (Qty)</label>
+                                <input
+                                    required
+                                    type="number"
+                                    step="0.000001"
+                                    value={form.Quantity}
+                                    onChange={e => setForm({ ...form, Quantity: e.target.value })}
+                                    className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
+                                />
+                            </div>
 
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Volume (Qty)</label>
-                                    <input
-                                        required
-                                        type="number"
-                                        step="0.000001"
-                                        value={form.Quantity}
-                                        onChange={e => setForm({ ...form, Quantity: e.target.value })}
-                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
-                                    />
-                                </div>
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Trade Date</label>
+                                <input
+                                    required
+                                    type="date"
+                                    value={form.Trade_Date.replace(/\//g, "-")}
+                                    onChange={e => setForm({ ...form, Trade_Date: e.target.value.replace(/-/g, "/") })}
+                                    className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:light] dark:[color-scheme:dark] transition-colors"
+                                />
+                            </div>
 
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Trade Date</label>
-                                    <input
-                                        required
-                                        type="date"
-                                        value={form.Trade_Date.replace(/\//g, "-")}
-                                        onChange={e => setForm({ ...form, Trade_Date: e.target.value.replace(/-/g, "/") })}
-                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:light] dark:[color-scheme:dark] transition-colors"
-                                    />
-                                </div>
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Brokerage</label>
+                                <select
+                                    value={form.Broker}
+                                    onChange={e => setForm({ ...form, Broker: e.target.value })}
+                                    className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 outline-none appearance-none cursor-pointer hover:bg-slate-200 dark:hover:bg-white/10 transition-colors"
+                                >
+                                    <option value="RBC">RBC Direct</option>
+                                    <option value="CIBC">CIBC Edge</option>
+                                    <option value="TD">TD Direct</option>
+                                    <option value="Questrade">Questrade</option>
+                                    <option value="Manual">Manual</option>
+                                </select>
+                            </div>
 
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Brokerage</label>
-                                    <select
-                                        value={form.Broker}
-                                        onChange={e => setForm({ ...form, Broker: e.target.value })}
-                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 outline-none appearance-none cursor-pointer hover:bg-slate-200 dark:hover:bg-white/10 transition-colors"
-                                    >
-                                        <option value="RBC">RBC Direct</option>
-                                        <option value="CIBC">CIBC Edge</option>
-                                        <option value="TD">TD Direct</option>
-                                        <option value="Questrade">Questrade</option>
-                                        <option value="Manual">Manual</option>
-                                    </select>
-                                </div>
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Account Type</label>
+                                <select
+                                    value={form.Account_Type}
+                                    onChange={e => setForm({ ...form, Account_Type: e.target.value })}
+                                    className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 outline-none appearance-none cursor-pointer hover:bg-slate-200 dark:hover:bg-white/10 transition-colors"
+                                >
+                                    <option value="TFSA">TFSA</option>
+                                    <option value="RRSP">RRSP</option>
+                                    <option value="FHSA">FHSA</option>
+                                    <option value="Open">Margin / Open</option>
+                                </select>
+                            </div>
 
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Account Type</label>
-                                    <select
-                                        value={form.Account_Type}
-                                        onChange={e => setForm({ ...form, Account_Type: e.target.value })}
-                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 outline-none appearance-none cursor-pointer hover:bg-slate-200 dark:hover:bg-white/10 transition-colors"
-                                    >
-                                        <option value="TFSA">TFSA</option>
-                                        <option value="RRSP">RRSP</option>
-                                        <option value="FHSA">FHSA</option>
-                                        <option value="Open">Margin / Open</option>
-                                    </select>
-                                </div>
-
-                                <div className="space-y-1.5 lg:col-span-1">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Action</label>
-                                    <div className="flex bg-slate-100 dark:bg-white/5 p-1 rounded-xl border border-slate-200 dark:border-white/10 h-[56px] items-center">
-                                        {["Buy", "Sell", "DRIP"].map((t) => (
+                            <div className="space-y-1.5 lg:col-span-1">
+                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Action</label>
+                                <div className="flex bg-slate-100 dark:bg-white/5 p-1 rounded-xl border border-slate-200 dark:border-white/10 h-[56px] items-center">
+                                    {["BUY", "SELL", "DRIP"].map((t) => {
+                                        const isActive = form.Transaction_Type === t;
+                                        return (
                                             <button
                                                 key={t}
                                                 type="button"
                                                 onClick={() => setForm({ ...form, Transaction_Type: t })}
-                                                className={`flex-1 h-full rounded-lg text-xs font-bold transition-all ${form.Transaction_Type === t
-                                                    ? (t === 'Sell' ? "bg-rose-500 text-white shadow-md" : "bg-emerald-500 text-white shadow-md")
-                                                    : "text-gray-500 hover:text-foreground"
+                                                className={`flex-1 h-full rounded-lg text-xs font-bold transition-all ${isActive
+                                                        ? (t === 'SELL' ? "bg-rose-500 text-white shadow-md" : "bg-emerald-500 text-white shadow-md")
+                                                        : "text-gray-500 hover:text-foreground"
                                                     }`}
                                             >
                                                 {t}
                                             </button>
-                                        ))}
-                                    </div>
+                                        );
+                                    })}
                                 </div>
+                            </div>
 
-                                <div className="flex items-end justify-end lg:col-span-1">
-                                    <motion.button
-                                        whileHover={{ scale: 1.02 }}
-                                        whileTap={{ scale: 0.98 }}
-                                        type="submit"
-                                        className={`h-[56px] px-8 w-full rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg text-white ${form.Transaction_Type === 'Sell'
-                                            ? "bg-rose-500 hover:bg-rose-600 shadow-rose-900/10"
-                                            : form.Transaction_Type === 'Buy'
-                                                ? "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-900/10"
-                                                : "bg-blue-600 hover:bg-blue-700 shadow-blue-900/10"
-                                            } border border-transparent dark:border-white/10 group`}
-                                    >
-                                        <span>Confirm Entry</span>
-                                        <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
-                                    </motion.button>
-                                </div>
-                            </form>
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+                            <div className="flex items-end justify-end lg:col-span-1">
+                                <button
+                                    type="submit"
+                                    className={`h-[56px] px-8 w-full rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg text-white ${form.Transaction_Type === 'SELL'
+                                            ? "bg-rose-600 hover:bg-rose-700 shadow-rose-900/20"
+                                            : form.Transaction_Type === 'BUY'
+                                                ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-900/20"
+                                                : "bg-blue-600 hover:bg-blue-700 shadow-blue-900/20"
+                                        } border border-transparent dark:border-white/10 group`}
+                                >
+                                    <span>Confirm Entry</span>
+                                    <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             {/* Sub-Header: Search & Intelligence */}
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
@@ -345,7 +338,8 @@ export default function TransactionsPage() {
                             {filteredTransactions.map((tx) => {
                                 const bStyle = BROKER_COLORS[tx.Broker] ?? BROKER_COLORS.Manual;
                                 const aStyle = ACCOUNT_COLORS[tx["Account Type"]] ?? BROKER_COLORS.Manual;
-                                const isSell = tx["Transaction Type"] === 'Sell';
+                                const txType = (tx["Transaction Type"] || "").toUpperCase();
+                                const isSell = txType === 'SELL';
 
                                 return (
                                     <tr key={tx.id} className="hover:bg-white/5 transition-colors group">
@@ -369,7 +363,7 @@ export default function TransactionsPage() {
                                         </td>
                                         <td className="px-6 py-5">
                                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${isSell
-                                                ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                                                ? 'bg-red-500/10 text-red-400 border border-red-500/20'
                                                 : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                                                 }`}>
                                                 {tx["Transaction Type"] || 'BUY'}

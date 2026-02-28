@@ -78,10 +78,20 @@ def get_processed_transactions(session):
 def load_portfolio_from_db():
     mental_cols = ['Thesis', 'Catalyst', 'Kill Switch', 'Conviction', 'Timeframe']
     create_db_and_tables()
+    
+    CSV_PATH = "portfolio.csv"
+    THESIS_PATH = "thesis.json"
+    
     with Session(engine) as session:
+        # Check if database is empty - if so, try to sync from legacy files (useful for CI)
+        holdings_count = session.exec(select(Holding)).first()
+        if not holdings_count and (os.path.exists(CSV_PATH) or os.path.exists(THESIS_PATH)):
+            print("Database empty. Syncing from legacy files...")
+            _sync_from_legacy_files(session, CSV_PATH, THESIS_PATH)
+            
         holdings = session.exec(select(Holding)).all()
         df_tx = get_processed_transactions(session)
-        if df_tx.empty:
+        if df_tx.empty and not holdings:
             return pd.DataFrame(), {}
             
         df_h_holdings, realized_pnl = calculate_holdings(df_tx)
@@ -165,6 +175,108 @@ def load_portfolio_from_db():
         desired_cols = ['Symbol', 'Broker', 'Account_Type', 'Purchase Price', 'Quantity', 'Commission', 'Trade Date'] + mental_cols
         cols = [c for c in desired_cols if c in df.columns]
         return df[cols], realized_pnl
+
+def _sync_from_legacy_files(session, csv_path, thesis_path):
+    """Helper to migrate data from portfolio.csv and thesis.json into DB"""
+    if os.path.exists(thesis_path):
+        try:
+            with open(thesis_path, "r") as f:
+                thesis_data = json.load(f)
+            for symbol, data in thesis_data.items():
+                if not symbol: continue
+                it = InvestmentThesis(
+                    symbol=symbol,
+                    thesis=data.get("Thesis"),
+                    conviction=data.get("Conviction"),
+                    timeframe=data.get("Timeframe"),
+                    kill_switch=data.get("Kill Switch")
+                )
+                session.add(it)
+            session.commit()
+        except Exception as e:
+            print(f"Error syncing thesis.json: {e}")
+
+    if os.path.exists(csv_path):
+        try:
+            df = pd.read_csv(csv_path)
+            if df.empty: return
+            
+            # Map holdings and transactions from CSV
+            groups = df.groupby(['Symbol', 'Comment'], dropna=False)
+            for (symbol, comment), rows in groups:
+                if pd.isna(symbol): continue
+                symbol = str(symbol).strip()
+                comment_str = str(comment).strip() if pd.notna(comment) else ""
+                
+                h = Holding(symbol=symbol)
+                # Parse manual quantity and cost
+                vqr = rows.dropna(subset=['Quantity'])
+                if not vqr.empty:
+                    vqr['Quantity'] = pd.to_numeric(vqr['Quantity'], errors='coerce')
+                    vqr = vqr.dropna(subset=['Quantity'])
+                    if not vqr.empty:
+                        h.quantity = float(vqr['Quantity'].sum())
+                        pqr = vqr.dropna(subset=['Purchase Price'])
+                        pqr['Purchase Price'] = pd.to_numeric(pqr['Purchase Price'], errors='coerce')
+                        pqr = pqr.dropna(subset=['Purchase Price'])
+                        if not pqr.empty and pqr['Quantity'].sum() > 0:
+                            total_cost = (pqr['Purchase Price'] * pqr['Quantity']).sum()
+                            h.purchase_price = float(total_cost / pqr['Quantity'].sum())
+                        
+                        if 'Commission' in vqr:
+                            comm_col = pd.to_numeric(vqr['Commission'], errors='coerce').dropna()
+                            h.commission = float(comm_col.sum()) if not comm_col.empty else 0.0
+
+                if comment_str:
+                    h.comment = comment_str
+                    parts = comment_str.split()
+                    if len(parts) >= 2:
+                        h.broker, h.account_type = parts[0], parts[1]
+                
+                if 'Trade Date' in rows:
+                    vd = rows['Trade Date'].dropna()
+                    if not vd.empty:
+                        parsed = pd.to_datetime(vd, errors='coerce').dropna()
+                        if not parsed.empty: h.trade_date = parsed.max()
+                
+                session.add(h)
+                session.commit() # Need holding ID for transactions
+                session.refresh(h)
+
+                # Add individual transactions for FIFO tracking
+                for _, row in rows.iterrows():
+                    qty_val = row.get('Quantity')
+                    if pd.isna(qty_val): continue
+                    
+                    try:
+                        t_date = row.get('Trade Date')
+                        if pd.notna(t_date) and str(t_date).replace('.0', '').isdigit():
+                            d_val = pd.to_datetime(str(int(float(t_date))), format='%Y%m%d')
+                        else:
+                            d_val = pd.to_datetime(t_date, errors='coerce')
+                    except: d_val = pd.Timestamp.now()
+                    
+                    tx = Transaction(
+                        holding_id=h.id,
+                        symbol=symbol,
+                        date=d_val if pd.notna(d_val) else pd.Timestamp.now(),
+                        type=str(row.get('Transaction Type', 'Buy')) or 'Buy',
+                        quantity=float(qty_val),
+                        price=float(row.get('Purchase Price', 0.0)) or 0.0,
+                        commission=float(row.get('Commission', 0.0)) or 0.0,
+                        amount=(float(qty_val) * float(row.get('Purchase Price', 0.0) or 0)) + float(row.get('Commission', 0.0) or 0),
+                        currency='CAD' if symbol.endswith('.TO') else 'USD',
+                        description=comment_str,
+                        broker=h.broker,
+                        account_type=h.account_type,
+                        source='Manual'
+                    )
+                    session.add(tx)
+            session.commit()
+            print("Legacy sync complete.")
+        except Exception as e:
+            print(f"Error syncing portfolio.csv: {e}")
+            session.rollback()
 
 def parse_date(val):
     """Parse Trade Date (support both YYYYMMDD and YYYY/MM/DD)"""
