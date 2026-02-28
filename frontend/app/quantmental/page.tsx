@@ -69,7 +69,20 @@ export default function QuantmentalPage() {
     const data = useMemo(() => {
         if (!portData) return [];
 
-        return portData.holdings.map((h: any) => ({
+        // Group by Symbol to avoid duplicates
+        const grouped = portData.holdings.reduce((acc: any, h: any) => {
+            const sym = h.Symbol;
+            if (!acc[sym]) {
+                acc[sym] = { ...h };
+            } else {
+                // If needed, we could sum quantities here, but for Quant-mental
+                // we mostly care about symbol-level metrics and the thesis.
+                acc[sym].Quantity = (acc[sym].Quantity || 0) + (h.Quantity || 0);
+            }
+            return acc;
+        }, {});
+
+        return Object.values(grouped).map((h: any) => ({
             Symbol: h.Symbol,
             Thesis: h.Thesis || "",
             Catalyst: h.Catalyst || "",

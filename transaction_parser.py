@@ -131,3 +131,200 @@ def calculate_holdings(df_tx):
     if df_out.empty:
         df_out = pd.DataFrame(columns=['Symbol', 'Broker', 'Account_Type', 'Quantity', 'Purchase Price', 'Trade Date', 'Commission', 'Currency'])
     return df_out, realized_pnl
+
+def clean_symbol(symbol, broker=None, description=""):
+    """Clean symbol strings from various broker formats."""
+    if not isinstance(symbol, str):
+        if pd.isna(symbol): return ""
+        symbol = str(symbol)
+    
+    s = symbol.strip().upper()
+    
+    # Handle CIBC specific symbol padding or formats
+    if broker == "CIBC":
+        # CIBC symbols sometimes have trailing spaces or are part of a longer string
+        s = s.split(':')[0].strip()
+        
+    # Handle crypto
+    if "BITCOIN" in description.upper() or "BTC" in s:
+        if "BTC" in s: return "BTC-USD"
+        return "BTC-USD"
+    if "ETHEREUM" in description.upper() or "ETH" in s:
+        return "ETH-USD"
+
+    # Remove currency suffixes if they are separated by space
+    s = s.split(' ')[0]
+    
+    # Common CAD stocks might not have .TO in some files but are Canadian
+    # If we are in a CAD account and it's a known Cdn symbol, we might add .TO
+    # But for now, we'll stick to what's in the file or Description
+    if "CDN" in description.upper() and not s.endswith(".TO") and "." not in s:
+        # Avoid adding .TO to US stocks traded in CAD (rare but possible)
+        # Usually if it says CDN and no period, it's TSX
+        pass 
+
+    return s
+
+def parse_cibc(filepath):
+    """Parse CIBC Investors Edge transaction history CSV."""
+    # Find the header row (starts with "Transaction Date")
+    with open(filepath, 'r') as f:
+        lines = f.readlines()
+    header_idx = -1
+    for i, line in enumerate(lines):
+        if "Transaction Date" in line:
+            header_idx = i
+            break
+            
+    if header_idx == -1: return pd.DataFrame() # No data found
+    
+    df = pd.read_csv(filepath, skiprows=header_idx, on_bad_lines='skip')
+    df.columns = [c.strip() for c in df.columns]
+    
+    # Map columns
+    col_map = {
+        'Transaction Date': 'Date',
+        'Transaction Type': 'Action',
+        'Symbol': 'Symbol',
+        'Quantity': 'Quantity',
+        'Price': 'Price',
+        'Commission': 'Commission',
+        'Amount': 'Amount',
+        'Currency of Amount': 'Currency',
+        'Description': 'Description'
+    }
+    df = df.rename(columns=col_map)
+    
+    # If symbol is NaN, try to extract it from description (sometimes happens for some brokers)
+    if 'Symbol' in df.columns:
+        df = df[df['Symbol'].notna() | df['Description'].notna()]
+    
+    # Normalize actions
+    action_map = {
+        'Buy': 'BUY',
+        'Sell': 'SELL',
+        'Dividend': 'DIV',
+        'Reinvest': 'BUY',  # DRIP
+        'Interest': 'INT',
+        'Transfer In': 'BUY',
+        'Transf In': 'BUY',
+        'Merger': 'BUY'
+    }
+    df['Action'] = df['Action'].map(lambda x: action_map.get(str(x).strip(), str(x).upper()))
+    
+    # Clean up numbers
+    for col in ['Quantity', 'Price', 'Commission', 'Amount']:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.replace(',', '').str.replace('(', '').str.replace(')', '').str.replace('$', '').str.replace('"', '').str.strip()
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+    
+    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+    return df.dropna(subset=['Date'])
+
+def parse_rbc(filepath):
+    """Parse RBC Direct Investing activity export CSV."""
+    with open(filepath, 'r') as f:
+        lines = f.readlines()
+    header_idx = -1
+    for i, line in enumerate(lines):
+        if "Date" in line and "Activity" in line:
+            header_idx = i
+            break
+    if header_idx == -1: return pd.DataFrame()
+    
+    df = pd.read_csv(filepath, skiprows=header_idx, on_bad_lines='skip')
+    df.columns = [c.strip() for c in df.columns]
+    
+    col_map = {
+        'Date': 'Date',
+        'Activity': 'Action',
+        'Symbol': 'Symbol',
+        'Quantity': 'Quantity',
+        'Price': 'Price',
+        'Value': 'Amount',
+        'Currency': 'Currency',
+        'Description': 'Description'
+    }
+    df = df.rename(columns=col_map)
+    
+    action_map = {
+        'Buy': 'BUY',
+        'Sell': 'SELL',
+        'Dividends': 'DIV',
+        'Interest': 'INT',
+        'Distribution': 'DIV',
+        'Reinvestment': 'BUY'
+    }
+    df['Action'] = df['Action'].map(lambda x: action_map.get(str(x).strip(), str(x).upper()))
+    
+    for col in ['Quantity', 'Price', 'Amount']:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.replace(',', '').str.replace('(', '').str.replace(')', '').str.replace('$', '').str.strip()
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+            
+    df['Commission'] = 0.0
+    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+    return df.dropna(subset=['Date'])
+
+def parse_td(filepath):
+    """Parse TD Direct Investing activity CSV."""
+    with open(filepath, 'r', encoding='latin-1') as f:
+        lines = f.readlines()
+    header_idx = -1
+    for i, line in enumerate(lines):
+        if "Trade Date" in line and "Action" in line:
+            header_idx = i
+            break
+    if header_idx == -1: return pd.DataFrame()
+    
+    df = pd.read_csv(filepath, skiprows=header_idx, encoding='latin-1', on_bad_lines='skip')
+    df.columns = [c.strip() for c in df.columns]
+    
+    col_map = {
+        'Trade Date': 'Date',
+        'Action': 'Action',
+        'Symbol': 'Symbol',
+        'Quantity': 'Quantity',
+        'Price': 'Price',
+        'Commission': 'Commission',
+        'Net Amount': 'Amount',
+        'Currency': 'Currency',
+        'Description': 'Description'
+    }
+    df = df.rename(columns=col_map)
+    
+    # TD sometimes misses Symbol column in activity - extract from description
+    if 'Symbol' not in df.columns:
+        # Simple heuristic: first word of description usually not a ticker if it's "ISHR S&P..."
+        # But we can try to find tickers in parentheses or capitals.
+        def extract_td_sym(desc):
+            desc = str(desc).strip()
+            # If "ISHR S&PTSX CMP HI DV ETF", map it to "XEI.TO" maybe?
+            # Or if it has a ticker in the description like "(XIU)", use it.
+            if "(" in desc and ")" in desc:
+                return desc.split("(")[1].split(")")[0]
+            # If it's a known ETF name, handle it?
+            # For now, we'll try to find a capitalized word that looks like a symbol
+            words = desc.split(' ')
+            for w in words:
+                if w.isupper() and 1 <= len(w) <= 6: return w
+            return desc.split(' ')[0] # Default to first word
+        df['Symbol'] = df['Description'].apply(extract_td_sym)
+    
+    action_map = {
+        'BUY': 'BUY',
+        'SELL': 'SELL',
+        'TXPDDV': 'DIV',
+        'DIV': 'DIV',
+        'TFR-IN': 'BUY',
+        'CONT': 'ADD'
+    }
+    df['Action'] = df['Action'].map(lambda x: action_map.get(str(x).strip().upper(), str(x).upper()))
+    
+    for col in ['Quantity', 'Price', 'Commission', 'Amount']:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.replace(',', '').str.replace('(', '').str.replace(')', '').str.replace('$', '').str.strip()
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+            
+    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+    return df.dropna(subset=['Date', 'Symbol'])
