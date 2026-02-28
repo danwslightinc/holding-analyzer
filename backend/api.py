@@ -3,7 +3,7 @@ import os
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Dict
 import pandas as pd
 import json
 import numpy as np
@@ -38,6 +38,21 @@ app.add_middleware(
 )
 
 TARGET_CAGR = float(os.getenv("TARGET_CAGR", 0.08))
+
+def sanitize_val(val):
+    if val is None or pd.isna(val):
+        return None
+    if isinstance(val, (datetime, pd.Timestamp)):
+        return val.strftime('%Y/%m/%d')
+    try:
+        # Check for numeric types specifically using numpy to catch all variants
+        if isinstance(val, (float, np.floating, int, np.integer)):
+            if not np.isfinite(val):
+                return None
+            return float(val)
+    except:
+        pass
+    return val
 @app.on_event("startup")
 def on_startup():
     create_db_and_tables()
@@ -132,12 +147,13 @@ def get_portfolio():
         daily_changes = get_daily_changes(symbols)
         
         # Add Quant-mental fields to each holding
+
+        # Add Quant-mental fields to each holding
         holdings_list = []
         for _, row in df.iterrows():
             sym = row['Symbol']
-            holding_dict = row.to_dict()
-            
-            # Thesis data is already in row from load_portfolio_from_db()
+            # Convert row to dict and sanitize all values
+            holding_dict = {k: sanitize_val(v) for k, v in row.to_dict().items()}
             
             # Add daily change
             holding_dict['Day Change'] = float(daily_changes.get(sym, 0.0))
@@ -168,10 +184,10 @@ def get_portfolio():
         
         return {
             "summary": {
-                "total_value": df['Market_Value'].sum(),
-                "total_cost": df['Cost Basis'].sum(),
-                "total_pnl": df['PnL'].sum(),
-                "usd_cad_rate": usd_cad
+                "total_value": sanitize_val(df['Market_Value'].sum()),
+                "total_cost": sanitize_val(df['Cost Basis'].sum()),
+                "total_pnl": sanitize_val(df['PnL'].sum()),
+                "usd_cad_rate": sanitize_val(usd_cad)
             },
             "holdings": holdings_list
         }
@@ -331,21 +347,21 @@ def get_transactions():
             txs = session.exec(select(DBTransaction).order_by(DBTransaction.date.desc())).all()
             
             # Map DB fields to the format the frontend expects (Uppercase keys)
-            formatted = []
-            for tx in txs:
-                formatted.append({
+            return [
+                {
                     "id": tx.id,
                     "Symbol": tx.symbol,
-                    "Purchase Price": tx.price,
-                    "Quantity": tx.quantity,
-                    "Commission": tx.commission,
-                    "Trade Date": tx.date.strftime('%Y/%m/%d'),
+                    "Purchase Price": sanitize_val(tx.price),
+                    "Quantity": sanitize_val(tx.quantity),
+                    "Commission": sanitize_val(tx.commission),
+                    "Trade Date": sanitize_val(tx.date),
                     "Transaction Type": tx.type,
                     "Broker": tx.broker or "Manual",
-                    "Account Type": tx.account_type or "Manual",
+                    "Account Type": tx.account_type or "Unknown",
                     "Comment": tx.description or ""
-                })
-            return formatted
+                }
+                for tx in txs
+            ]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -480,60 +496,100 @@ def get_closed_trades():
 
 @app.post("/api/transactions")
 def add_transaction(tx: Transaction):
-    """Add a new transaction to Database"""
+    """Add a new transaction to Database and update Holding quantity"""
     try:
         with Session(engine) as session:
-            # 1. Ensure Holding exists
-            existing_holding = session.exec(select(Holding).where(Holding.symbol == tx.Symbol)).first()
-            if not existing_holding:
-                new_h = Holding(symbol=tx.Symbol)
-                session.add(new_h)
+            # 1. Match Holding by Symbol, Broker, and Account_Type
+            h_q = select(Holding).where(
+                Holding.symbol == tx.Symbol,
+                Holding.broker == (tx.Broker or "Manual"),
+                Holding.account_type == (tx.Account_Type or "Unknown")
+            )
+            h = session.exec(h_q).first()
+            
+            if not h:
+                h = Holding(
+                    symbol=tx.Symbol,
+                    broker=tx.Broker or "Manual",
+                    account_type=tx.Account_Type or "Unknown",
+                    quantity=0.0
+                )
+                session.add(h)
                 session.commit()
-                session.refresh(new_h)
-                holding_id = new_h.id
-            else:
-                holding_id = existing_holding.id
+                session.refresh(h)
             
             # 2. Add Transaction
+            action = str(tx.Transaction_Type).upper()
+            qty = float(tx.Quantity or 0.0)
+            price = float(tx.Purchase_Price or 0.0)
+            comm = float(tx.Commission or 0.0)
+            
+            # For Sells, amount is usually positive proceeds
+            if action == 'SELL':
+                amt = (price * qty) - comm
+            else:
+                amt = (price * qty) + comm
+                
             db_tx = DBTransaction(
-                holding_id=holding_id,
+                holding_id=h.id,
                 symbol=tx.Symbol,
                 date=pd.to_datetime(tx.Trade_Date),
-                type=tx.Transaction_Type,
-                quantity=tx.Quantity,
-                price=tx.Purchase_Price,
-                commission=tx.Commission,
-                amount=(tx.Purchase_Price * tx.Quantity) + tx.Commission,
+                type=action,
+                quantity=qty,
+                price=price,
+                commission=comm,
+                amount=amt,
                 currency="CAD" if tx.Symbol.endswith(".TO") else "USD",
                 description=tx.Comment,
-                broker=tx.Broker,
-                account_type=tx.Account_Type,
+                broker=tx.Broker or "Manual",
+                account_type=tx.Account_Type or "Unknown",
                 source="Manual"
             )
             session.add(db_tx)
+            
+            # 3. Update Holding quantity
+            if action == 'BUY' or 'ADD' in action:
+                h.quantity = (h.quantity or 0.0) + qty
+            elif action == 'SELL' or 'REDUCE' in action:
+                h.quantity = (h.quantity or 0.0) - qty
+            
+            # Update trade date to latest
+            h.trade_date = pd.to_datetime(tx.Trade_Date)
+            
+            session.add(h)
             session.commit()
 
-            # 3. Cache clearing
+            # 4. Cache clearing
             clear_all_caches()
             return {"status": "success", "id": db_tx.id}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/transactions/{id}")
 def delete_transaction(id: int):
-    """Delete a transaction from Database by ID"""
+    """Delete a transaction from Database and revert Holding quantity"""
     try:
         with Session(engine) as session:
             tx = session.get(DBTransaction, id)
             if not tx:
                 raise HTTPException(status_code=404, detail="Transaction not found")
             
-            symbol = tx.symbol
+            # Revert Holding quantity
+            if tx.holding_id:
+                h = session.get(Holding, tx.holding_id)
+                if h:
+                    action = str(tx.type).upper()
+                    qty = float(tx.quantity or 0.0)
+                    if action == 'BUY' or 'ADD' in action:
+                        h.quantity = (h.quantity or 0.0) - qty
+                    elif action == 'SELL' or 'REDUCE' in action:
+                        h.quantity = (h.quantity or 0.0) + qty
+                    session.add(h)
+            
             session.delete(tx)
             session.commit()
-
-            session.commit()
-
             clear_all_caches()
             return {"status": "success"}
     except Exception as e:
@@ -543,7 +599,24 @@ def delete_transaction(id: int):
 def get_db_transactions():
     with Session(engine) as session:
         txs = session.exec(select(DBTransaction).order_by(DBTransaction.date.desc())).all()
-        return txs
+        return [
+            {
+                "id": tx.id,
+                "symbol": tx.symbol,
+                "date": sanitize_val(tx.date),
+                "type": tx.type,
+                "quantity": sanitize_val(tx.quantity),
+                "price": sanitize_val(tx.price),
+                "commission": sanitize_val(tx.commission),
+                "amount": sanitize_val(tx.amount),
+                "currency": tx.currency,
+                "broker": tx.broker,
+                "account_type": tx.account_type,
+                "source": tx.source,
+                "description": tx.description
+            }
+            for tx in txs
+        ]
 
 @app.get("/api/db/holdings")
 def get_db_holdings():
@@ -642,9 +715,15 @@ def get_symbol_accounts():
 
     try:
         with Session(engine) as session:
-            # Source of truth is the DB columns
-            manual_txs = session.exec(select(DBTransaction).where(DBTransaction.source == "Manual")).all()
-            for tx in manual_txs:
+            # 1. From Holding table (primary source for current positions)
+            holdings = session.exec(select(Holding)).all()
+            for h in holdings:
+                if h.broker and h.account_type:
+                    add_entry(h.symbol, h.broker, h.account_type)
+                    
+            # 2. From all Transactions history
+            all_txs = session.exec(select(DBTransaction)).all()
+            for tx in all_txs:
                 if tx.broker and tx.account_type:
                     add_entry(tx.symbol, tx.broker, tx.account_type)
         return result
