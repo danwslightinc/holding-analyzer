@@ -176,6 +176,100 @@ def load_portfolio_from_db():
         cols = [c for c in desired_cols if c in df.columns]
         return df[cols], realized_pnl
 
+def load_portfolio_from_csv():
+    """Fallback source specifically for GitHub Actions or legacy local testing."""
+    CSV_PATH = "portfolio.csv"
+    THESIS_PATH = "thesis.json"
+    mental_cols = ['Thesis', 'Catalyst', 'Kill Switch', 'Conviction', 'Timeframe']
+    
+    if not os.path.exists(CSV_PATH):
+        print(f"Error: {CSV_PATH} not found.")
+        return pd.DataFrame(), {}
+        
+    try:
+        df_csv = pd.read_csv(CSV_PATH)
+        if df_csv.empty:
+            return pd.DataFrame(), {}
+            
+        # Standardize column names to what calculate_holdings expects
+        # Mapping: 'Comment' -> 'Broker'/'Account_Type'
+        def split_comment(comment):
+            if pd.isna(comment): return "Manual", "Unknown"
+            parts = str(comment).strip().split(' ')
+            if len(parts) >= 2:
+                return parts[0], parts[1]
+            return parts[0], "Unknown"
+            
+        if 'Comment' in df_csv.columns:
+            df_csv[['Broker', 'Account_Type']] = df_csv['Comment'].apply(lambda x: pd.Series(split_comment(x)))
+        
+        # Ensure Action column exists (default to BUY for portfolio.csv rows)
+        if 'Transaction Type' in df_csv.columns:
+            df_csv['Action'] = df_csv['Transaction Type'].fillna('BUY').apply(lambda x: TYPE_NORMALIZE.get(x, 'BUY'))
+        else:
+            df_csv['Action'] = 'BUY'
+            
+        # Drop colliding 'Date' column if it exists (it's just a timestamp in portfolio.csv)
+        if 'Date' in df_csv.columns:
+            df_csv = df_csv.drop(columns=['Date'])
+            
+        # Rename columns to match calculate_holdings expectations
+        # Transaction parser expects 'Symbol', 'Date', 'Action', 'Quantity', 'Price', 'Commission', 'Currency', 'Amount'
+        col_map = {
+            'Trade Date': 'Date',
+            'Purchase Price': 'Price'
+        }
+        df_tx = df_csv.rename(columns=col_map)
+        
+        # Ensure Currency column
+        df_tx['Currency'] = df_tx['Symbol'].apply(lambda s: 'CAD' if str(s).endswith('.TO') else 'USD')
+        
+        # Parse Dates using the existing parse_date helper
+        df_tx['Date'] = df_tx['Date'].apply(parse_date)
+        df_tx = df_tx.dropna(subset=['Date'])
+        
+        # Fill missing Amount for older portfolio.csv formats
+        if 'Amount' not in df_tx.columns:
+            df_tx['Amount'] = (df_tx['Quantity'] * df_tx['Price']) + df_tx['Commission'].fillna(0)
+            
+        # Calculate Holdings
+        df_holdings, realized_pnl = calculate_holdings(df_tx)
+        
+        # Enrich with Thesis Data
+        mental_map = {}
+        if os.path.exists(THESIS_PATH):
+            try:
+                with open(THESIS_PATH, "r") as f:
+                    thesis_data = json.load(f)
+                mental_map = {sym: {
+                    'Thesis': d.get('Thesis', ''),
+                    'Catalyst': '',
+                    'Kill Switch': d.get('Kill Switch', ''),
+                    'Conviction': d.get('Conviction', ''),
+                    'Timeframe': d.get('Timeframe', '')
+                } for sym, d in thesis_data.items()}
+            except: pass
+            
+        rows = []
+        for _, r in df_holdings.iterrows():
+            sym = r['Symbol']
+            d = r.to_dict()
+            d.update(mental_map.get(sym, {
+                'Thesis': "", 'Catalyst': "", 'Kill Switch': "", 
+                'Conviction': "", 'Timeframe': ""
+            }))
+            rows.append(d)
+            
+        if not rows: return pd.DataFrame(), realized_pnl
+        
+        res_df = pd.DataFrame(rows)
+        desired_cols = ['Symbol', 'Broker', 'Account_Type', 'Purchase Price', 'Quantity', 'Commission', 'Trade Date'] + mental_cols
+        return res_df[[c for c in desired_cols if c in res_df.columns]], realized_pnl
+        
+    except Exception as e:
+        print(f"Error loading portfolio from CSV: {e}")
+        return pd.DataFrame(), {}
+
 def _sync_from_legacy_files(session, csv_path, thesis_path):
     """Helper to migrate data from portfolio.csv and thesis.json into DB"""
     if os.path.exists(thesis_path):
