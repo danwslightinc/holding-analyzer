@@ -27,7 +27,10 @@ function LoginContent() {
             )}
 
             <button
-                onClick={() => signIn("google", { callbackUrl: "/" })}
+                onClick={() => {
+                    console.log("Signing in with google...");
+                    signIn("google", { callbackUrl: "/" });
+                }}
                 className="w-full flex items-center justify-center gap-3 bg-white text-black font-semibold px-6 py-4 rounded-xl hover:bg-zinc-200 transition-all hover:scale-[1.02] shadow-xl"
             >
                 <svg className="w-5 h-5" viewBox="0 0 24 24">

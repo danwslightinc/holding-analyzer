@@ -5,6 +5,10 @@ const allowedEmails = process.env.ALLOWED_EMAILS
     ? process.env.ALLOWED_EMAILS.split(",").map(e => e.trim().toLowerCase())
     : [];
 
+console.log("Initializing NextAuth handler...");
+if (!process.env.GOOGLE_CLIENT_ID) console.error("Missing GOOGLE_CLIENT_ID");
+if (!process.env.NEXTAUTH_SECRET) console.error("Missing NEXTAUTH_SECRET");
+
 const handler = NextAuth({
     providers: [
         GoogleProvider({
