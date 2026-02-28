@@ -241,7 +241,13 @@ def analyze_pnl(df, realized_pnl=None, usd_to_cad=1.4):
         print("-" * 50)
         realized_rows = []
         
-        for sym, data in realized_pnl.items():
+        for key, data in realized_pnl.items():
+            # key could be a string (old format) or a tuple (symbol, broker, account_type)
+            if isinstance(key, tuple):
+                sym = key[0]
+            else:
+                sym = key
+                
             # data could be a float (old format) or a dict (new format)
             pnl_cad = 0.0
             if isinstance(data, dict):
@@ -252,7 +258,7 @@ def analyze_pnl(df, realized_pnl=None, usd_to_cad=1.4):
                 # Fallback for old flat dict
                 pnl_cad = data
             
-            if sym in ['DLR.TO', 'CASH.TO']:
+            if sym in ['DLR.TO', 'DLR.U.TO', 'DLR', 'CASH.TO']:
                 continue
             if abs(pnl_cad) > 0.01:
                 realized_rows.append({'Symbol': sym, 'Realized P&L': pnl_cad})
