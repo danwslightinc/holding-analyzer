@@ -330,7 +330,7 @@ def _sync_from_legacy_files(session, csv_path, thesis_path):
                 if 'Trade Date' in rows:
                     vd = rows['Trade Date'].dropna()
                     if not vd.empty:
-                        parsed = pd.to_datetime(vd, errors='coerce').dropna()
+                        parsed = vd.apply(parse_date).dropna()
                         if not parsed.empty: h.trade_date = parsed.max()
                 
                 session.add(h)
