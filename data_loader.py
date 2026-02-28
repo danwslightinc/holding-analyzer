@@ -350,11 +350,15 @@ def _sync_from_legacy_files(session, csv_path, thesis_path):
                             d_val = pd.to_datetime(t_date, errors='coerce')
                     except: d_val = pd.Timestamp.now()
                     
+                    # Handle nan and empty strings properly for transaction types
+                    raw_type = row.get('Transaction Type')
+                    tx_type = str(raw_type).strip().upper() if pd.notna(raw_type) and str(raw_type).strip() else 'BUY'
+                    
                     tx = Transaction(
                         holding_id=h.id,
                         symbol=symbol,
                         date=d_val if pd.notna(d_val) else pd.Timestamp.now(),
-                        type=str(row.get('Transaction Type', 'Buy')) or 'Buy',
+                        type=tx_type,
                         quantity=float(qty_val),
                         price=float(row.get('Purchase Price', 0.0)) or 0.0,
                         commission=float(row.get('Commission', 0.0)) or 0.0,
