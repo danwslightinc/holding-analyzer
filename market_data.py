@@ -122,33 +122,46 @@ def find_purchase_date_from_price(symbol, purchase_price, tolerance=0.05, min_da
 @cache_result(prices_cache)
 def get_current_prices(symbols):
     """
-    Fetches real-time prices for a list of symbols using yahooquery.
+    Fetches real-time prices for a list of symbols using yfinance.
     Returns a dictionary {symbol: price}.
     """
     if not symbols:
         return {}
 
     print(f"Fetching prices for: {' '.join(symbols)}...")
+    prices = {}
     
     try:
-        t = Ticker(symbols)
-        # Use price module for quote data
-        price_data = t.price
-        prices = {}
+        data = yf.download(symbols, period="1d", progress=False)
         
-        for sym in symbols:
-            s_data = price_data.get(sym, {})
-            if isinstance(s_data, dict):
-                p = s_data.get('regularMarketPrice', 0.0)
-                prices[sym] = float(p)
-            else:
-                # Handle error cases or missing data
-                prices[sym] = 0.0
+        # Depending on yfinance version and single/multi symbol, data['Close'] could be a Series or DataFrame
+        if len(symbols) == 1:
+            try:
+                closes = data['Close'].iloc[-1]
+                # If only 1 symbol, it might just return the scalar
+                p = float(closes.iloc[0]) if isinstance(closes, pd.Series) else float(closes)
+                prices[symbols[0]] = p if not np.isnan(p) else 0.0
+            except Exception as e:
+                print(f"Failed extracting single symbol {symbols[0]}: {e}")
+                prices[symbols[0]] = 0.0
+        else:
+            try:
+                last_row = data['Close'].iloc[-1]
+                for sym in symbols:
+                    try:
+                        p = float(last_row[sym])
+                        prices[sym] = p if not np.isnan(p) else 0.0
+                    except Exception as inner_e:
+                        print(f"Failed to extract price for {sym}: {inner_e}")
+                        prices[sym] = 0.0
+            except Exception as e:
+                print(f"Failed extracting multi-symbol row: {e}")
+                for sym in symbols: prices[sym] = 0.0
                 
         return prices
 
     except Exception as e:
-        print(f"Error fetching prices via yahooquery: {e}")
+        print(f"Error fetching prices via yfinance: {e}")
         return {}
 
 def get_weekly_changes(symbols):
