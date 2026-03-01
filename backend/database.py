@@ -11,9 +11,11 @@ if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # Check same thread is only needed for SQLite
-connect_args = {"connect_timeout": 10}
+connect_args = {}
 if DATABASE_URL.startswith("sqlite"):
     connect_args["check_same_thread"] = False
+else:
+    connect_args["connect_timeout"] = 10
 
 # Handle Supabase-specific connection issues
 if "supabase.co" in DATABASE_URL:
