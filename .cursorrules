@@ -1,0 +1,3 @@
+# Custom AI Instructions
+
+- **Testing Before Committing**: ALWAYS run the unit test suite (`PYTHONPATH=. .venv/bin/pytest -v tests/`) before making any git commits to the repository. Verify that all tests pass. If any tests fail, fix the underlying code before proceeding with the commit.

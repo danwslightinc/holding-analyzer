@@ -408,10 +408,13 @@ def get_closed_trades():
         
         for _, tx in df_tx.iterrows():
             sym = tx['Symbol']
+            broker = tx.get('Broker', 'Unknown')
+            account_type = tx.get('Account_Type', 'Unknown')
             action = str(tx['Action']).upper()
             date = tx['Date']
             curr = tx['Currency']
             desc = str(tx.get('Description', '')).upper()
+            key = (sym, broker, account_type)
             
             # Use absolute values for quantity and numbers to handle different broker formats
             qty = abs(float(tx['Quantity']))
@@ -428,7 +431,7 @@ def get_closed_trades():
                 continue
                 
             if action in ['BUY', 'DIV', 'DRIP'] or 'TRANSF' in action or ('RECEIVED' in desc and ('MERGER' in desc or 'ADJUSTMENT' in desc or 'REORG' in desc)):
-                if sym not in lots: lots[sym] = []
+                if key not in lots: lots[key] = []
                 cost = amt if amt != 0 else ((qty * price) + comm)
                 
                 # Extract BOOK VALUE from description for transfers
@@ -445,10 +448,10 @@ def get_closed_trades():
                         try: cost = float(bv_str)
                         except: pass
 
-                lots[sym].append({'qty': qty, 'cost': cost, 'date': date, 'currency': curr})
+                lots[key].append({'qty': qty, 'cost': cost, 'date': date, 'currency': curr})
                 
             elif action == 'SELL':
-                if sym not in lots or len(lots[sym]) == 0:
+                if key not in lots or len(lots[key]) == 0:
                     continue
                     
                 remaining_sell = qty
@@ -458,8 +461,8 @@ def get_closed_trades():
                 trade_qty = 0.0
                 first_buy_date = None
                 
-                while remaining_sell > 0 and len(lots[sym]) > 0:
-                    lot = lots[sym][0]
+                while remaining_sell > 0 and len(lots[key]) > 0:
+                    lot = lots[key][0]
                     sold_qty = min(lot['qty'], remaining_sell)
                     frac = sold_qty / lot['qty']
                     cost_portion = lot['cost'] * frac
@@ -475,7 +478,7 @@ def get_closed_trades():
                     remaining_sell -= sold_qty
                     
                     if lot['qty'] <= 1e-4:
-                        lots[sym].pop(0)
+                        lots[key].pop(0)
                         
                 if trade_qty > 0:
                     frac_of_sell = trade_qty / float(qty)
