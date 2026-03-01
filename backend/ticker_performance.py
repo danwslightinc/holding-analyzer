@@ -94,7 +94,12 @@ def get_ticker_performance(symbols, timeframes=['1d', '1w', '1m', '3m', '6m', 'Y
                     target_date = now - timedelta(days=days)
                     
                     # Convert to pd.Timestamp for comparison with index
-                    target_ts = pd.Timestamp(target_date).tz_localize('UTC') if hist.index.tz else pd.Timestamp(target_date)
+                    if not isinstance(hist.index, pd.DatetimeIndex):
+                        hist.index = pd.to_datetime(hist.index)
+                        
+                    target_ts = pd.Timestamp(target_date)
+                    if getattr(hist.index, 'tz', None) is not None:
+                        target_ts = target_ts.tz_localize(hist.index.tz)
                     
                     hist_filtered = hist[hist.index >= target_ts]
                     
