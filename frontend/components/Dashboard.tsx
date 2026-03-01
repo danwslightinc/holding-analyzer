@@ -131,14 +131,16 @@ export default function Dashboard() {
     });
 
     // Group filtered results by symbol for display
-    const groupedMap = filteredHoldings.reduce((acc: any, h: Holding) => {
+    const groupedMap = filteredHoldings.reduce((acc: any, h: any) => {
         if (!acc[h.Symbol]) {
             acc[h.Symbol] = { ...h, BaseCostSum: h['Purchase Price'] * h.Quantity };
         } else {
             const prev = acc[h.Symbol];
             prev.Quantity += h.Quantity;
             prev.Market_Value += h.Market_Value;
+            prev.Market_Value_CAD += h.Market_Value_CAD;
             prev.PnL += h.PnL;
+            prev.PnL_CAD += h.PnL_CAD;
             prev.BaseCostSum += h['Purchase Price'] * h.Quantity;
             prev['Purchase Price'] = prev.BaseCostSum / prev.Quantity;
         }
@@ -146,8 +148,8 @@ export default function Dashboard() {
     }, {});
     const displayedHoldings = Object.values(groupedMap) as Holding[];
 
-    const totalValue = filteredHoldings.reduce((sum: number, h: any) => sum + (h.Market_Value || 0), 0);
-    const totalPnL = filteredHoldings.reduce((sum: number, h: any) => sum + (h.PnL || 0), 0);
+    const totalValue = filteredHoldings.reduce((sum: number, h: any) => sum + (h.Market_Value_CAD || h.Market_Value || 0), 0);
+    const totalPnL = filteredHoldings.reduce((sum: number, h: any) => sum + (h.PnL_CAD || h.PnL || 0), 0);
     const totalCost = totalValue - totalPnL;
     const pnlPercent = totalCost > 0 ? (totalPnL / totalCost) * 100 : 0;
 
@@ -172,8 +174,8 @@ export default function Dashboard() {
                 break;
             case 'Allocation':
             case 'Market_Value':
-                aValue = a.Market_Value;
-                bValue = b.Market_Value;
+                aValue = a.Market_Value_CAD || a.Market_Value;
+                bValue = b.Market_Value_CAD || b.Market_Value;
                 break;
             case 'Price':
                 aValue = a['Current Price'] || 0;
@@ -552,7 +554,7 @@ export default function Dashboard() {
                                             {h.Currency === 'USD' ? 'US$' : '$'}{(h['Purchase Price'] || 0).toFixed(2)}
                                         </td>
                                         <td className={`p-4 text-right font-medium ${isProfit ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                            ${h.PnL.toLocaleString()}
+                                            ${(h.PnL_CAD || h.PnL).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                         </td>
                                         <td className={`p-4 text-right font-medium ${isProfit ? 'text-emerald-400' : 'text-rose-400'}`}>
                                             <div className="flex items-center justify-end gap-1">
@@ -561,7 +563,7 @@ export default function Dashboard() {
                                             </div>
                                         </td>
                                         <td className="p-4 text-right font-bold text-foreground tracking-wide">
-                                            ${h.Market_Value.toLocaleString()}
+                                            ${(h.Market_Value_CAD || h.Market_Value).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                         </td>
                                     </tr>
                                 );
