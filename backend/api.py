@@ -23,7 +23,7 @@ from analysis import calculate_metrics
 from backend.ticker_performance import get_ticker_performance
 from backend.cache import clear_all_caches
 from backend.database import engine, get_session, create_db_and_tables
-from backend.models import Holding, Transaction as DBTransaction
+from backend.models import Holding, Transaction as DBTransaction, InvestmentThesis
 from sqlmodel import Session, select
 
 app = FastAPI(title="Holding Analyzer API")
@@ -55,7 +55,12 @@ def sanitize_val(val):
     return val
 @app.on_event("startup")
 def on_startup():
-    create_db_and_tables()
+    try:
+        create_db_and_tables()
+        print("INFO: Database connection established and tables verified.")
+    except Exception as e:
+        print(f"CRITICAL ERROR: Could not connect to the database. {e}")
+        print("Backend starting in limited capacity mode.")
 
 
 @app.get("/")
@@ -128,17 +133,24 @@ def get_portfolio():
         # FX rate column
         df['FX Rate'] = df['Currency'].apply(lambda c: 1.0 if c == 'CAD' else usd_cad)
         
-        # Market Value in CAD
-        df['Market_Value'] = df['Current Price'] * df['Quantity'] * df['FX Rate']
+        # Calculate P&L, CAGR, and Goal metrics using standard analysis logic
+        target_cagr = float(os.getenv("TARGET_CAGR", 0.08))
+        df = calculate_metrics(df, target_cagr=target_cagr)
         
-        # Cost basis in CAD
-        df['Cost Basis'] = df['Purchase Price'] * df['Quantity'] * df['FX Rate']
+        # Market Value and Cost Basis in CAD for summary
+        df['Market_Value_CAD'] = df['Market Value'] * df['FX Rate']
+        df['Cost_Basis_CAD'] = df['Cost Basis'] * df['FX Rate']
+        df['PnL_CAD'] = df['P&L'] * df['FX Rate']
         
-        # P&L
-        df['PnL'] = df['Market_Value'] - df['Cost Basis']
+        # Standardize column names for the response
+        # Note: calculate_metrics already produces 'Market Value', 'Cost Basis', and 'P&L'
         
         # Convert prices to CAD for the response
         df['Price (CAD)'] = df['Current Price'] * df['FX Rate']
+        
+        # Add aliases for frontend compatibility
+        df['Market_Value'] = df['Market Value']
+        df['PnL'] = df['P&L']
         
         # Get additional data for Quant-mental analysis
         technical_data = get_technical_data(symbols)
@@ -182,14 +194,25 @@ def get_portfolio():
             
             holdings_list.append(holding_dict)
         
+        # Calculate weighted CAGR and exposures using CAD-equivalent values for accuracy across currencies
+        total_mv_cad = df['Market_Value_CAD'].sum()
+        weighted_cagr = (df['CAGR'] * df['Market_Value_CAD']).sum() / total_mv_cad if total_mv_cad > 0 else 0
+        
+        # Calculate exposures in CAD
+        sector_exp = df.groupby('Sector')['Market_Value_CAD'].sum().to_dict()
+        country_exp = df.groupby('Country')['Market_Value_CAD'].sum().to_dict()
+        
         return {
             "summary": {
-                "total_value": sanitize_val(df['Market_Value'].sum()),
-                "total_cost": sanitize_val(df['Cost Basis'].sum()),
-                "total_pnl": sanitize_val(df['PnL'].sum()),
+                "total_value": sanitize_val(total_mv_cad),
+                "total_cost": sanitize_val(df['Cost_Basis_CAD'].sum()),
+                "total_pnl": sanitize_val(df['PnL_CAD'].sum()),
+                "weighted_cagr": sanitize_val(weighted_cagr),
                 "usd_cad_rate": sanitize_val(usd_cad)
             },
-            "holdings": holdings_list
+            "holdings": holdings_list,
+            "sector_exposure": {k: sanitize_val(v) for k, v in sector_exp.items()},
+            "country_exposure": {k: sanitize_val(v) for k, v in country_exp.items()}
         }
     except Exception as e:
         import traceback
@@ -358,7 +381,8 @@ def get_transactions():
                     "Transaction Type": tx.type,
                     "Broker": tx.broker or "Manual",
                     "Account Type": tx.account_type or "Unknown",
-                    "Comment": tx.description or ""
+                    "Comment": tx.description or "",
+                    "Amount": sanitize_val(tx.amount)
                 }
                 for tx in txs
             ]
@@ -385,32 +409,50 @@ def get_closed_trades():
         for _, tx in df_tx.iterrows():
             sym = tx['Symbol']
             action = str(tx['Action']).upper()
-            qty = tx['Quantity']
-            price = tx['Price']
-            comm = tx['Commission']
             date = tx['Date']
             curr = tx['Currency']
-            amt = tx['Amount']
             desc = str(tx.get('Description', '')).upper()
             
-            if pd.isna(qty) or qty <= 0:
+            # Use absolute values for quantity and numbers to handle different broker formats
+            qty = abs(float(tx['Quantity']))
+            price = abs(float(tx['Price']))
+            comm = abs(float(tx.get('Commission', 0.0)))
+            amt = abs(float(tx.get('Amount', 0.0)))
+            
+            if qty <= 0:
                 continue
             
-            # Exclude Norbert's Gambit currency conversions
-            if str(sym).upper() in ["DLR.TO", "DLR.U.TO", "DLR"]:
+            # Exclude Norbert's Gambit currency conversions and specific mutual funds
+            excluded_symbols = ["DLR.TO", "DLR.U.TO", "DLR", "RBF526", "RBF5662", "RBF266"]
+            if str(sym).upper() in excluded_symbols:
                 continue
                 
             if action in ['BUY', 'DIV', 'DRIP'] or 'TRANSF' in action or ('RECEIVED' in desc and ('MERGER' in desc or 'ADJUSTMENT' in desc or 'REORG' in desc)):
                 if sym not in lots: lots[sym] = []
-                cost = abs(amt) if amt != 0 and pd.notna(amt) else ((qty * price) + comm)
-                lots[sym].append({'qty': float(qty), 'cost': float(cost), 'date': date, 'currency': curr})
+                cost = amt if amt != 0 else ((qty * price) + comm)
+                
+                # Extract BOOK VALUE from description for transfers
+                if cost < 0.01:
+                    import re
+                    match = re.search(r"BOOK VALUE\s+([\d\.,]+)", desc)
+                    if match:
+                        bv_str = match.group(1).replace(',', '')
+                        try: cost = float(bv_str)
+                        except: pass
+                    elif re.search(r"BV\s*:?\s*([\d\.,]+)", desc):
+                        match = re.search(r"BV\s*:?\s*([\d\.,]+)", desc)
+                        bv_str = match.group(1).replace(',', '')
+                        try: cost = float(bv_str)
+                        except: pass
+
+                lots[sym].append({'qty': qty, 'cost': cost, 'date': date, 'currency': curr})
                 
             elif action == 'SELL':
                 if sym not in lots or len(lots[sym]) == 0:
                     continue
                     
-                remaining_sell = float(qty)
-                total_proceeds = float(amt) if amt != 0 and pd.notna(amt) else ((remaining_sell * price) - comm)
+                remaining_sell = qty
+                total_proceeds = amt if amt != 0 else ((qty * price) - comm)
                 
                 trade_cost = 0.0
                 trade_qty = 0.0
@@ -703,7 +745,7 @@ def get_realized_pnl():
 def get_symbol_accounts():
     """
     Returns a mapping of symbol -> list of {broker, account_type}
-    read strictly from the Database (Transaction table broker/account columns).
+    read strictly from the Database where the holding is currently active.
     """
     result: dict = {}
     
@@ -717,17 +759,12 @@ def get_symbol_accounts():
 
     try:
         with Session(engine) as session:
-            # 1. From Holding table (primary source for current positions)
-            holdings = session.exec(select(Holding)).all()
+            # Primary source for current positions: Only where quantity > 0
+            holdings = session.exec(select(Holding).where(Holding.quantity > 0)).all()
             for h in holdings:
                 if h.broker and h.account_type:
                     add_entry(h.symbol, h.broker, h.account_type)
                     
-            # 2. From all Transactions history
-            all_txs = session.exec(select(DBTransaction)).all()
-            for tx in all_txs:
-                if tx.broker and tx.account_type:
-                    add_entry(tx.symbol, tx.broker, tx.account_type)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

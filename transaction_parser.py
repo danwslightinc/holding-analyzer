@@ -1,5 +1,18 @@
 import pandas as pd
 
+def clean_numeric(val):
+    if pd.isna(val): return 0.0
+    s = str(val).replace(',', '').replace('$', '').strip()
+    if not s: return 0.0
+    is_neg = False
+    if (s.startswith('(') and s.endswith(')')) or (s.startswith('-')):
+        is_neg = True
+        s = s.replace('(', '').replace(')', '').replace('-', '').strip()
+    try:
+        num = float(s)
+        return -num if is_neg else num
+    except: return 0.0
+
 def calculate_holdings(df_tx):
     """
     Calculates current holdings and realized PnL from transactions.
@@ -29,13 +42,31 @@ def calculate_holdings(df_tx):
         comm = tx['Commission']
         curr = tx['Currency']
         
-        if action == 'BUY':
+        if action in ['BUY', 'DRIP']:
             if key not in lots: lots[key] = []
             desc = str(tx.get('Description', '')).upper()
             
             # Calculate cost basis from Amount if possible
             cost = abs(tx['Amount']) if tx['Amount'] != 0 and not pd.isna(tx['Amount']) else (qty * price + comm)
             
+            # Extract BOOK VALUE from description for automated transfers
+            if cost < 0.01:
+                import re
+                # Look for BOOK VALUE followed by a number (supports 1,234.56 format)
+                match = re.search(r"BOOK VALUE\s+([\d\.,]+)", desc)
+                if match:
+                    bv_str = match.group(1).replace(',', '')
+                    try:
+                        cost = float(bv_str)
+                    except: pass
+                # Fallback for TD or other formats like BV: 1234.56
+                elif re.search(r"BV\s*:?\s*([\d\.,]+)", desc):
+                    match = re.search(r"BV\s*:?\s*([\d\.,]+)", desc)
+                    bv_str = match.group(1).replace(',', '')
+                    try:
+                        cost = float(bv_str)
+                    except: pass
+
             # SPECIAL CASE: Merger receipt
             if 'RECEIVED' in desc and ('MERGER' in desc or 'ADJUSTMENT' in desc or 'REORG' in desc):
                 if key in merger_basis_carryover:
@@ -133,36 +164,43 @@ def calculate_holdings(df_tx):
     return df_out, realized_pnl
 
 def clean_symbol(symbol, broker=None, description=""):
-    """Clean symbol strings from various broker formats."""
+    """Clean symbol strings from various broker formats and normalize for consistency."""
     if not isinstance(symbol, str):
         if pd.isna(symbol): return ""
         symbol = str(symbol)
     
     s = symbol.strip().upper()
     
-    # Handle CIBC specific symbol padding or formats
-    if broker == "CIBC":
-        # CIBC symbols sometimes have trailing spaces or are part of a longer string
-        s = s.split(':')[0].strip()
-        
-    # Handle crypto
-    if "BITCOIN" in description.upper() or "BTC" in s:
-        if "BTC" in s: return "BTC-USD"
-        return "BTC-USD"
-    if "ETHEREUM" in description.upper() or "ETH" in s:
-        return "ETH-USD"
+    # Handle common non-symbol identifiers
+    if s in ["CASH", "DIVIDEND", "DIV", "INTEREST", "INT", "DRIP", "REI"]:
+        # Try to extract from description if symbol column is literally "DIV"
+        desc_upper = description.upper()
+        if "ISHR S&PTSX CMP HI" in desc_upper: return "XEI.TO"
+        if "VANGUARD FTSE CDN HIGH" in desc_upper: return "VDY.TO"
+        if "ENBRIDGE" in desc_upper: return "ENB.TO"
+        if "TORONTO-DOMINION" in desc_upper: return "TD.TO"
+        return s # Fallback
 
-    # Remove currency suffixes if they are separated by space
-    s = s.split(' ')[0]
+    # Standardize common suffixes
+    s = s.replace(".U", "").replace(".CL", "").replace(".UN", "").replace(".A", "").replace(".B", "")
     
-    # Common CAD stocks might not have .TO in some files but are Canadian
-    # If we are in a CAD account and it's a known Cdn symbol, we might add .TO
-    # But for now, we'll stick to what's in the file or Description
-    if "CDN" in description.upper() and not s.endswith(".TO") and "." not in s:
-        # Avoid adding .TO to US stocks traded in CAD (rare but possible)
-        # Usually if it says CDN and no period, it's TSX
-        pass 
+    # Normalization: Map all Canadian stocks to have .TO for yfinance later
+    # If it's a known Cdn stock or contains .TO, or if broker is CDN, make it .TO
+    if s.endswith(".TO"):
+        pass # Already has it
+    elif "." not in s and broker in ["CIBC", "RBC", "TD"]:
+        # Only add .TO if it's likely a Canadian ticker (1-4 chars)
+        if len(s) <= 4 and s.isalpha():
+            # Special case for known US stocks in CAD accounts
+            if s not in ["MSFT", "NVDA", "AAPL", "GOOG", "AMZN", "META", "TSLA", "COST", "AVUV", "VOO", "SLV", "GLD", "QQQ", "QQQM", "DIA", "IWM"]:
+                s = s + ".TO"
 
+    # Crypto normalization
+    if "BITCOIN" in description.upper() or "BTC" in s: return "BTC-USD"
+    if "ETHEREUM" in description.upper() or "ETH" in s: return "ETH-USD"
+
+    # Final cleanup
+    s = s.split(' ')[0].strip()
     return s
 
 def parse_cibc(filepath):
@@ -215,8 +253,7 @@ def parse_cibc(filepath):
     # Clean up numbers
     for col in ['Quantity', 'Price', 'Commission', 'Amount']:
         if col in df.columns:
-            df[col] = df[col].astype(str).str.replace(',', '').str.replace('(', '').str.replace(')', '').str.replace('$', '').str.replace('"', '').str.strip()
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+            df[col] = df[col].apply(clean_numeric)
     
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
     return df.dropna(subset=['Date'])
@@ -259,8 +296,7 @@ def parse_rbc(filepath):
     
     for col in ['Quantity', 'Price', 'Amount']:
         if col in df.columns:
-            df[col] = df[col].astype(str).str.replace(',', '').str.replace('(', '').str.replace(')', '').str.replace('$', '').str.strip()
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+            df[col] = df[col].apply(clean_numeric)
             
     df['Commission'] = 0.0
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
@@ -270,28 +306,48 @@ def parse_td(filepath):
     """Parse TD Direct Investing activity CSV."""
     with open(filepath, 'r', encoding='latin-1') as f:
         lines = f.readlines()
+    # Early skip if it's a holdings file instead of activity
+    if any("As of Date" in line for line in lines[:5]):
+        return pd.DataFrame()
+
     header_idx = -1
-    for i, line in enumerate(lines):
+    for i, line in enumerate(lines[:10]):
         if "Trade Date" in line and "Action" in line:
             header_idx = i
             break
-    if header_idx == -1: return pd.DataFrame()
     
-    df = pd.read_csv(filepath, skiprows=header_idx, encoding='latin-1', on_bad_lines='skip')
-    df.columns = [c.strip() for c in df.columns]
+    df = pd.read_csv(filepath, skiprows=header_idx if header_idx != -1 else 0, header=None if header_idx == -1 else 0, encoding='latin-1', on_bad_lines='skip')
+    print(f"DEBUG: TD File {filepath} loaded, shape: {df.shape}, header_idx: {header_idx}")
+    df.columns = [str(c).strip() for c in df.columns]
     
-    col_map = {
-        'Trade Date': 'Date',
-        'Action': 'Action',
-        'Symbol': 'Symbol',
-        'Quantity': 'Quantity',
-        'Price': 'Price',
-        'Commission': 'Commission',
-        'Net Amount': 'Amount',
-        'Currency': 'Currency',
-        'Description': 'Description'
-    }
-    df = df.rename(columns=col_map)
+    if header_idx == -1:
+        # Fixed mapping for headerless TD CSV: 0:Date, 1:SettleDate, 2:Desc, 3:Action, 4:Qty, 5:Price, 7:Amount, 8:Security, 9:Currency
+        # Based on example: 12 Aug 2024,12 Aug 2024,TD1M GIC... (2), SELL (3), -9544 (4), 100.00 (5), (6), 9544.00 (7), GIC (8), CAD (9)
+        new_cols = []
+        for i in range(len(df.columns)):
+            if i == 0: new_cols.append('Date')
+            elif i == 2: new_cols.append('Description')
+            elif i == 3: new_cols.append('Action')
+            elif i == 4: new_cols.append('Quantity')
+            elif i == 5: new_cols.append('Price')
+            elif i == 7: new_cols.append('Amount')
+            elif i == 9: new_cols.append('Currency')
+            else: new_cols.append(f'Col_{i}')
+        df.columns = new_cols
+        # Set Symbol column based on description logic later
+    else:
+        col_map = {
+            'Trade Date': 'Date',
+            'Action': 'Action',
+            'Symbol': 'Symbol',
+            'Quantity': 'Quantity',
+            'Price': 'Price',
+            'Commission': 'Commission',
+            'Net Amount': 'Amount',
+            'Currency': 'Currency',
+            'Description': 'Description'
+        }
+        df = df.rename(columns=col_map)
     
     # TD sometimes misses Symbol column in activity - extract from description
     if 'Symbol' not in df.columns:
@@ -323,8 +379,7 @@ def parse_td(filepath):
     
     for col in ['Quantity', 'Price', 'Commission', 'Amount']:
         if col in df.columns:
-            df[col] = df[col].astype(str).str.replace(',', '').str.replace('(', '').str.replace(')', '').str.replace('$', '').str.strip()
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+            df[col] = df[col].apply(clean_numeric)
             
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
     return df.dropna(subset=['Date', 'Symbol'])

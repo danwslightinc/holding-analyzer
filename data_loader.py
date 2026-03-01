@@ -155,9 +155,10 @@ def load_portfolio_from_db():
                 'Broker': broker,
                 'Account_Type': h.account_type or (match['Account_Type'] if match else 'Unknown'),
                 'Quantity': h.quantity,
-                'Purchase Price': match['Purchase Price'] if match else h.purchase_price,
-                'Commission': match['Commission'] if match else (h.commission or 0.0),
-                'Trade Date': match['Trade Date'] if match else h.trade_date,
+                # Prioritize manally entered purchase price from the Holding table
+                'Purchase Price': h.purchase_price if (h.purchase_price is not None and h.purchase_price > 0.001) else (match['Purchase Price'] if match else 0.0),
+                'Commission': h.commission if (h.commission is not None and h.commission > 0) else (match['Commission'] if match else 0.0),
+                'Trade Date': h.trade_date if h.trade_date is not None else (match['Trade Date'] if match else None),
             }
             
             # Attach thesis data
@@ -296,6 +297,8 @@ def _sync_from_legacy_files(session, csv_path, thesis_path):
             if df.empty: return
             
             # Map holdings and transactions from CSV
+            from transaction_parser import clean_symbol
+            df['Symbol'] = df.apply(lambda r: clean_symbol(r['Symbol'], broker=r.get('Broker')), axis=1)
             groups = df.groupby(['Symbol', 'Comment'], dropna=False)
             for (symbol, comment), rows in groups:
                 if pd.isna(symbol): continue

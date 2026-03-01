@@ -19,6 +19,7 @@ interface Transaction {
     Broker: string;
     "Account Type": string;
     Comment: string;
+    Amount: number;
 }
 
 /** Official bank brand colors for consistency across app */
@@ -41,6 +42,7 @@ export default function TransactionsPage() {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [filterType, setFilterType] = useState<string>("All");
 
@@ -59,8 +61,16 @@ export default function TransactionsPage() {
     const fetchTransactions = async () => {
         try {
             const res = await fetch(`${API_BASE_URL}/api/transactions`);
+            if (!res.ok) {
+                console.warn("Server Error: Transactions could not be fetched", res.status);
+                return;
+            }
             const data = await res.json();
-            setTransactions(data);
+            if (Array.isArray(data)) {
+                setTransactions(data);
+            } else {
+                console.error("Invalid response format: data is not an array", data);
+            }
         } catch (err) {
             console.error("Failed to fetch", err);
         } finally {
@@ -83,6 +93,7 @@ export default function TransactionsPage() {
 
     const handleAdd = async (e: React.FormEvent) => {
         e.preventDefault();
+        setSubmitting(true);
         try {
             const res = await fetch(`${API_BASE_URL}/api/transactions`, {
                 method: "POST",
@@ -111,6 +122,8 @@ export default function TransactionsPage() {
             }
         } catch (err) {
             console.error("Failed to add", err);
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -125,8 +138,9 @@ export default function TransactionsPage() {
     };
 
     if (loading) return (
-        <div className="p-20 text-center animate-pulse text-gray-400 font-medium">
-            Syncing Institution Records...
+        <div className="p-20 text-center animate-pulse text-gray-400 font-medium h-screen flex flex-col items-center justify-center gap-4">
+            <History className="w-12 h-12 text-blue-500 animate-spin-slow" />
+            <div className="tracking-[0.2em] font-bold uppercase text-xs">Syncing Ledger...</div>
         </div>
     );
 
@@ -140,9 +154,13 @@ export default function TransactionsPage() {
                         <History className="w-4 h-4" />
                         Execution Archive
                     </div>
-                    <h1 className="text-4xl md:text-5xl font-bold text-foreground tracking-tight">
+                    <motion.h1
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className="text-4xl md:text-5xl font-bold text-foreground tracking-tight"
+                    >
                         Transaction Ledger
-                    </h1>
+                    </motion.h1>
                     <p className="text-gray-500 max-w-xl">
                         A definitive record of capital allocation, security execution, and account history.
                     </p>
@@ -160,135 +178,157 @@ export default function TransactionsPage() {
                 </button>
             </div>
 
-            {/* Inline Form: Appears "Right under Add button" as requested */}
-            {showForm && (
-                <div>
-                    <div className="glass-panel rounded-2xl shadow-2xl p-8 mb-8 border border-blue-500/20 bg-blue-500/5">
-                        <div className="flex items-center justify-between mb-8">
-                            <div>
-                                <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                                    <History className="w-6 h-6 text-blue-500" />
-                                    Manual Trade Entry
-                                </h2>
-                                <p className="text-sm text-gray-500">Document a new security execution for your portfolio history.</p>
-                            </div>
-                        </div>
+            {/* Inline Form: Appears "Right under Add button" */}
+            <AnimatePresence>
+                {showForm && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                    >
+                        <div className="glass-panel rounded-2xl shadow-2xl p-8 mb-8 border border-blue-500/20 bg-blue-500/5 relative overflow-hidden">
+                            {/* Decorative Background for Sells */}
+                            {form.Transaction_Type === 'SELL' && (
+                                <div className="absolute top-0 right-0 w-64 h-64 bg-rose-500/5 blur-[100px] pointer-events-none" />
+                            )}
 
-                        <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                            <div className="space-y-1.5 lg:col-span-1">
-                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Asset Symbol</label>
-                                <input
-                                    required
-                                    value={form.Symbol}
-                                    onChange={e => setForm({ ...form, Symbol: e.target.value.toUpperCase() })}
-                                    className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground text-xl font-bold uppercase rounded-xl px-4 focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
-                                />
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Execution Price</label>
-                                <input
-                                    required
-                                    type="number"
-                                    step="0.0001"
-                                    value={form.Purchase_Price}
-                                    onChange={e => setForm({ ...form, Purchase_Price: e.target.value })}
-                                    className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
-                                />
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Volume (Qty)</label>
-                                <input
-                                    required
-                                    type="number"
-                                    step="0.000001"
-                                    value={form.Quantity}
-                                    onChange={e => setForm({ ...form, Quantity: e.target.value })}
-                                    className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
-                                />
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Trade Date</label>
-                                <input
-                                    required
-                                    type="date"
-                                    value={form.Trade_Date.replace(/\//g, "-")}
-                                    onChange={e => setForm({ ...form, Trade_Date: e.target.value.replace(/-/g, "/") })}
-                                    className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:light] dark:[color-scheme:dark] transition-colors"
-                                />
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Brokerage</label>
-                                <select
-                                    value={form.Broker}
-                                    onChange={e => setForm({ ...form, Broker: e.target.value })}
-                                    className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 outline-none appearance-none cursor-pointer hover:bg-slate-200 dark:hover:bg-white/10 transition-colors"
-                                >
-                                    <option value="RBC">RBC Direct</option>
-                                    <option value="CIBC">CIBC Edge</option>
-                                    <option value="TD">TD Direct</option>
-                                    <option value="Questrade">Questrade</option>
-                                    <option value="Manual">Manual</option>
-                                </select>
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Account Type</label>
-                                <select
-                                    value={form.Account_Type}
-                                    onChange={e => setForm({ ...form, Account_Type: e.target.value })}
-                                    className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 outline-none appearance-none cursor-pointer hover:bg-slate-200 dark:hover:bg-white/10 transition-colors"
-                                >
-                                    <option value="TFSA">TFSA</option>
-                                    <option value="RRSP">RRSP</option>
-                                    <option value="FHSA">FHSA</option>
-                                    <option value="Open">Margin / Open</option>
-                                </select>
-                            </div>
-
-                            <div className="space-y-1.5 lg:col-span-1">
-                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Action</label>
-                                <div className="flex bg-slate-100 dark:bg-white/5 p-1 rounded-xl border border-slate-200 dark:border-white/10 h-[56px] items-center">
-                                    {["BUY", "SELL", "DRIP"].map((t) => {
-                                        const isActive = form.Transaction_Type === t;
-                                        return (
-                                            <button
-                                                key={t}
-                                                type="button"
-                                                onClick={() => setForm({ ...form, Transaction_Type: t })}
-                                                className={`flex-1 h-full rounded-lg text-xs font-bold transition-all ${isActive
-                                                        ? (t === 'SELL' ? "bg-rose-500 text-white shadow-md" : "bg-emerald-500 text-white shadow-md")
-                                                        : "text-gray-500 hover:text-foreground"
-                                                    }`}
-                                            >
-                                                {t}
-                                            </button>
-                                        );
-                                    })}
+                            <div className="flex items-center justify-between mb-8">
+                                <div>
+                                    <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
+                                        <History className="w-6 h-6 text-blue-500" />
+                                        Manual Trade Entry
+                                    </h2>
+                                    <p className="text-sm text-gray-500">Document a new security execution for your portfolio history.</p>
                                 </div>
                             </div>
 
-                            <div className="flex items-end justify-end lg:col-span-1">
-                                <button
-                                    type="submit"
-                                    className={`h-[56px] px-8 w-full rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg text-white ${form.Transaction_Type === 'SELL'
+                            <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                <div className="space-y-1.5 lg:col-span-1">
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Asset Symbol</label>
+                                    <input
+                                        required
+                                        value={form.Symbol}
+                                        placeholder="e.g. NVDA"
+                                        onChange={e => setForm({ ...form, Symbol: e.target.value.toUpperCase() })}
+                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground text-xl font-bold uppercase rounded-xl px-4 focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
+                                    />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Execution Price</label>
+                                    <input
+                                        required
+                                        type="number"
+                                        step="0.0001"
+                                        value={form.Purchase_Price}
+                                        onChange={e => setForm({ ...form, Purchase_Price: e.target.value })}
+                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
+                                    />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Volume (Qty)</label>
+                                    <input
+                                        required
+                                        type="number"
+                                        step="0.000001"
+                                        value={form.Quantity}
+                                        onChange={e => setForm({ ...form, Quantity: e.target.value })}
+                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
+                                    />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Trade Date</label>
+                                    <input
+                                        required
+                                        type="date"
+                                        value={form.Trade_Date.replace(/\//g, "-")}
+                                        onChange={e => setForm({ ...form, Trade_Date: e.target.value.replace(/-/g, "/") })}
+                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:light] dark:[color-scheme:dark] transition-colors"
+                                    />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Brokerage</label>
+                                    <select
+                                        value={form.Broker}
+                                        onChange={e => setForm({ ...form, Broker: e.target.value })}
+                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 outline-none appearance-none cursor-pointer hover:bg-slate-200 dark:hover:bg-white/10 transition-colors"
+                                    >
+                                        <option value="RBC">RBC Direct</option>
+                                        <option value="CIBC">CIBC Edge</option>
+                                        <option value="TD">TD Direct</option>
+                                        <option value="Questrade">Questrade</option>
+                                        <option value="Manual">Manual</option>
+                                    </select>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Account Type</label>
+                                    <select
+                                        value={form.Account_Type}
+                                        onChange={e => setForm({ ...form, Account_Type: e.target.value })}
+                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 outline-none appearance-none cursor-pointer hover:bg-slate-200 dark:hover:bg-white/10 transition-colors"
+                                    >
+                                        <option value="TFSA">TFSA</option>
+                                        <option value="RRSP">RRSP</option>
+                                        <option value="FHSA">FHSA</option>
+                                        <option value="Open">Margin / Open</option>
+                                    </select>
+                                </div>
+
+                                <div className="space-y-1.5 lg:col-span-1">
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Execution Type</label>
+                                    <div className="flex bg-slate-100 dark:bg-white/5 p-1 rounded-xl border border-slate-200 dark:border-white/10 h-[56px] items-center">
+                                        {["BUY", "SELL", "DRIP"].map((t) => {
+                                            const isActive = form.Transaction_Type === t;
+                                            return (
+                                                <button
+                                                    key={t}
+                                                    type="button"
+                                                    onClick={() => setForm({ ...form, Transaction_Type: t })}
+                                                    className={`flex-1 h-full rounded-lg text-xs font-bold transition-all ${isActive
+                                                        ? (t === 'SELL' ? "bg-rose-500 text-white shadow-md" : "bg-emerald-500 text-white shadow-md")
+                                                        : "text-gray-500 hover:text-foreground"
+                                                        }`}
+                                                >
+                                                    {t}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                <div className="flex items-end justify-end lg:col-span-1">
+                                    <button
+                                        type="submit"
+                                        disabled={submitting}
+                                        className={`h-[56px] px-8 w-full rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg text-white disabled:opacity-50 disabled:cursor-not-allowed ${form.Transaction_Type === 'SELL'
                                             ? "bg-rose-600 hover:bg-rose-700 shadow-rose-900/20"
                                             : form.Transaction_Type === 'BUY'
                                                 ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-900/20"
                                                 : "bg-blue-600 hover:bg-blue-700 shadow-blue-900/20"
-                                        } border border-transparent dark:border-white/10 group`}
-                                >
-                                    <span>Confirm Entry</span>
-                                    <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
+                                            } border border-transparent dark:border-white/10 group`}
+                                    >
+                                        {submitting ? (
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                                <span>Processing...</span>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <span>Confirm {form.Transaction_Type === 'SELL' ? 'Disposal' : 'Acquisition'}</span>
+                                                <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Sub-Header: Search & Intelligence */}
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
@@ -299,7 +339,7 @@ export default function TransactionsPage() {
                         placeholder="Search by ticker, broker, or notes..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full h-[46px] bg-white border border-gray-200 dark:bg-white/5 dark:border-white/10 text-foreground text-sm rounded-xl block pl-11 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all hover:bg-gray-50 dark:hover:bg-white/10"
+                        className="w-full h-[46px] bg-white border border-gray-200 dark:bg-white/5 dark:border-white/10 text-foreground text-sm rounded-xl block pl-11 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all hover:bg-gray-50 dark:hover:bg-white/10 shadow-sm"
                     />
                 </div>
 
@@ -309,7 +349,7 @@ export default function TransactionsPage() {
                             key={t}
                             onClick={() => setFilterType(t)}
                             className={`flex-1 rounded-lg text-xs font-bold transition-all ${filterType === t
-                                ? "bg-blue-600 text-white shadow-md"
+                                ? "bg-blue-600 text-white shadow-md px-4"
                                 : "text-gray-500 hover:text-foreground"
                                 }`}
                         >
@@ -320,10 +360,10 @@ export default function TransactionsPage() {
             </div>
 
             {/* Main Ledger: High-Density Table */}
-            <div className="glass-panel rounded-2xl overflow-hidden shadow-2xl">
+            <div className="glass-panel rounded-2xl overflow-hidden shadow-2xl border border-white/10">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm">
-                        <thead className="text-gray-400 bg-white/5 uppercase text-[10px] font-bold tracking-widest">
+                        <thead className="text-gray-400 bg-white/5 uppercase text-[10px] font-bold tracking-widest border-b border-white/5">
                             <tr>
                                 <th className="px-6 py-4">Asset</th>
                                 <th className="px-6 py-4">Execution Date</th>
@@ -331,7 +371,7 @@ export default function TransactionsPage() {
                                 <th className="px-6 py-4 text-right">Unit Price</th>
                                 <th className="px-6 py-4 text-right">Volume</th>
                                 <th className="px-6 py-4 text-right">Total (CAD)</th>
-                                <th className="px-6 py-4 text-center">Purge</th>
+                                <th className="px-6 py-4 text-center">Delete</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
@@ -342,12 +382,16 @@ export default function TransactionsPage() {
                                 const isSell = txType === 'SELL';
 
                                 return (
-                                    <tr key={tx.id} className="hover:bg-white/5 transition-colors group">
+                                    <motion.tr
+                                        layout
+                                        key={tx.id}
+                                        className="hover:bg-white/5 transition-colors group"
+                                    >
                                         <td className="px-6 py-5">
-                                            <div className="font-bold text-base text-foreground">{tx.Symbol}</div>
+                                            <div className="font-bold text-base text-foreground tracking-tight">{tx.Symbol}</div>
                                             <div className="mt-1 flex gap-1">
                                                 <span style={{ background: bStyle.bg, color: bStyle.text, border: `1px solid ${bStyle.border}` }}
-                                                    className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase">
+                                                    className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase shadow-sm">
                                                     {tx.Broker}
                                                 </span>
                                             </div>
@@ -362,7 +406,7 @@ export default function TransactionsPage() {
                                             </div>
                                         </td>
                                         <td className="px-6 py-5">
-                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${isSell
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest ${isSell
                                                 ? 'bg-red-500/10 text-red-400 border border-red-500/20'
                                                 : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                                                 }`}>
@@ -376,22 +420,22 @@ export default function TransactionsPage() {
                                             {tx.Quantity} <span className="text-[10px] opacity-40">units</span>
                                         </td>
                                         <td className="px-6 py-5 text-right font-bold text-foreground tabular-nums">
-                                            ${(Number(tx["Purchase Price"] || 0) * Number(tx.Quantity || 0) + Number(tx.Commission || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            ${(tx.Amount ?? (Number(tx["Purchase Price"] || 0) * Number(tx.Quantity || 0) + (isSell ? -Number(tx.Commission || 0) : Number(tx.Commission || 0)))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                         </td>
                                         <td className="px-6 py-5 text-center">
                                             <button
                                                 onClick={() => handleDelete(tx.id)}
-                                                className="p-2 text-gray-600 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
+                                                className="p-2 text-gray-600 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all active:scale-95"
                                             >
                                                 <Trash2 className="w-4 h-4" />
                                             </button>
                                         </td>
-                                    </tr>
+                                    </motion.tr>
                                 );
                             })}
                             {filteredTransactions.length === 0 && (
                                 <tr>
-                                    <td colSpan={7} className="px-6 py-20 text-center text-gray-500">
+                                    <td colSpan={7} className="px-6 py-20 text-center text-gray-500 italic">
                                         No execution records found matching your filters.
                                     </td>
                                 </tr>
@@ -399,6 +443,11 @@ export default function TransactionsPage() {
                         </tbody>
                     </table>
                 </div>
+            </div>
+
+            {/* Persistence Layer Status */}
+            <div className="text-center text-[10px] text-gray-600 font-bold uppercase tracking-[0.3em] pb-8">
+                Authenticated Persistent Database • Distributed Ledger v3.0
             </div>
 
         </div>

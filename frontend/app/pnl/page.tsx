@@ -125,8 +125,11 @@ export default function PnLPage() {
     });
 
     const groupedMap: Record<string, any> = {};
+    const excludedUnrealized = ["RBF526", "RBF5662", "RBF266"];
     filteredHoldings.forEach((h: any) => {
         const sym = h.Symbol;
+        if (excludedUnrealized.includes(sym)) return;
+
         if (!groupedMap[sym]) {
             groupedMap[sym] = { ...h };
         } else {
