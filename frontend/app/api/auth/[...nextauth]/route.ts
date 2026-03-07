@@ -1,9 +1,6 @@
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 
-const allowedEmails = process.env.ALLOWED_EMAILS
-    ? process.env.ALLOWED_EMAILS.split(",").map(e => e.trim().toLowerCase())
-    : [];
 
 console.log("Initializing NextAuth handler...");
 if (!process.env.GOOGLE_CLIENT_ID) console.error("Missing GOOGLE_CLIENT_ID");
@@ -24,7 +21,11 @@ const handler = NextAuth({
             // If ALLOWED_EMAILS is not configured at all, we allow anyone for now, 
             // but it's much safer to enforce explicitly.
             if (process.env.ALLOWED_EMAILS) {
+                const allowedEmails = process.env.ALLOWED_EMAILS
+                    .split(",")
+                    .map(e => e.trim().toLowerCase());
                 if (!allowedEmails.includes(user.email.toLowerCase())) {
+                    console.log(`Access Denied for email: ${user.email}`);
                     return false; // Access Denied
                 }
             }
