@@ -134,16 +134,18 @@ def get_current_prices(symbols):
     try:
         data = yf.download(symbols, period="1d", progress=False)
         
+        if data.empty:
+            print("yfinance returned empty dataframe. Rate limit likely hit. Falling back.")
+            return prices
+
         # Depending on yfinance version and single/multi symbol, data['Close'] could be a Series or DataFrame
         if len(symbols) == 1:
             try:
                 closes = data['Close'].iloc[-1]
-                # If only 1 symbol, it might just return the scalar
                 p = float(closes.iloc[0]) if isinstance(closes, pd.Series) else float(closes)
                 prices[symbols[0]] = p if not np.isnan(p) else 0.0
             except Exception as e:
                 print(f"Failed extracting single symbol {symbols[0]}: {e}")
-                prices[symbols[0]] = 0.0
         else:
             try:
                 last_row = data['Close'].iloc[-1]
@@ -153,16 +155,14 @@ def get_current_prices(symbols):
                         prices[sym] = p if not np.isnan(p) else 0.0
                     except Exception as inner_e:
                         print(f"Failed to extract price for {sym}: {inner_e}")
-                        prices[sym] = 0.0
             except Exception as e:
                 print(f"Failed extracting multi-symbol row: {e}")
-                for sym in symbols: prices[sym] = 0.0
                 
         return prices
 
     except Exception as e:
         print(f"Error fetching prices via yfinance: {e}")
-        return {}
+        return prices
 
 def get_weekly_changes(symbols):
     """
@@ -413,7 +413,6 @@ def get_technical_data(symbols):
 def get_latest_news(symbols):
     """
     Fetches the latest news headline for each symbol using yfinance.
-    Returns dict: {Symbol: {'headline': str, 'link': str}}
     """
     if not symbols: return {}
 
@@ -424,6 +423,7 @@ def get_latest_news(symbols):
         try:
             yt = yf.Ticker(sym)
             y_news = yt.news
+            time.sleep(0.2)
             if y_news and isinstance(y_news, list):
                 top = y_news[0]
                 content = top.get('content', top)
@@ -436,9 +436,8 @@ def get_latest_news(symbols):
             pass
         return sym, None
 
-    # Fetch for the first 5 symbols concurrently
-    limit = 5
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    limit = 3
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
         future_to_sym = {executor.submit(fetch_news, sym): sym for sym in symbols[:limit]}
         for future in concurrent.futures.as_completed(future_to_sym):
             sym, result = future.result()
@@ -451,7 +450,6 @@ def get_latest_news(symbols):
 def get_dividend_calendar(symbols):
     """
     Fetches dividend history to project future income using yfinance.
-    Returns dict: {Symbol: {'Frequency': 'Monthly', 'Rate': 0.50, 'Months': [1,2,3...]}}
     """
     if not symbols: return {}
 
@@ -462,6 +460,7 @@ def get_dividend_calendar(symbols):
         try:
             yt = yf.Ticker(sym)
             divs = yt.dividends
+            time.sleep(0.2)
             if divs is None or divs.empty: return sym, None
             
             start_date = pd.Timestamp(datetime.now() - timedelta(days=366)).tz_localize(divs.index.tz)
@@ -488,7 +487,7 @@ def get_dividend_calendar(symbols):
             return sym, None
 
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             future_to_sym = {executor.submit(fetch_div, sym): sym for sym in symbols}
             for future in concurrent.futures.as_completed(future_to_sym):
                 sym, result = future.result()
@@ -527,6 +526,7 @@ def get_fundamental_data(symbols):
         try:
             yt = yf.Ticker(sym)
             info = yt.info
+            time.sleep(0.3)
             if not isinstance(info, dict): return sym, None
             
             q_type = info.get('quoteType', 'EQUITY')
@@ -582,7 +582,7 @@ def get_fundamental_data(symbols):
             return sym, {'Sector': 'Unknown'}
 
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             future_to_sym = {executor.submit(fetch_fund, sym): sym for sym in symbols}
             for future in concurrent.futures.as_completed(future_to_sym):
                 sym, result = future.result()
