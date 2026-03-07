@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 import time
+import concurrent.futures
 from backend.cache import cache_result, prices_cache, fundamentals_cache, technicals_cache, news_cache, dividend_cache, fx_cache, history_cache
 
 # ETF Look-Through Weights (Approximate)
@@ -419,24 +420,30 @@ def get_latest_news(symbols):
     print(f"Fetching latest news for {len(symbols)} symbols...")
     news_map = {}
     
-    # ONLY fetch for the first 3 symbols to avoid hanging for a long time
-    # yfinance news API requires 1 call per ticker
-    limit = 3
-    for sym in symbols[:limit]:
+    def fetch_news(sym):
         try:
             yt = yf.Ticker(sym)
             y_news = yt.news
             if y_news and isinstance(y_news, list):
                 top = y_news[0]
-                # Structure varies: sometimes it's nested in 'content'
                 content = top.get('content', top)
                 title = content.get('title', 'No Title')
                 link = content.get('link', f"https://finance.yahoo.com/quote/{sym}")
                 if len(title) > 80:
                     title = title[:77] + "..."
-                news_map[sym] = {'headline': f"📰 {title}", 'link': link}
+                return sym, {'headline': f"📰 {title}", 'link': link}
         except Exception:
             pass
+        return sym, None
+
+    # Fetch for the first 5 symbols concurrently
+    limit = 5
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_sym = {executor.submit(fetch_news, sym): sym for sym in symbols[:limit]}
+        for future in concurrent.futures.as_completed(future_to_sym):
+            sym, result = future.result()
+            if result:
+                news_map[sym] = result
 
     return news_map
 
@@ -451,39 +458,42 @@ def get_dividend_calendar(symbols):
     print(f"Fetching dividend calendar for {len(symbols)} symbols...")
     div_calendar = {}
     
+    def fetch_div(sym):
+        try:
+            yt = yf.Ticker(sym)
+            divs = yt.dividends
+            if divs is None or divs.empty: return sym, None
+            
+            start_date = pd.Timestamp(datetime.now() - timedelta(days=366)).tz_localize(divs.index.tz)
+            sym_divs = divs[divs.index >= start_date]
+            
+            if sym_divs.empty: return sym, None
+            
+            count = len(sym_divs)
+            freq = "None"
+            if count >= 10: freq = "Monthly"
+            elif count >= 3: freq = "Quarterly"
+            elif count >= 2: freq = "Semi-Annual"
+            elif count >= 1: freq = "Annual"
+            
+            months = list(set([d.month for d in sym_divs.index]))
+            rate = float(sym_divs.iloc[-1])
+            
+            return sym, {
+                'Frequency': freq,
+                'Rate': rate,
+                'Months': sorted(months)
+            }
+        except Exception:
+            return sym, None
+
     try:
-        for sym in symbols:
-            try:
-                yt = yf.Ticker(sym)
-                # Fetch dividends
-                divs = yt.dividends
-                
-                if divs is None or divs.empty: continue
-                
-                # Filter for last 1 year
-                start_date = pd.Timestamp(datetime.now() - timedelta(days=366)).tz_localize(divs.index.tz)
-                sym_divs = divs[divs.index >= start_date]
-                
-                if sym_divs.empty: continue
-                
-                # Process Dividends
-                count = len(sym_divs)
-                freq = "None"
-                if count >= 10: freq = "Monthly"
-                elif count >= 3: freq = "Quarterly"
-                elif count >= 2: freq = "Semi-Annual"
-                elif count >= 1: freq = "Annual"
-                
-                months = list(set([d.month for d in sym_divs.index]))
-                rate = float(sym_divs.iloc[-1])
-                
-                div_calendar[sym] = {
-                    'Frequency': freq,
-                    'Rate': rate,
-                    'Months': sorted(months)
-                }
-            except Exception:
-                pass
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_sym = {executor.submit(fetch_div, sym): sym for sym in symbols}
+            for future in concurrent.futures.as_completed(future_to_sym):
+                sym, result = future.result()
+                if result:
+                    div_calendar[sym] = result
     except Exception as e:
         print(f"Error fetching dividends via yfinance: {e}")
         
@@ -513,64 +523,71 @@ def get_fundamental_data(symbols):
         'SMH': 'US Semiconductors',
     }
 
-    try:
-        for sym in symbols:
-            try:
-                yt = yf.Ticker(sym)
-                info = yt.info
-                if not isinstance(info, dict): continue
-                
-                q_type = info.get('quoteType', 'EQUITY')
-                
-                # Sector
-                sector = info.get('sector') or 'N/A'
-                if sym in custom_sectors:
-                    normalized_sector = custom_sectors[sym]
-                elif q_type == 'ETF':
-                    normalized_sector = info.get('category', 'Other ETF')
-                elif q_type == 'CRYPTOCURRENCY':
-                    normalized_sector = 'Crypto'
-                else:
-                    normalized_sector = sector
-                
-                # Yield
-                div_yield = info.get('dividendYield', 0)
-                yield_str = f"{div_yield*100:.2f}%" if div_yield else "0.00%"
-                
-                ex_div = info.get('exDividendDate', 'N/A')
-                
-                calendar = yt.calendar
-                next_earnings = 'N/A'
-                if isinstance(calendar, dict) and 'Earnings Date' in calendar:
-                    dates = calendar['Earnings Date']
-                    if len(dates) > 0:
-                        next_earnings = dates[0]
-                elif isinstance(calendar, pd.DataFrame) and not calendar.empty:
-                    if 'Earnings Date' in calendar.columns:
-                        d = calendar['Earnings Date'].iloc[0]
-                        next_earnings = d.strftime("%Y-%m-%d") if pd.notna(d) else 'N/A'
+    def fetch_fund(sym):
+        try:
+            yt = yf.Ticker(sym)
+            info = yt.info
+            if not isinstance(info, dict): return sym, None
+            
+            q_type = info.get('quoteType', 'EQUITY')
+            
+            # Sector
+            sector = info.get('sector') or 'N/A'
+            if sym in custom_sectors:
+                normalized_sector = custom_sectors[sym]
+            elif q_type == 'ETF':
+                normalized_sector = info.get('category', 'Other ETF')
+            elif q_type == 'CRYPTOCURRENCY':
+                normalized_sector = 'Crypto'
+            else:
+                normalized_sector = sector
+            
+            # Yield
+            div_yield = info.get('dividendYield', 0)
+            yield_str = f"{div_yield*100:.2f}%" if div_yield else "0.00%"
+            
+            ex_div = info.get('exDividendDate', 'N/A')
+            
+            calendar = yt.calendar
+            next_earnings = 'N/A'
+            if isinstance(calendar, dict) and 'Earnings Date' in calendar:
+                dates = calendar['Earnings Date']
+                if len(dates) > 0:
+                    next_earnings = dates[0]
+            elif isinstance(calendar, pd.DataFrame) and not calendar.empty:
+                if 'Earnings Date' in calendar.columns:
+                    d = calendar['Earnings Date'].iloc[0]
+                    next_earnings = d.strftime("%Y-%m-%d") if pd.notna(d) else 'N/A'
 
-                peg = info.get('pegRatio', 'N/A')
-                
-                f_data = {
-                    'Market Cap': info.get('marketCap', 'N/A'),
-                    'Trailing P/E': info.get('trailingPE', 'N/A'),
-                    'Forward P/E': info.get('forwardPE', 'N/A'),
-                    'PEG Ratio': peg,
-                    'Rev Growth': info.get('revenueGrowth', 'N/A'),
-                    'Profit Margin': info.get('profitMargins', 'N/A'),
-                    '52w High': info.get('fiftyTwoWeekHigh', 'N/A'),
-                    'Recommendation': info.get('recommendationKey', 'N/A').replace('_', ' ').title() if info.get('recommendationKey') else 'N/A',
-                    'Sector': normalized_sector,
-                    'Country': info.get('country', 'Unknown'),
-                    'Yield': yield_str,
-                    'Ex-Dividend': str(ex_div),
-                    'Next Earnings': str(next_earnings)
-                }
-                fundamentals[sym] = f_data
-            except Exception as e:
-                print(f"Error processing {sym}: {e}")
-                fundamentals[sym] = {'Sector': 'Unknown'}
+            peg = info.get('pegRatio', 'N/A')
+            
+            f_data = {
+                'Market Cap': info.get('marketCap', 'N/A'),
+                'Trailing P/E': info.get('trailingPE', 'N/A'),
+                'Forward P/E': info.get('forwardPE', 'N/A'),
+                'PEG Ratio': peg,
+                'Rev Growth': info.get('revenueGrowth', 'N/A'),
+                'Profit Margin': info.get('profitMargins', 'N/A'),
+                '52w High': info.get('fiftyTwoWeekHigh', 'N/A'),
+                'Recommendation': info.get('recommendationKey', 'N/A').replace('_', ' ').title() if info.get('recommendationKey') else 'N/A',
+                'Sector': normalized_sector,
+                'Country': info.get('country', 'Unknown'),
+                'Yield': yield_str,
+                'Ex-Dividend': str(ex_div),
+                'Next Earnings': str(next_earnings)
+            }
+            return sym, f_data
+        except Exception as e:
+            print(f"Error processing {sym}: {e}")
+            return sym, {'Sector': 'Unknown'}
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_sym = {executor.submit(fetch_fund, sym): sym for sym in symbols}
+            for future in concurrent.futures.as_completed(future_to_sym):
+                sym, result = future.result()
+                if result:
+                    fundamentals[sym] = result
     except Exception as e:
         print(f"Error fetching fundamentals via yfinance: {e}")
         
