@@ -174,12 +174,12 @@ export default function TransactionsPage() {
 
                 <button
                     onClick={() => setShowForm(!showForm)}
-                    className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all shadow-lg active:scale-95 ${showForm
-                        ? "bg-gray-100 dark:bg-white/10 text-foreground hover:bg-gray-200 dark:hover:bg-white/20"
-                        : "bg-blue-600 hover:bg-blue-700 text-white shadow-blue-900/10"
+                    className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold uppercase tracking-widest transition-all border ${showForm
+                        ? "bg-rose-500/10 border-rose-500/30 text-rose-400 hover:bg-rose-500/20"
+                        : "bg-blue-500/10 border-blue-500/30 text-blue-400 hover:bg-blue-500/20 shadow-[0_0_15px_rgba(59,130,246,0.15)] hover:shadow-[0_0_20px_rgba(59,130,246,0.25)]"
                         }`}
                 >
-                    {showForm ? <X className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+                    {showForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                     {showForm ? "Cancel Entry" : "Record Entry"}
                 </button>
             </div>
