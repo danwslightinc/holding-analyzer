@@ -2,6 +2,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { usePortfolio } from "@/lib/PortfolioContext";
+import { signOut, useSession } from "next-auth/react";
 
 const PnLPage = dynamic(() => import("@/app/pnl/page"), { ssr: false, loading: () => <div style={{ color: '#00D4FF', padding: 40, textAlign: 'center', letterSpacing: 4, fontFamily: "'Bebas Neue',sans-serif", fontSize: 18 }}>LOADING P&L...</div> });
 const TradeAnalysisPage = dynamic(() => import("@/app/trade-analysis/page"), { ssr: false, loading: () => <div style={{ color: '#00D4FF', padding: 40, textAlign: 'center', letterSpacing: 4, fontFamily: "'Bebas Neue',sans-serif", fontSize: 18 }}>LOADING TRADE ANALYSIS...</div> });
@@ -140,6 +141,7 @@ export default function Dashboard() {
   const [clock, setClock] = useState(new Date());
   const [theme, setTheme] = useState("dark");
   const isLight = theme === "light";
+  const { data: session } = useSession();
 
   // Clock
   useEffect(() => {
@@ -404,6 +406,14 @@ export default function Dashboard() {
               >
                 {isLight ? "☀ LIGHT" : "☾ DARK"}
               </button>
+              {session && (
+                <button
+                  onClick={() => signOut({ callbackUrl: "/login" })}
+                  style={{ padding: "6px 12px", borderRadius: 6, fontSize: 12, letterSpacing: 1, background: "rgba(255, 68, 85, 0.1)", border: "1px solid rgba(255, 68, 85, 0.3)", color: "#FF4455", cursor: "pointer", fontFamily: "inherit" }}
+                >
+                  ⏻ LOGOUT
+                </button>
+              )}
             </div>
             <div style={{ fontSize: 12, color: "var(--muted)", letterSpacing: 1, marginBottom: 8 }}>{dateStr}</div>
 
