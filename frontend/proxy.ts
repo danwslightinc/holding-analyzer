@@ -4,6 +4,24 @@ export default withAuth({
     pages: {
         signIn: "/login",
     },
+    callbacks: {
+        authorized: ({ req, token }) => {
+            // First check if token exists
+            if (!token?.email) return false;
+
+            // Check against allowed emails
+            if (process.env.ALLOWED_EMAILS) {
+                const allowedEmails = process.env.ALLOWED_EMAILS
+                    .split(",")
+                    .map(e => e.trim().toLowerCase());
+
+                if (!allowedEmails.includes(token.email.toLowerCase())) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
 });
 
 export const config = {
