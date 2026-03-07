@@ -232,6 +232,17 @@ export default function Dashboard() {
 
   const withWeights = useMemo(() => holdings.map(h => ({ ...h, weight: (h.mktValueCAD / totalCAD) * 100 })), [holdings, totalCAD]);
 
+  const combinedWeights = useMemo(() => {
+    const combined: Record<string, any> = {};
+    withWeights.forEach(h => {
+      if (!combined[h.ticker]) {
+        combined[h.ticker] = { ...h, weight: 0 };
+      }
+      combined[h.ticker].weight += h.weight;
+    });
+    return Object.values(combined).sort((a, b) => b.weight - a.weight);
+  }, [withWeights]);
+
   const metrics = useMemo(() => {
     const wCAGR = withWeights.reduce((s, h) => s + (h.weight / 100) * h.expectedCAGR, 0);
     const wYield = withWeights.reduce((s, h) => s + (h.weight / 100) * h.dividendYield, 0);
@@ -615,14 +626,13 @@ export default function Dashboard() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
             <div className="card" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
               <div style={{ fontSize: 11, letterSpacing: 3, color: "#335" }}>ALLOCATION BY HOLDING</div>
-              <PieChart data={withWeights.map(h => ({ name: h.ticker, value: h.weight, color: h.color }))} size={175} />
+              <PieChart data={combinedWeights.map((h: any) => ({ name: h.ticker, value: h.weight, color: h.color }))} size={175} />
               <div style={{ width: "100%", maxHeight: 240, overflowY: "auto" }}>
-                {withWeights.sort((a, b) => b.weight - a.weight).map((h, idx) => (
-                  <div key={`ov-${idx}-${h.ticker}-${h.account}-${h.broker}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+                {combinedWeights.map((h: any, idx) => (
+                  <div key={`ov-comb-${idx}-${h.ticker}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                       <div style={{ width: 6, height: 6, borderRadius: 2, background: h.heatColor.text }} />
                       <span style={{ fontSize: 12, color: "#aab" }}>{h.ticker}</span>
-                      <ABadge a={h.account} />
                     </div>
                     <span style={{ fontSize: 12, color: h.heatColor.text }}>{h.weight.toFixed(1)}%</span>
                   </div>
