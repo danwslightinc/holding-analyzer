@@ -1,12 +1,4 @@
-// @ts-nocheck
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
-import dynamic from "next/dynamic";
-import { usePortfolio } from "@/lib/PortfolioContext";
-
-const PnLPage = dynamic(() => import("@/app/pnl/page"), { ssr: false, loading: () => <div style={{ color: '#00D4FF', padding: 40, textAlign: 'center', letterSpacing: 4, fontFamily: "'Bebas Neue',sans-serif", fontSize: 18 }}>LOADING P&L...</div> });
-const TradeAnalysisPage = dynamic(() => import("@/app/trade-analysis/page"), { ssr: false, loading: () => <div style={{ color: '#00D4FF', padding: 40, textAlign: 'center', letterSpacing: 4, fontFamily: "'Bebas Neue',sans-serif", fontSize: 18 }}>LOADING TRADE ANALYSIS...</div> });
-const QuantmentalPage = dynamic(() => import("@/app/quantmental/page"), { ssr: false, loading: () => <div style={{ color: '#00D4FF', padding: 40, textAlign: 'center', letterSpacing: 4, fontFamily: "'Bebas Neue',sans-serif", fontSize: 18 }}>LOADING QUANT-MENTAL...</div> });
-const TransactionsPage = dynamic(() => import("@/app/transactions/page"), { ssr: false, loading: () => <div style={{ color: '#00D4FF', padding: 40, textAlign: 'center', letterSpacing: 4, fontFamily: "'Bebas Neue',sans-serif", fontSize: 18 }}>LOADING TRANSACTIONS...</div> });
 
 // ─────────────────────────────────────────────────────────────────
 // FALLBACK PRICES (CSV snapshot Mar 5 2026 close)
@@ -76,15 +68,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 function PieChart({ data, size = 180 }) {
   const total = data.reduce((s, d) => s + d.value, 0);
   if (!total) return null;
-  const slices = [];
-  data.filter(d => d.value > 0).reduce((cum, d) => {
-    const pct = d.value / total, s0 = cum;
-    const newCum = cum + pct;
-    const a1 = s0 * 2 * Math.PI - Math.PI / 2, a2 = newCum * 2 * Math.PI - Math.PI / 2;
+  let cum = 0;
+  const slices = data.filter(d => d.value > 0).map(d => {
+    const pct = d.value / total, s0 = cum; cum += pct;
+    const a1 = s0 * 2 * Math.PI - Math.PI / 2, a2 = cum * 2 * Math.PI - Math.PI / 2;
     const r = size / 2 - 8, cx = size / 2, cy = size / 2;
-    slices.push({ ...d, path: `M${cx},${cy} L${cx + r * Math.cos(a1)},${cy + r * Math.sin(a1)} A${r},${r} 0 ${pct > .5 ? 1 : 0},1 ${cx + r * Math.cos(a2)},${cy + r * Math.sin(a2)} Z` });
-    return newCum;
-  }, 0);
+    return { ...d, path: `M${cx},${cy} L${cx + r * Math.cos(a1)},${cy + r * Math.sin(a1)} A${r},${r} 0 ${pct > .5 ? 1 : 0},1 ${cx + r * Math.cos(a2)},${cy + r * Math.sin(a2)} Z` };
+  });
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       {slices.map((s, i) => <path key={i} d={s.path} fill={s.color} opacity={.88} stroke="#0a0a14" strokeWidth={1.5} />)}
@@ -101,35 +91,63 @@ function Bar({ value, max = 100, color, height = 5 }) {
   );
 }
 
-const ABadge = ({ a }) => <span style={{ display: "inline-block", padding: "1px 5px", borderRadius: 3, fontSize: 11, letterSpacing: 1, background: ACCOUNT_BG[a], border: `1px solid ${ACCOUNT_COLORS[a]}44`, color: ACCOUNT_COLORS[a] }}>{a}</span>;
-const BBadge = ({ b }) => <span style={{ display: "inline-block", padding: "1px 5px", borderRadius: 3, fontSize: 11, letterSpacing: 1, background: (BROKER_COLORS[b] || "#333") + "22", border: `1px solid ${BROKER_COLORS[b] || "#555"}44`, color: BROKER_COLORS[b] || "#999" }}>{b}</span>;
-const TBadge = ({ r }) => <span style={{ display: "inline-block", padding: "1px 5px", borderRadius: 3, fontSize: 11, letterSpacing: 1, background: TAX_COLORS[r] + "18", border: `1px solid ${TAX_COLORS[r]}44`, color: TAX_COLORS[r] }}>{r}</span>;
+const ABadge = ({ a }) => <span style={{ display: "inline-block", padding: "1px 5px", borderRadius: 3, fontSize: 8, letterSpacing: 1, background: ACCOUNT_BG[a], border: `1px solid ${ACCOUNT_COLORS[a]}44`, color: ACCOUNT_COLORS[a] }}>{a}</span>;
+const BBadge = ({ b }) => <span style={{ display: "inline-block", padding: "1px 5px", borderRadius: 3, fontSize: 8, letterSpacing: 1, background: (BROKER_COLORS[b] || "#333") + "22", border: `1px solid ${BROKER_COLORS[b] || "#555"}44`, color: BROKER_COLORS[b] || "#999" }}>{b}</span>;
+const TBadge = ({ r }) => <span style={{ display: "inline-block", padding: "1px 5px", borderRadius: 3, fontSize: 8, letterSpacing: 1, background: TAX_COLORS[r] + "18", border: `1px solid ${TAX_COLORS[r]}44`, color: TAX_COLORS[r] }}>{r}</span>;
 
 // ─────────────────────────────────────────────────────────────────
+// ALPHA VANTAGE FETCHER
+// ─────────────────────────────────────────────────────────────────
+async function fetchQuote(ticker, apiKey) {
+  const sym = avSym(ticker);
+  const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${sym}&apikey=${apiKey}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  if (data["Note"] || data["Information"]) throw new Error("RATE_LIMIT");
+  const q = data["Global Quote"];
+  if (!q || !q["05. price"]) throw new Error("NO_DATA");
+  return {
+    price: parseFloat(q["05. price"]),
+    open: parseFloat(q["02. open"]),
+    high: parseFloat(q["03. high"]),
+    low: parseFloat(q["04. low"]),
+    prevClose: parseFloat(q["08. previous close"]),
+    change: parseFloat(q["09. change"]),
+    changePct: parseFloat(q["10. change percent"]?.replace("%", "")),
+    volume: parseInt(q["06. volume"]),
+    latestDay: q["07. latest trading day"],
+  };
+}
 
+async function fetchUSDCAD(apiKey) {
+  const url = `https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=USD&to_currency=CAD&apikey=${apiKey}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  if (data["Note"] || data["Information"]) throw new Error("RATE_LIMIT");
+  const r = data["Realtime Currency Exchange Rate"];
+  if (!r) throw new Error("NO_FX_DATA");
+  return parseFloat(r["5. Exchange Rate"]);
+}
 
 // ─────────────────────────────────────────────────────────────────
 // MAIN APP
 // ─────────────────────────────────────────────────────────────────
-const META_MAP = {
-  AVUV: { type: "US Small Cap Value", color: "#FFD700", expectedCAGR: 11.5, beta: 1.22, geography: { "United States": 100 }, div: 1.85 },
-  COST: { type: "US Large Cap Growth", color: "#FF6B35", expectedCAGR: 12.0, beta: 0.90, geography: { "United States": 100 }, div: 0.52 },
-  GLD: { type: "Commodity – Gold", color: "#FFAA00", expectedCAGR: 5.5, beta: 0.10, geography: { "Global": 100 }, div: 0.00 },
-  MSFT: { type: "US Large Cap Growth", color: "#00AAFF", expectedCAGR: 11.5, beta: 0.90, geography: { "United States": 100 }, div: 0.82 },
-  NVDA: { type: "US Large Cap Growth", color: "#76FF44", expectedCAGR: 15.0, beta: 1.65, geography: { "United States": 100 }, div: 0.03 },
-  SLV: { type: "Commodity – Silver", color: "#CCDDEE", expectedCAGR: 4.5, beta: 0.30, geography: { "Global": 100 }, div: 0.00 },
-  "VDY.TO": { type: "Canadian High Dividend", color: "#CC44FF", expectedCAGR: 7.0, beta: 0.72, geography: { "Canada": 100 }, div: 4.10 },
-  "VFV.TO": { type: "US Large Cap Blend", color: "#0088FF", expectedCAGR: 10.2, beta: 1.00, geography: { "United States": 100 }, div: 1.10 },
-  VOO: { type: "US Large Cap Blend", color: "#00D4FF", expectedCAGR: 10.5, beta: 1.00, geography: { "United States": 100 }, div: 1.32 },
-  "WCP.TO": { type: "Canadian Energy", color: "#FF8800", expectedCAGR: 6.0, beta: 1.35, geography: { "Canada": 100 }, div: 6.20 },
-  "XEC.TO": { type: "Emerging Markets", color: "#FF3366", expectedCAGR: 8.8, beta: 1.05, geography: { "China": 28, "India": 18, "Taiwan": 16, "South Korea": 10, "Brazil": 5, "Other EM": 23 }, div: 2.80 },
-  "XEF.TO": { type: "Developed Market ex-NA", color: "#00FF88", expectedCAGR: 7.5, beta: 0.85, geography: { "Europe": 55, "Japan": 22, "Australia/NZ": 10, "Other Developed": 13 }, div: 3.20 },
-  "XEI.TO": { type: "Canadian High Dividend", color: "#AA44FF", expectedCAGR: 6.5, beta: 0.75, geography: { "Canada": 100 }, div: 5.50 },
-  "XIU.TO": { type: "Canadian Large Cap", color: "#BB55EE", expectedCAGR: 7.2, beta: 0.82, geography: { "Canada": 100 }, div: 2.90 },
-};
+export default function App() {
+  const [apiKey, setApiKey] = useState("");
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [showKeyInput, setShowKeyInput] = useState(true);
 
-export default function Dashboard() {
-  const { data: portData, dividends: divRaw, tickerPerf, loading, error, refresh } = usePortfolio();
+  const [prices, setPrices] = useState({ ...FALLBACK_PRICES });
+  const [quoteDetails, setQuoteDetails] = useState({});
+  const [usdcad, setUsdcad] = useState(FALLBACK_USDCAD);
+  const [priceSource, setPriceSource] = useState("CSV snapshot — Mar 5 2026");
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [fetchStatus, setFetchStatus] = useState({}); // ticker → "ok"|"error"|"loading"
+  const [isFetching, setIsFetching] = useState(false);
+  const [fetchLog, setFetchLog] = useState([]);
+  const [callsUsed, setCallsUsed] = useState(0);
 
   const [tab, setTab] = useState("heatmap");
   const [heatSort, setHeatSort] = useState("value");
@@ -138,8 +156,6 @@ export default function Dashboard() {
   const [sortBy, setSortBy] = useState("value");
   const [hoveredTicker, setHoveredTicker] = useState(null);
   const [clock, setClock] = useState(new Date());
-  const [theme, setTheme] = useState("dark");
-  const isLight = theme === "light";
 
   // Clock
   useEffect(() => {
@@ -147,79 +163,106 @@ export default function Dashboard() {
     return () => clearInterval(t);
   }, []);
 
-  const apiKey = null;
-  const isFetching = loading;
-  const priceSource = "Backend API";
-  const lastUpdated = new Date();
-  const usdcad = portData?.summary?.usd_cad_rate || FALLBACK_USDCAD;
-  const callsUsed = 0;
-  const fetchStatus = {}; // Mock
-  const showKeyInput = false;
+  // ── FETCH ALL PRICES ─────────────────────────────────────────
+  const fetchAllPrices = useCallback(async (key) => {
+    if (!key) return;
+    setIsFetching(true);
+    setFetchLog([]);
+    const newPrices = { ...prices };
+    const newDetails = { ...quoteDetails };
+    const newStatus = {};
+    let calls = 0;
+    const log = [];
+
+    const addLog = (msg, ok = true) => {
+      setFetchLog(l => [...l, { msg, ok, t: new Date().toLocaleTimeString("en-CA", { hour12: false }) }]);
+    };
+
+    // 1. Fetch USD/CAD first (1 call)
+    try {
+      addLog("Fetching USD/CAD exchange rate...", true);
+      const fx = await fetchUSDCAD(key);
+      setUsdcad(fx);
+      calls++;
+      addLog(`✓ USD/CAD = ${fx.toFixed(5)}`, true);
+    } catch (e) {
+      if (e.message === "RATE_LIMIT") {
+        addLog("⚠ Rate limited on FX. Using fallback USD/CAD.", false);
+      } else {
+        addLog(`✗ FX error: ${e.message}. Using fallback.`, false);
+      }
+    }
+    await sleep(1200); // AV free tier: ~5 req/min
+
+    // 2. Fetch each ticker sequentially
+    for (const ticker of TICKERS) {
+      setFetchLog(l => [...l, { msg: `Fetching ${ticker} (${avSym(ticker)})...`, ok: true, t: new Date().toLocaleTimeString("en-CA", { hour12: false }) }]);
+      newStatus[ticker] = "loading";
+      setFetchStatus({ ...newStatus });
+
+      try {
+        const q = await fetchQuote(ticker, key);
+        newPrices[ticker] = q.price;
+        newDetails[ticker] = q;
+        newStatus[ticker] = "ok";
+        calls++;
+        addLog(`✓ ${ticker}: ${q.price.toFixed(2)} (${q.changePct >= 0 ? "+" : ""}${q.changePct?.toFixed(2)}% · ${q.latestDay})`, true);
+        setPrices({ ...newPrices });
+        setQuoteDetails({ ...newDetails });
+        setFetchStatus({ ...newStatus });
+        await sleep(1200);
+      } catch (e) {
+        newStatus[ticker] = "error";
+        setFetchStatus({ ...newStatus });
+        if (e.message === "RATE_LIMIT") {
+          addLog(`⚠ ${ticker}: Rate limited — using fallback price ${FALLBACK_PRICES[ticker]}`, false);
+          await sleep(60000); // wait 60s on rate limit
+        } else {
+          addLog(`✗ ${ticker}: ${e.message} — using fallback`, false);
+          await sleep(1200);
+        }
+      }
+    }
+
+    setCallsUsed(c => c + calls);
+    setPriceSource("Alpha Vantage");
+    setLastUpdated(new Date());
+    setIsFetching(false);
+    addLog(`─── Done. ${calls} API calls used (${25 - calls} remaining today). ───`, true);
+  }, [prices, quoteDetails]);
+
+  const handleSaveKey = () => {
+    const k = apiKeyInput.trim();
+    if (!k) return;
+    setApiKey(k);
+    setShowKeyInput(false);
+    fetchAllPrices(k);
+  };
 
   // ── DERIVED DATA ─────────────────────────────────────────────
-
-  const holdings = useMemo(() => {
-    if (!portData || !portData.holdings) return [];
-
-    // Create lookup for performance data
-    const perfLookup = {};
-    if (tickerPerf) {
-      Object.keys(tickerPerf).forEach(sym => {
-        perfLookup[sym] = tickerPerf[sym]['1d']?.change_pct || 0;
-      });
-    }
-
-    // Lookup for dividends
-    const divLookup = {};
-    if (divRaw && divRaw.holdings) {
-      divRaw.holdings.forEach(d => {
-        divLookup[d.symbol] = d.dividend_yield * 100;
-      });
-    }
-
-    return portData.holdings.map(h => {
-      const meta = META_MAP[h.Symbol] || { type: "Unknown", color: "#888", expectedCAGR: 8.0, beta: 1.0, geography: { "Global": 100 }, div: 0 };
-      const cp = h['Current Price'] || 0;
-      const prevClose = cp; // Backend doesn't give prev cost easily unless using perf
-      const dayChgPct = perfLookup[h.Symbol] || 0;
-
-      const mkt = h.Market_Value_CAD || h.Market_Value;
-      const gl = h['Purchase Price'] > 0 ? ((cp / h['Purchase Price']) - 1) * 100 : null;
-
-      const yieldPct = divLookup[h.Symbol] || meta.div;
-
-      return {
-        ...h,
-        ticker: h.Symbol,
-        name: h.Symbol, // Alternatively, fetch name from a map if needed
-        account: h.Account_Type || "Open",
-        broker: h.Broker || "CIBC",
-        currency: h.Currency || "CAD",
-        qty: h.Quantity,
-        avgCost: h['Purchase Price'] || 0,
-        type: meta.type,
-        color: meta.color,
-        dividendYield: yieldPct,
-        beta: meta.beta,
-        expectedCAGR: meta.expectedCAGR,
-        geography: meta.geography,
-
-        currPrice: cp, prevClose, dayChgPct,
-        mktValueCAD: mkt,
-        costCAD: mkt - (h.PnL_CAD || h.PnL || 0),
-        glPct: gl,
-        glAmtLocal: (cp - (h['Purchase Price'] || 0)) * h.Quantity,
-        annualDivCAD: mkt * (yieldPct / 100),
-        heatColor: heatColor(gl),
-        taxRating: TAX_MAP[h.Symbol] || "NEUTRAL",
-        fetchStatus: "ok",
-        latestDay: new Date().toLocaleDateString("en-CA"),
-        volume: null,
-        high: null, low: null,
-      };
-    });
-  }, [portData, tickerPerf, divRaw]);
-
+  const holdings = useMemo(() => RAW_HOLDINGS.map(h => {
+    const cp = prices[h.ticker] ?? FALLBACK_PRICES[h.ticker];
+    const qd = quoteDetails[h.ticker];
+    const prevClose = qd?.prevClose ?? FALLBACK_PRICES[h.ticker];
+    const dayChgPct = qd?.changePct ?? 0;
+    const mkt = h.currency === "USD" ? h.qty * cp * usdcad : h.qty * cp;
+    const gl = h.avgCost > 0 ? ((cp / h.avgCost) - 1) * 100 : null;
+    return {
+      ...h,
+      currPrice: cp, prevClose, dayChgPct,
+      mktValueCAD: mkt,
+      costCAD: h.currency === "USD" ? h.qty * h.avgCost * usdcad : h.qty * h.avgCost,
+      glPct: gl,
+      glAmtLocal: (cp - h.avgCost) * h.qty,
+      annualDivCAD: mkt * h.dividendYield / 100,
+      heatColor: heatColor(gl),
+      taxRating: TAX_MAP[h.ticker] || "NEUTRAL",
+      fetchStatus: fetchStatus[h.ticker] || "idle",
+      latestDay: qd?.latestDay || "Mar 5, 2026",
+      volume: qd?.volume,
+      high: qd?.high, low: qd?.low,
+    };
+  }), [prices, quoteDetails, usdcad, fetchStatus]);
 
   const totalCAD = useMemo(() => holdings.reduce((s, h) => s + h.mktValueCAD, 0), [holdings]);
   const totalCostCAD = useMemo(() => holdings.reduce((s, h) => s + h.costCAD, 0), [holdings]);
@@ -288,158 +331,165 @@ export default function Dashboard() {
 
   const clockStr = clock.toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
   const dateStr = clock.toLocaleDateString("en-CA", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
-  const okCount = holdings.length;
-  const errCount = 0;
-  const tabs = ["heatmap", "overview", "holdings", "tax", "geography", "dividends", "projection", "pnl", "trades", "quantmental", "transactions"];
-
-  // Handle loading state before rendering main app view
-  if (loading && !portData) {
-    return <div style={{ background: "#06061a", minHeight: "100vh", color: "#00D4FF", display: "flex", justifyContent: "center", alignItems: "center", fontFamily: "'Bebas Neue',sans-serif", fontSize: 24, letterSpacing: 4 }}>LOADING PORTFOLIO DATA...</div>;
-  }
-  if (error) {
-    return <div style={{ background: "#06061a", minHeight: "100vh", color: "#FF4455", display: "flex", justifyContent: "center", alignItems: "center", fontFamily: "'Bebas Neue',sans-serif", fontSize: 24 }}>ERROR LOADING DATA</div>;
-  }
+  const okCount = Object.values(fetchStatus).filter(s => s === "ok").length;
+  const errCount = Object.values(fetchStatus).filter(s => s === "error").length;
+  const tabs = ["heatmap", "overview", "holdings", "tax", "geography", "dividends", "projection"];
 
   return (
-    <div className={theme === "light" ? "terminal light" : "terminal"} style={{ fontFamily: "'DM Mono','Courier New',monospace", minHeight: "100vh" }}>
+    <div style={{ fontFamily: "'DM Mono','Courier New',monospace", background: "#06061a", minHeight: "100vh", color: "#e0e0ff" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Bebas+Neue&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
-
-        /* ── THEME VARIABLES ── */
-        .terminal{--bg:#06061a;--bg2:#0a0a22;--card:linear-gradient(135deg,#0d0d26,#10102a);--card-border:#1e1e48;--card-hover:#2a2a60;--text:#e0e0ff;--muted:#556;--muted2:#334;--row-border:#0f0f22;--row-hover:#0d0d24;--accent:#00D4FF;--green:#00FF88;--red:#FF4455;--gold:#FFD700;--tab-bg:#1a1a44;--header-bg:linear-gradient(180deg,#0a0a22,#06061a);--header-border:#181840;--scroll-track:#0a0a1a;--scroll-thumb:#334;--input-bg:#0a0a20;--input-border:#2244aa;color:var(--text);background:var(--bg)}
-        .terminal.light{--bg:#f0f0f4;--bg2:#e8e8f0;--card:linear-gradient(135deg,#ffffff,#f5f5fa);--card-border:#d0d0e0;--card-hover:#b0b0cc;--text:#1a1a2e;--muted:#777;--muted2:#999;--row-border:#e0e0ea;--row-hover:#eaeaf2;--accent:#0066cc;--green:#008844;--red:#cc2233;--gold:#aa7700;--tab-bg:#dde;--header-bg:linear-gradient(180deg,#e8e8f0,#f0f0f4);--header-border:#d0d0e0;--scroll-track:#eee;--scroll-thumb:#bbb;--input-bg:#fff;--input-border:#aac}
-
-        ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:var(--scroll-track)}::-webkit-scrollbar-thumb{background:var(--scroll-thumb);border-radius:2px}
-        .card{background:var(--card);border:1px solid var(--card-border);border-radius:12px;padding:16px;transition:border-color .2s}
-        .card:hover{border-color:var(--card-hover)}
-        .tab{background:none;border:none;cursor:pointer;font-family:inherit;font-size:13px;letter-spacing:2px;padding:8px 15px;border-radius:6px;color:var(--muted);transition:all .2s}
-        .tab.on{background:var(--tab-bg);color:var(--accent)}
-        .tab:hover:not(.on){color:var(--text)}
-        .hrow{display:grid;grid-template-columns:130px 1fr 65px 68px 72px 88px 100px 90px 100px 90px 82px;gap:6px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--row-border);transition:background .15s;font-size:13px}
-        .hrow:hover{background:var(--row-hover)}
-        .pill{padding:4px 10px;border-radius:10px;font-size:12px;letter-spacing:1px;cursor:pointer;border:1px solid transparent;font-family:inherit;transition:all .15s}
-        .gl-pos{color:var(--green)}.gl-neg{color:var(--red)}
-        .heat-tile{border-radius:10px;cursor:pointer;transition:transform .18s,box-shadow .18s;position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;padding:14px}
-        .heat-tile:hover{transform:scale(1.04);z-index:10;box-shadow:0 8px 32px rgba(0,0,0,.4)}
-        .api-input{background:var(--input-bg);border:1px solid var(--input-border);color:var(--accent);padding:10px 14px;border-radius:8px;font-family:inherit;font-size:15px;outline:none;width:100%;letter-spacing:2px}
+        ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:#0a0a1a}::-webkit-scrollbar-thumb{background:#334;border-radius:2px}
+        .card{background:linear-gradient(135deg,#0d0d26,#10102a);border:1px solid #1e1e48;border-radius:12px;padding:16px;transition:border-color .2s}
+        .card:hover{border-color:#2a2a60}
+        .tab{background:none;border:none;cursor:pointer;font-family:inherit;font-size:10px;letter-spacing:2px;padding:7px 13px;border-radius:6px;color:#444;transition:all .2s}
+        .tab.on{background:#1a1a44;color:#00D4FF}
+        .tab:hover:not(.on){color:#888}
+        .hrow{display:grid;grid-template-columns:115px 1fr 55px 58px 62px 78px 90px 80px 90px 80px 72px;gap:6px;align-items:center;padding:9px 14px;border-bottom:1px solid #0f0f22;transition:background .15s;font-size:10px}
+        .hrow:hover{background:#0d0d24}
+        .pill{padding:3px 9px;border-radius:10px;font-size:9px;letter-spacing:1px;cursor:pointer;border:1px solid transparent;font-family:inherit;transition:all .15s}
+        .gl-pos{color:#00FF88}.gl-neg{color:#FF4455}
+        .heat-tile{border-radius:10px;cursor:pointer;transition:transform .18s,box-shadow .18s;position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;padding:13px}
+        .heat-tile:hover{transform:scale(1.04);z-index:10;box-shadow:0 8px 32px rgba(0,0,0,.7)}
+        .api-input{background:#0a0a20;border:1px solid #2244aa;color:#00D4FF;padding:10px 14px;border-radius:8px;font-family:inherit;font-size:13px;outline:none;width:100%;letter-spacing:2px}
         .api-input:focus{border-color:#4488ff;box-shadow:0 0 0 2px #4488ff22}
-        .fetch-btn{background:#001a08;border:1px solid #00aa44;color:#00ff88;padding:10px 24px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:14px;letter-spacing:2px;transition:all .2s}
+        .fetch-btn{background:#001a08;border:1px solid #00aa44;color:#00ff88;padding:10px 24px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:11px;letter-spacing:2px;transition:all .2s}
         .fetch-btn:hover{background:#002a10;box-shadow:0 0 12px #00ff8833}
         .fetch-btn:disabled{opacity:.4;cursor:not-allowed}
-        .terminal.light .fetch-btn{background:#e8f5e9;border-color:#4caf50;color:#2e7d32}
-        .status-ok{color:var(--green)}.status-err{color:var(--red)}.status-load{color:var(--gold)}
+        .status-ok{color:#00ff88}.status-err{color:#ff4444}.status-load{color:#FFD700}
         @keyframes spin{to{transform:rotate(360deg)}}
-        .spinner{display:inline-block;width:12px;height:12px;border:2px solid #FFD70044;border-top-color:#FFD700;border-radius:50%;animation:spin .7s linear infinite}
-
-        /* ── EMBEDDED PAGE OVERRIDES (.dash-embed) ── */
-        .dash-embed{font-family:'DM Mono','Courier New',monospace !important;color:var(--text) !important;padding:0 !important}
-        .dash-embed *{font-family:'DM Mono','Courier New',monospace !important}
-        .dash-embed > div{padding:18px 0 !important;max-width:100% !important;margin:0 !important}
-        .dash-embed .glass-panel{background:var(--card) !important;border:1px solid var(--card-border) !important;border-radius:12px !important;backdrop-filter:none !important;box-shadow:none !important}
-        .dash-embed .glass-panel:hover{border-color:var(--card-hover) !important}
-        .dash-embed h1{background:none !important;-webkit-background-clip:unset !important;background-clip:unset !important;-webkit-text-fill-color:unset !important;color:var(--accent) !important;font-family:'Bebas Neue',sans-serif !important;font-size:28px !important;letter-spacing:3px !important;text-transform:uppercase !important}
-        .dash-embed h2,.dash-embed h3{color:var(--text) !important;font-size:15px !important;letter-spacing:2px !important;text-transform:uppercase !important}
-        .dash-embed p{color:var(--muted) !important;font-size:12px !important;letter-spacing:1px !important}
-        .dash-embed .text-gray-400,.dash-embed .text-gray-500,.dash-embed .text-zinc-400,.dash-embed .text-zinc-500,.dash-embed .text-zinc-600{color:var(--muted) !important}
-        .dash-embed .text-foreground,.dash-embed .text-white,.dash-embed .text-gray-900{color:var(--text) !important}
-        .dash-embed .text-emerald-400,.dash-embed .text-emerald-500,.dash-embed .text-green-700{color:var(--green) !important}
-        .dash-embed .text-rose-400,.dash-embed .text-rose-500,.dash-embed .text-red-400{color:var(--red) !important}
-        .dash-embed .text-blue-400,.dash-embed .text-blue-500,.dash-embed .text-blue-600{color:var(--accent) !important}
-        .dash-embed .text-purple-400,.dash-embed .text-purple-500{color:#CC44FF !important}
-        .dash-embed .text-amber-400,.dash-embed .text-amber-700{color:var(--gold) !important}
-        .dash-embed table{color:var(--text) !important;font-size:13px !important}
-        .dash-embed thead,.dash-embed .glass-table-header,.dash-embed [class*="bg-white/5"]{background:rgba(255,255,255,0.03) !important}
-        .dash-embed tbody tr{border-bottom:1px solid var(--row-border) !important}
-        .dash-embed tbody tr:hover{background:var(--row-hover) !important}
-        .dash-embed th{color:var(--muted) !important;font-size:11px !important;letter-spacing:2px !important;text-transform:uppercase !important}
-        .dash-embed td{color:var(--text) !important;font-size:13px !important}
-        .dash-embed tfoot{background:rgba(255,255,255,0.02) !important;border-top:1px solid var(--card-border) !important}
-        .dash-embed .divide-y > * + *{border-color:var(--row-border) !important}
-        .dash-embed select,.dash-embed input[type="text"],.dash-embed input[type="number"],.dash-embed input[type="date"],.dash-embed textarea{background:var(--input-bg) !important;border:1px solid var(--card-border) !important;color:var(--text) !important;border-radius:8px !important;font-size:13px !important}
-        .dash-embed button{font-family:'DM Mono','Courier New',monospace !important;letter-spacing:1px !important}
-        .dash-embed [class*="border-white"]{border-color:var(--card-border) !important}
-        .dash-embed .bg-clip-text{-webkit-text-fill-color:unset !important;background:none !important;color:var(--accent) !important}
-        .dash-embed .recharts-cartesian-grid line{stroke:var(--card-border) !important}
-        .dash-embed .recharts-text{fill:var(--muted) !important;font-family:'DM Mono',monospace !important;font-size:12px !important}
-        .dash-embed .recharts-tooltip-wrapper .bg-white\/95,.dash-embed .recharts-tooltip-wrapper .dark\:bg-zinc-900,.dash-embed .recharts-tooltip-wrapper > div > div{background:var(--card) !important;border:1px solid var(--card-border) !important;color:var(--text) !important}
-        .dash-embed .recharts-tooltip-wrapper span,.dash-embed .recharts-tooltip-wrapper p{color:var(--text) !important}
-        .dash-embed [class*="from-"][class*="to-"]{background:var(--card) !important}
-        .dash-embed .bg-blue-600,.dash-embed .bg-emerald-600,.dash-embed .bg-rose-600,.dash-embed .bg-emerald-500,.dash-embed .bg-rose-500{opacity:0.85}
-        .dash-embed [class*="shadow-"]{box-shadow:none !important}
-        .dash-embed [class*="rounded-2xl"]{border-radius:12px !important}
-        .dash-embed [class*="rounded-xl"]{border-radius:10px !important}
-        .dash-embed .animate-pulse{color:var(--accent) !important}
+        .spinner{display:inline-block;width:10px;height:10px;border:2px solid #FFD70044;border-top-color:#FFD700;border-radius:50%;animation:spin .7s linear infinite}
       `}</style>
 
-      {/* ── HEADER ── */}
-      <div style={{ background: "var(--header-bg)", borderBottom: "1px solid var(--header-border)", padding: "18px 26px 0" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-          <div>
-            <div style={{ fontSize: 11, letterSpacing: 4, color: "var(--muted2)", marginBottom: 4 }}>REAL-TIME PRICES · CIBC + RBC + TD · TFSA + OPEN · RRSP FULL</div>
-            <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 38, letterSpacing: 3, color: "var(--text)", lineHeight: 1 }}>LONG-TERM WEALTH ENGINE</div>
-            <div style={{ fontSize: 11, color: "var(--muted2)", marginTop: 4, letterSpacing: 2 }}>20-YEAR HORIZON · 8% CAGR TARGET · USD/CAD {usdcad.toFixed(5)}</div>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 38, color: "var(--accent)", letterSpacing: 2, lineHeight: 1 }}>{clockStr}</div>
-              <button
-                onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}
-                style={{ padding: "6px 12px", borderRadius: 6, fontSize: 12, letterSpacing: 1, background: isLight ? "#dde" : "#1a1a44", border: `1px solid ${isLight ? "#bbc" : "#2a2a60"}`, color: isLight ? "#555" : "#aab", cursor: "pointer", fontFamily: "inherit" }}
-              >
-                {isLight ? "☀ LIGHT" : "☾ DARK"}
+      {/* ── API KEY PANEL ── */}
+      {showKeyInput && (
+        <div style={{ position: "fixed", inset: 0, background: "#06061acc", backdropFilter: "blur(6px)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "linear-gradient(135deg,#0d0d26,#12123a)", border: "1px solid #2244aa", borderRadius: 16, padding: 36, width: 520, maxWidth: "90vw" }}>
+            <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 28, letterSpacing: 3, color: "#fff", marginBottom: 6 }}>ALPHA VANTAGE SETUP</div>
+            <div style={{ fontSize: 9, color: "#446", letterSpacing: 2, marginBottom: 20 }}>ENTER YOUR API KEY TO FETCH REAL MARKET PRICES</div>
+
+            <div style={{ fontSize: 10, color: "#8899bb", lineHeight: 1.7, marginBottom: 20 }}>
+              Your key is stored <span style={{ color: "#00FF88" }}>only in this browser session</span> — never sent anywhere except directly to Alpha Vantage's servers. It is not saved, logged, or visible in the code.
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 8, letterSpacing: 2, color: "#446", marginBottom: 6 }}>API KEY</div>
+              <input
+                className="api-input"
+                type="password"
+                placeholder="Paste your Alpha Vantage API key..."
+                value={apiKeyInput}
+                onChange={e => setApiKeyInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleSaveKey()}
+                autoComplete="off"
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+              <button className="fetch-btn" onClick={handleSaveKey} disabled={!apiKeyInput.trim()}>
+                ▶ CONNECT &amp; FETCH PRICES
+              </button>
+              <button onClick={() => setShowKeyInput(false)} style={{ background: "transparent", border: "1px solid #334", color: "#667", padding: "10px 20px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 11, letterSpacing: 1 }}>
+                USE SNAPSHOT PRICES
               </button>
             </div>
-            <div style={{ fontSize: 12, color: "var(--muted)", letterSpacing: 1, marginBottom: 8 }}>{dateStr}</div>
+
+            <div style={{ padding: "10px 14px", background: "#0a0a1e", borderRadius: 8, border: "1px solid #1a1a3a" }}>
+              <div style={{ fontSize: 8, color: "#446", letterSpacing: 2, marginBottom: 6 }}>FREE TIER LIMITS</div>
+              {[
+                { label: "Requests/day", value: "25" },
+                { label: "Your holdings", value: `${TICKERS.length} tickers + 1 FX = ${TICKERS.length + 1} calls` },
+                { label: "Remaining after 1 refresh", value: `${25 - (TICKERS.length + 1)} calls` },
+                { label: "Data type", value: "Latest trading day close + day change" },
+                { label: "CAD tickers (.TO)", value: "Supported via .TRT suffix" },
+              ].map(r => (
+                <div key={r.label} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: "1px solid #111" }}>
+                  <span style={{ fontSize: 9, color: "#556" }}>{r.label}</span>
+                  <span style={{ fontSize: 9, color: "#aab" }}>{r.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── HEADER ── */}
+      <div style={{ background: "linear-gradient(180deg,#0a0a22,#06061a)", borderBottom: "1px solid #181840", padding: "18px 26px 0" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+          <div>
+            <div style={{ fontSize: 8, letterSpacing: 4, color: "#335", marginBottom: 4 }}>REAL-TIME PRICES · CIBC + RBC + TD · TFSA + OPEN · RRSP FULL</div>
+            <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 30, letterSpacing: 3, color: "#fff", lineHeight: 1 }}>LONG-TERM WEALTH ENGINE</div>
+            <div style={{ fontSize: 8, color: "#334", marginTop: 4, letterSpacing: 2 }}>20-YEAR HORIZON · 8% CAGR TARGET · USD/CAD {usdcad.toFixed(5)}</div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 30, color: "#00D4FF", letterSpacing: 2, lineHeight: 1 }}>{clockStr}</div>
+            <div style={{ fontSize: 9, color: "#446", letterSpacing: 1, marginBottom: 8 }}>{dateStr}</div>
 
             {/* Data source badge + refresh */}
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap" }}>
               <div style={{
-                padding: "4px 12px", borderRadius: 12, fontSize: 11, letterSpacing: 1,
-                background: isLight ? "#e8f5e9" : "#001a08",
-                border: `1px solid ${isLight ? "#4caf50" : "#00aa44"}`,
-                color: isLight ? "#2e7d32" : "#00ff88"
+                padding: "3px 10px", borderRadius: 12, fontSize: 8, letterSpacing: 1,
+                background: priceSource === "Alpha Vantage" ? "#001a08" : "#1a1400",
+                border: `1px solid ${priceSource === "Alpha Vantage" ? "#00aa44" : "#886600"}`,
+                color: priceSource === "Alpha Vantage" ? "#00ff88" : "#FFD700"
               }}>
                 {isFetching ? <><span className="spinner" /> FETCHING...</> :
-                  true
+                  priceSource === "Alpha Vantage"
                     ? `✓ LIVE · ${lastUpdated?.toLocaleTimeString("en-CA", { hour12: false })} · ${okCount}/${TICKERS.length} ok${errCount > 0 ? ` · ${errCount} err` : ""}`
                     : "⚠ CSV SNAPSHOT · MAR 5 2026"
                 }
               </div>
+              {apiKey && (
+                <button
+                  className="fetch-btn"
+                  disabled={isFetching}
+                  onClick={() => fetchAllPrices(apiKey)}
+                  style={{ padding: "4px 14px", fontSize: 9 }}
+                >
+                  {isFetching ? "FETCHING..." : "↻ REFRESH"}
+                </button>
+              )}
               <button
-                className="fetch-btn"
-                disabled={isFetching}
-                onClick={() => refresh(true)}
-                style={{ padding: "6px 16px", fontSize: 12 }}
+                onClick={() => setShowKeyInput(true)}
+                style={{ background: "transparent", border: "1px solid #2244aa", color: "#4488ff", padding: "4px 12px", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", fontSize: 9, letterSpacing: 1 }}
               >
-                {isFetching ? "FETCHING..." : "↻ FORCE REFRESH"}
+                {apiKey ? "⚙ API KEY" : "+ ADD KEY"}
               </button>
-
             </div>
             {lastUpdated && (
-              <div style={{ fontSize: 13, color: "var(--muted2)", letterSpacing: 1, marginTop: 4, textAlign: "right" }}>
-                CAD: {fmtCAD(1)} = USD: {(1 / usdcad).toFixed(4)}
+              <div style={{ fontSize: 7, color: "#334", letterSpacing: 1, marginTop: 4, textAlign: "right" }}>
+                CALLS USED: {callsUsed} / 25 · DATA: {TICKERS.map(t => `${t}:${fetchStatus[t] === "ok" ? "✓" : fetchStatus[t] === "error" ? "✗" : "○"}`).join("  ")}
               </div>
             )}
           </div>
         </div>
 
-
-
+        {/* Fetch log (collapsible) */}
+        {fetchLog.length > 0 && (
+          <div style={{ marginBottom: 10, padding: "8px 12px", background: "#04040e", border: "1px solid #0f0f22", borderRadius: 8, maxHeight: 120, overflowY: "auto", fontFamily: "inherit" }}>
+            {fetchLog.map((l, i) => (
+              <div key={i} style={{ fontSize: 8, color: l.ok ? "#446" : "#663", letterSpacing: .5, lineHeight: 1.8 }}>
+                <span style={{ color: "#224", marginRight: 8 }}>[{l.t}]</span>
+                <span style={{ color: l.ok ? "#557" : "#664" }}>{l.msg}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* ACCOUNT + BROKER STRIP */}
         <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
           {acctBreak.map(a => (
-            <div key={a.name} onClick={() => { setTab("holdings"); setAcctFilter(a.name); }} style={{ padding: "6px 14px", background: ACCOUNT_BG[a.name], border: `1px solid ${a.color}44`, borderRadius: 8, cursor: "pointer" }}>
-              <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 24, color: a.color, lineHeight: 1 }}>{fmtCAD(a.value)}</div>
-              <div style={{ fontSize: 13, color: a.color + "88", letterSpacing: 1 }}>{a.name} · {a.pct.toFixed(1)}%</div>
+            <div key={a.name} onClick={() => { setTab("holdings"); setAcctFilter(a.name); }} style={{ padding: "5px 12px", background: ACCOUNT_BG[a.name], border: `1px solid ${a.color}44`, borderRadius: 8, cursor: "pointer" }}>
+              <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 18, color: a.color, lineHeight: 1 }}>{fmtCAD(a.value)}</div>
+              <div style={{ fontSize: 7, color: a.color + "88", letterSpacing: 1 }}>{a.name} · {a.pct.toFixed(1)}%</div>
             </div>
           ))}
-          <div style={{ width: 1, background: "var(--card-border)", margin: "0 4px" }} />
+          <div style={{ width: 1, background: "#1a1a3a", margin: "0 4px" }} />
           {brokerBreak.map(b => (
-            <div key={b.name} onClick={() => { setTab("holdings"); setBrokerFilter(b.name); }} style={{ padding: "6px 14px", background: (BROKER_COLORS[b.name] || "#333") + "11", border: `1px solid ${BROKER_COLORS[b.name] || "#555"}33`, borderRadius: 8, cursor: "pointer" }}>
-              <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 24, color: BROKER_COLORS[b.name] || "#999", lineHeight: 1 }}>{fmtCAD(b.value)}</div>
-              <div style={{ fontSize: 13, color: (BROKER_COLORS[b.name] || "#888") + "88", letterSpacing: 1 }}>{b.name} · {b.pct.toFixed(1)}%</div>
+            <div key={b.name} onClick={() => { setTab("holdings"); setBrokerFilter(b.name); }} style={{ padding: "5px 12px", background: (BROKER_COLORS[b.name] || "#333") + "11", border: `1px solid ${BROKER_COLORS[b.name] || "#555"}33`, borderRadius: 8, cursor: "pointer" }}>
+              <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 18, color: BROKER_COLORS[b.name] || "#999", lineHeight: 1 }}>{fmtCAD(b.value)}</div>
+              <div style={{ fontSize: 7, color: (BROKER_COLORS[b.name] || "#888") + "88", letterSpacing: 1 }}>{b.name} · {b.pct.toFixed(1)}%</div>
             </div>
           ))}
         </div>
@@ -456,25 +506,17 @@ export default function Dashboard() {
             { label: "VS 8% TARGET", value: `${cagrGap >= 0 ? "+" : ""}${cagrGap.toFixed(2)}%`, color: cagrGap >= 0 ? "#00FF88" : "#FF4455" },
           ].map((m, i) => (
             <div key={i} style={{ padding: "8px 10px", borderTop: `2px solid ${m.color}22` }}>
-              <div style={{ fontSize: 13, letterSpacing: 2, color: "var(--muted2)", marginBottom: 2 }}>{m.label}</div>
-              <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 26, color: m.color, letterSpacing: 1 }}>{m.value}</div>
+              <div style={{ fontSize: 7, letterSpacing: 2, color: "#334", marginBottom: 2 }}>{m.label}</div>
+              <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 19, color: m.color, letterSpacing: 1 }}>{m.value}</div>
             </div>
           ))}
         </div>
-        <div style={{ display: "flex", gap: 2, marginTop: 10, flexWrap: "wrap" }}>
-          {tabs.map(t => {
-            const labels = {
-              heatmap: "▦ HEATMAP", overview: "OVERVIEW", holdings: "HOLDINGS",
-              tax: "🍁 TAX", geography: "GEOGRAPHY", dividends: "DIVIDENDS", projection: "PROJECTION",
-              pnl: "₿ P&L", trades: "⟡ TRADES",
-              quantmental: "⊕ QUANT-MENTAL", transactions: "☰ TRANSACTIONS"
-            };
-            return (
-              <button key={t} className={`tab ${tab === t ? "on" : ""}`} onClick={() => setTab(t)}>
-                {labels[t] || t.toUpperCase()}
-              </button>
-            );
-          })}
+        <div style={{ display: "flex", gap: 2, marginTop: 10 }}>
+          {tabs.map(t => (
+            <button key={t} className={`tab ${tab === t ? "on" : ""}`} onClick={() => setTab(t)}>
+              {t === "tax" ? "🍁 TAX" : t === "heatmap" ? "▦ HEATMAP" : t.toUpperCase()}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -486,7 +528,7 @@ export default function Dashboard() {
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
               <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
-                <span style={{ fontSize: 11, letterSpacing: 2, color: "#334", marginRight: 2 }}>SCALE:</span>
+                <span style={{ fontSize: 8, letterSpacing: 2, color: "#334", marginRight: 2 }}>SCALE:</span>
                 {[
                   { bg: "#003d1a", border: "#00aa44", text: "#00ff88", label: "≥+8%" },
                   { bg: "#00291a", border: "#007733", text: "#00cc66", label: "+5–8%" },
@@ -495,23 +537,23 @@ export default function Dashboard() {
                   { bg: "#2a0808", border: "#882222", text: "#ff5544", label: "−2–−5%" },
                   { bg: "#3a0606", border: "#aa1111", text: "#ff2211", label: "<−5%" },
                 ].map((c, i) => (
-                  <div key={i} style={{ padding: "3px 8px", background: c.bg, border: `1px solid ${c.border}`, borderRadius: 4, fontSize: 12, color: c.text }}>{c.label}</div>
+                  <div key={i} style={{ padding: "3px 8px", background: c.bg, border: `1px solid ${c.border}`, borderRadius: 4, fontSize: 9, color: c.text }}>{c.label}</div>
                 ))}
               </div>
               <div style={{ display: "flex", gap: 5 }}>
                 {[["value", "SIZE"], ["gl", "TOTAL G/L"], ["day", "TODAY"], ["ticker", "A–Z"]].map(([k, l]) => (
-                  <button key={k} onClick={() => setHeatSort(k)} style={{ padding: "3px 9px", borderRadius: 8, fontSize: 11, letterSpacing: 1, cursor: "pointer", fontFamily: "inherit", background: heatSort === k ? "#1a1a44" : "transparent", border: `1px solid ${heatSort === k ? "#00D4FF" : "#222"}`, color: heatSort === k ? "#00D4FF" : "#445" }}>{l}</button>
+                  <button key={k} onClick={() => setHeatSort(k)} style={{ padding: "3px 9px", borderRadius: 8, fontSize: 8, letterSpacing: 1, cursor: "pointer", fontFamily: "inherit", background: heatSort === k ? "#1a1a44" : "transparent", border: `1px solid ${heatSort === k ? "#00D4FF" : "#222"}`, color: heatSort === k ? "#00D4FF" : "#445" }}>{l}</button>
                 ))}
               </div>
             </div>
 
-            <div style={{ fontSize: 11, color: "#2a2a44", letterSpacing: 1, marginBottom: 10 }}>
+            <div style={{ fontSize: 8, color: "#2a2a44", letterSpacing: 1, marginBottom: 10 }}>
               SOURCE: {priceSource.toUpperCase()} · TILE SIZE ∝ MARKET VALUE · HOVER FOR DETAILS
               {isFetching && <span style={{ color: "#FFD700", marginLeft: 8 }}><span className="spinner" /> FETCHING LIVE PRICES...</span>}
             </div>
 
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {heatTiles.map((h, idx) => {
+              {heatTiles.map(h => {
                 const c = h.heatColor;
                 const w = Math.max(82, Math.min(430, (h.weight / 100) * 1380));
                 const th = Math.max(82, w * 0.54);
@@ -519,7 +561,7 @@ export default function Dashboard() {
                 const isLoading = h.fetchStatus === "loading";
                 const isErr = h.fetchStatus === "error";
                 return (
-                  <div key={`HTILE-L522-${idx}-${h.ticker}-${h.account}-${h.broker}`}
+                  <div key={h.ticker}
                     className="heat-tile"
                     onMouseEnter={() => setHoveredTicker(h.ticker)}
                     onMouseLeave={() => setHoveredTicker(null)}
@@ -527,7 +569,7 @@ export default function Dashboard() {
                   >
                     <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,transparent,${c.text}55,transparent)`, borderRadius: "10px 10px 0 0" }} />
                     {isLoading && <div style={{ position: "absolute", top: 6, right: 8 }}><span className="spinner" /></div>}
-                    {isErr && <div style={{ position: "absolute", top: 5, right: 7, fontSize: 13, color: "#ff6644", letterSpacing: 1 }}>FALLBACK</div>}
+                    {isErr && <div style={{ position: "absolute", top: 5, right: 7, fontSize: 7, color: "#ff6644", letterSpacing: 1 }}>FALLBACK</div>}
 
                     <div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
@@ -545,7 +587,7 @@ export default function Dashboard() {
                           {h.currency === "USD" ? "$" : "C$"}{fmt(h.currPrice, 2)}
                         </span>
                         {w > 110 && h.dayChgPct !== 0 && (
-                          <span style={{ fontSize: 11, color: h.dayChgPct >= 0 ? "#00cc88" : "#ff6655" }}>
+                          <span style={{ fontSize: 8, color: h.dayChgPct >= 0 ? "#00cc88" : "#ff6655" }}>
                             {h.dayChgPct >= 0 ? "▲" : "▼"}{Math.abs(h.dayChgPct).toFixed(2)}%
                           </span>
                         )}
@@ -557,17 +599,17 @@ export default function Dashboard() {
 
                       {w > 100 && (
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                          <span style={{ fontSize: 11, color: c.text + "88" }}>{fmtCAD(h.mktValueCAD)}</span>
-                          {w > 150 && <span style={{ fontSize: 11, color: c.text + "55" }}>{h.weight.toFixed(1)}%</span>}
+                          <span style={{ fontSize: 8, color: c.text + "88" }}>{fmtCAD(h.mktValueCAD)}</span>
+                          {w > 150 && <span style={{ fontSize: 8, color: c.text + "55" }}>{h.weight.toFixed(1)}%</span>}
                         </div>
                       )}
 
                       {isH && w > 110 && (
                         <div style={{ marginTop: 7, paddingTop: 7, borderTop: `1px solid ${c.border}`, display: "flex", flexDirection: "column", gap: 2 }}>
-                          <div style={{ fontSize: 11, color: c.text + "cc" }}>Qty {h.qty % 1 === 0 ? h.qty : h.qty.toFixed(2)} · Avg {h.currency === "USD" ? "$" : "C$"}{fmt(h.avgCost, 2)}</div>
-                          {w > 160 && <div style={{ fontSize: 11, color: c.text + "99" }}>G/L {h.glAmtLocal >= 0 ? "+" : ""}{h.currency === "USD" ? "$" : "C$"}{fmt(Math.abs(h.glAmtLocal), 0)} · Yield {h.dividendYield}% · β{h.beta}</div>}
-                          {w > 200 && h.high && <div style={{ fontSize: 11, color: c.text + "77" }}>H: {fmt(h.high, 2)} · L: {fmt(h.low, 2)} · {h.latestDay}</div>}
-                          {w > 220 && h.volume && <div style={{ fontSize: 11, color: c.text + "55" }}>Vol: {h.volume?.toLocaleString()}</div>}
+                          <div style={{ fontSize: 8, color: c.text + "cc" }}>Qty {h.qty % 1 === 0 ? h.qty : h.qty.toFixed(2)} · Avg {h.currency === "USD" ? "$" : "C$"}{fmt(h.avgCost, 2)}</div>
+                          {w > 160 && <div style={{ fontSize: 8, color: c.text + "99" }}>G/L {h.glAmtLocal >= 0 ? "+" : ""}{h.currency === "USD" ? "$" : "C$"}{fmt(Math.abs(h.glAmtLocal), 0)} · Yield {h.dividendYield}% · β{h.beta}</div>}
+                          {w > 200 && h.high && <div style={{ fontSize: 8, color: c.text + "77" }}>H: {fmt(h.high, 2)} · L: {fmt(h.low, 2)} · {h.latestDay}</div>}
+                          {w > 220 && h.volume && <div style={{ fontSize: 8, color: c.text + "55" }}>Vol: {h.volume?.toLocaleString()}</div>}
                         </div>
                       )}
                     </div>
@@ -589,14 +631,14 @@ export default function Dashboard() {
                 const tickers = withWeights.filter(band.fn);
                 return (
                   <div key={i} style={{ background: band.bg, border: `1px solid ${band.border}`, borderRadius: 8, padding: "9px 11px" }}>
-                    <div style={{ fontSize: 13, color: band.text + "77", letterSpacing: 1, marginBottom: 6 }}>{band.label}</div>
-                    {tickers.length === 0 ? <div style={{ fontSize: 12, color: band.text + "33" }}>—</div> : tickers.map((h, j) => (
-                      <div key={`BAND-L594-${i}-${j}-${h.ticker}-${h.account}-${h.broker}`} style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                        <span style={{ fontSize: 13, color: band.text, fontWeight: 500 }}>{h.ticker}</span>
-                        <span style={{ fontSize: 12, color: band.text + "99" }}>{h.glPct >= 0 ? "+" : ""}{h.glPct.toFixed(1)}%</span>
+                    <div style={{ fontSize: 7, color: band.text + "77", letterSpacing: 1, marginBottom: 6 }}>{band.label}</div>
+                    {tickers.length === 0 ? <div style={{ fontSize: 9, color: band.text + "33" }}>—</div> : tickers.map(h => (
+                      <div key={h.ticker} style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                        <span style={{ fontSize: 10, color: band.text, fontWeight: 500 }}>{h.ticker}</span>
+                        <span style={{ fontSize: 9, color: band.text + "99" }}>{h.glPct >= 0 ? "+" : ""}{h.glPct.toFixed(1)}%</span>
                       </div>
                     ))}
-                    <div style={{ marginTop: 5, paddingTop: 5, borderTop: `1px solid ${band.border}`, fontSize: 13, color: band.text + "55" }}>
+                    <div style={{ marginTop: 5, paddingTop: 5, borderTop: `1px solid ${band.border}`, fontSize: 7, color: band.text + "55" }}>
                       {tickers.length} · {fmtCAD(tickers.reduce((s, h) => s + h.mktValueCAD, 0))}
                     </div>
                   </div>
@@ -610,29 +652,29 @@ export default function Dashboard() {
         {tab === "overview" && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
             <div className="card" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-              <div style={{ fontSize: 11, letterSpacing: 3, color: "#335" }}>ALLOCATION BY HOLDING</div>
+              <div style={{ fontSize: 8, letterSpacing: 3, color: "#335" }}>ALLOCATION BY HOLDING</div>
               <PieChart data={withWeights.map(h => ({ name: h.ticker, value: h.weight, color: h.color }))} size={175} />
               <div style={{ width: "100%", maxHeight: 240, overflowY: "auto" }}>
-                {withWeights.sort((a, b) => b.weight - a.weight).map((h, idx) => (
-                  <div key={`OV-L219-${idx}-${h.ticker}-${h.account}-${h.broker}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+                {withWeights.sort((a, b) => b.weight - a.weight).map(h => (
+                  <div key={h.ticker} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                       <div style={{ width: 6, height: 6, borderRadius: 2, background: h.heatColor.text }} />
-                      <span style={{ fontSize: 12, color: "#aab" }}>{h.ticker}</span>
+                      <span style={{ fontSize: 9, color: "#aab" }}>{h.ticker}</span>
                       <ABadge a={h.account} />
                     </div>
-                    <span style={{ fontSize: 12, color: h.heatColor.text }}>{h.weight.toFixed(1)}%</span>
+                    <span style={{ fontSize: 9, color: h.heatColor.text }}>{h.weight.toFixed(1)}%</span>
                   </div>
                 ))}
               </div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div className="card">
-                <div style={{ fontSize: 11, letterSpacing: 3, color: "#335", marginBottom: 10 }}>BY ASSET CLASS</div>
+                <div style={{ fontSize: 8, letterSpacing: 3, color: "#335", marginBottom: 10 }}>BY ASSET CLASS</div>
                 {assetClasses.sort((a, b) => b.value - a.value).map(a => (
                   <div key={a.name} style={{ marginBottom: 7 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                      <span style={{ fontSize: 12, color: "#aab" }}>{a.name}</span>
-                      <div style={{ display: "flex", gap: 8, fontSize: 12 }}>
+                      <span style={{ fontSize: 9, color: "#aab" }}>{a.name}</span>
+                      <div style={{ display: "flex", gap: 8, fontSize: 9 }}>
                         <span style={{ color: "#667" }}>{fmtCAD(a.value)}</span>
                         <span style={{ color: acClrs[a.name] || "#888" }}>{a.pct.toFixed(1)}%</span>
                       </div>
@@ -642,12 +684,12 @@ export default function Dashboard() {
                 ))}
               </div>
               <div className="card">
-                <div style={{ fontSize: 11, letterSpacing: 3, color: "#335", marginBottom: 10 }}>BY ACCOUNT TYPE</div>
+                <div style={{ fontSize: 8, letterSpacing: 3, color: "#335", marginBottom: 10 }}>BY ACCOUNT TYPE</div>
                 {acctBreak.map(a => (
                   <div key={a.name} style={{ marginBottom: 8 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                      <span style={{ fontSize: 13, color: a.color }}>{a.name}</span>
-                      <div style={{ display: "flex", gap: 8, fontSize: 12 }}>
+                      <span style={{ fontSize: 10, color: a.color }}>{a.name}</span>
+                      <div style={{ display: "flex", gap: 8, fontSize: 9 }}>
                         <span style={{ color: "#667" }}>{fmtCAD(a.value)}</span>
                         <span style={{ color: a.color }}>{a.pct.toFixed(1)}%</span>
                       </div>
@@ -658,9 +700,9 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="card">
-              <div style={{ fontSize: 11, letterSpacing: 3, color: "#335", marginBottom: 10 }}>LIVE SNAPSHOT</div>
+              <div style={{ fontSize: 8, letterSpacing: 3, color: "#335", marginBottom: 10 }}>LIVE SNAPSHOT</div>
               {[
-                { label: "DATA SOURCE", v: priceSource, c: true ? "#00FF88" : "#FFD700" },
+                { label: "DATA SOURCE", v: priceSource, c: priceSource === "Alpha Vantage" ? "#00FF88" : "#FFD700" },
                 { label: "LAST REFRESHED", v: lastUpdated ? lastUpdated.toLocaleTimeString("en-CA", { hour12: false }) : "Mar 5, 2026 close", c: "#aab" },
                 { label: "USD/CAD", v: usdcad.toFixed(5), c: "#88AACC" },
                 { label: "COST BASIS (CAD)", v: fmtCAD(totalCostCAD), c: "#778" },
@@ -672,7 +714,7 @@ export default function Dashboard() {
                 { label: "20YR PROJECTION", v: fmtCAD(metrics.val20yr), c: "#CC44FF" },
               ].map(s => (
                 <div key={s.label} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid #0f0f22" }}>
-                  <span style={{ fontSize: 11, letterSpacing: 1, color: "#445" }}>{s.label}</span>
+                  <span style={{ fontSize: 8, letterSpacing: 1, color: "#445" }}>{s.label}</span>
                   <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 14, color: s.c }}>{s.v}</span>
                 </div>
               ))}
@@ -701,32 +743,32 @@ export default function Dashboard() {
             <div style={{ border: "1px solid #1a1a44", borderRadius: 10, overflow: "auto" }}>
               <div className="hrow" style={{ background: "#09091e", borderBottom: "1px solid #1a1a44" }}>
                 {["TICKER", "NAME", "ACCT", "BROKER", "QTY", "AVG COST", "LAST PRICE", "DAY CHG", "MKT VAL (CAD)", "TOTAL G/L", "AS OF"].map((h, i) => (
-                  <div key={i} style={{ fontSize: 13, letterSpacing: 2, color: "#334" }}>{h}</div>
+                  <div key={i} style={{ fontSize: 7, letterSpacing: 2, color: "#334" }}>{h}</div>
                 ))}
               </div>
               {filtered.map((h, i) => {
                 const gp = h.glPct || 0;
                 const statusColor = h.fetchStatus === "ok" ? "#00FF88" : h.fetchStatus === "error" ? "#FF4444" : h.fetchStatus === "loading" ? "#FFD700" : "#334";
                 return (
-                  <div key={`HLIST-711-${i}-${h.ticker}-${h.account}-${h.broker}`} className="hrow">
+                  <div key={i} className="hrow">
                     <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                       <div style={{ width: 4, height: 4, borderRadius: "50%", background: statusColor, flexShrink: 0 }} />
-                      <span style={{ color: h.heatColor.text, fontWeight: 500, fontSize: 13 }}>{h.ticker}</span>
+                      <span style={{ color: h.heatColor.text, fontWeight: 500, fontSize: 10 }}>{h.ticker}</span>
                     </div>
-                    <div style={{ fontSize: 12, color: "#8899bb", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{h.name.split("(")[0].trim()}</div>
+                    <div style={{ fontSize: 9, color: "#8899bb", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{h.name.split("(")[0].trim()}</div>
                     <ABadge a={h.account} />
                     <BBadge b={h.broker} />
                     <span style={{ color: "#aab" }}>{h.qty % 1 === 0 ? h.qty : h.qty.toFixed(2)}</span>
-                    <span style={{ color: "#667", fontSize: 12 }}>{h.currency === "USD" ? "$" : "C$"}{fmt(h.avgCost, 2)}</span>
+                    <span style={{ color: "#667", fontSize: 9 }}>{h.currency === "USD" ? "$" : "C$"}{fmt(h.avgCost, 2)}</span>
                     <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 13, color: h.dayChgPct >= 0 ? "#00cc88" : "#ff6655", letterSpacing: .5 }}>
                       {h.currency === "USD" ? "$" : "C$"}{fmt(h.currPrice, 2)}
                     </span>
-                    <span style={{ fontSize: 12, color: h.dayChgPct >= 0 ? "#00cc66" : "#ff5544" }}>
+                    <span style={{ fontSize: 9, color: h.dayChgPct >= 0 ? "#00cc66" : "#ff5544" }}>
                       {h.dayChgPct !== 0 ? (h.dayChgPct >= 0 ? "▲" : "▼") + Math.abs(h.dayChgPct).toFixed(2) + "%" : "—"}
                     </span>
-                    <span style={{ color: "#dde", fontWeight: 500, fontSize: 13 }}>{fmtCAD(h.mktValueCAD)}</span>
-                    <span className={gp >= 0 ? "gl-pos" : "gl-neg"} style={{ fontSize: 13 }}>{gp >= 0 ? "+" : ""}{gp.toFixed(2)}%</span>
-                    <span style={{ fontSize: 11, color: "#334" }}>{h.latestDay}</span>
+                    <span style={{ color: "#dde", fontWeight: 500, fontSize: 10 }}>{fmtCAD(h.mktValueCAD)}</span>
+                    <span className={gp >= 0 ? "gl-pos" : "gl-neg"} style={{ fontSize: 10 }}>{gp >= 0 ? "+" : ""}{gp.toFixed(2)}%</span>
+                    <span style={{ fontSize: 8, color: "#334" }}>{h.latestDay}</span>
                   </div>
                 );
               })}
@@ -738,17 +780,17 @@ export default function Dashboard() {
         {tab === "tax" && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             <div className="card">
-              <div style={{ fontSize: 11, letterSpacing: 3, color: "#335", marginBottom: 10 }}>TAX PLACEMENT · RRSP FULL</div>
+              <div style={{ fontSize: 8, letterSpacing: 3, color: "#335", marginBottom: 10 }}>TAX PLACEMENT · RRSP FULL</div>
               {withWeights.sort((a, b) => b.mktValueCAD - a.mktValueCAD).map((h, i) => (
-                <div key={`TAX-L743-${i}-${h.ticker}-${h.account}-${h.broker}`} style={{ padding: "9px 0", borderBottom: "1px solid #0f0f22" }}>
+                <div key={i} style={{ padding: "9px 0", borderBottom: "1px solid #0f0f22" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                       <span style={{ color: h.heatColor.text, fontSize: 12, fontWeight: 500 }}>{h.ticker}</span>
                       <ABadge a={h.account} /><BBadge b={h.broker} />
                     </div>
-                    <div style={{ display: "flex", gap: 5 }}><span style={{ fontSize: 12, color: "#556" }}>{fmtCAD(h.mktValueCAD)}</span><TBadge r={h.taxRating} /></div>
+                    <div style={{ display: "flex", gap: 5 }}><span style={{ fontSize: 9, color: "#556" }}>{fmtCAD(h.mktValueCAD)}</span><TBadge r={h.taxRating} /></div>
                   </div>
-                  <div style={{ fontSize: 12, color: "#667", lineHeight: 1.5 }}>{
+                  <div style={{ fontSize: 9, color: "#667", lineHeight: 1.5 }}>{
                     h.ticker === "AVUV" ? "RRSP (FULL): Treaty-exempt from 15% IRS WHT. Optimal. Hold as-is." :
                       h.ticker === "COST" ? "RRSP (FULL): US stock with tax-deferred compounding. Hold existing lot." :
                         h.ticker === "GLD" ? "Open: No dividends = no WHT issue. Capital gains taxed at 50% inclusion on exit." :
@@ -770,7 +812,7 @@ export default function Dashboard() {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div className="card">
-                <div style={{ fontSize: 11, letterSpacing: 3, color: "#335", marginBottom: 10 }}>PRIORITY ACTIONS (RRSP FULL)</div>
+                <div style={{ fontSize: 8, letterSpacing: 3, color: "#335", marginBottom: 10 }}>PRIORITY ACTIONS (RRSP FULL)</div>
                 {[
                   { pri: "HIGH", action: "Stop buying VOO in Open/TFSA", reason: "RRSP full — no WHT-exempt home for new USD ETFs. Route S&P 500 to VFV.TO in TFSA instead.", impact: "Prevent further WHT drag", color: "#FF3366" },
                   { pri: "HIGH", action: "Accept XEF.TO drag — no fix", reason: "EAFE in TFSA loses ~0.48%/yr permanently. RRSP full. Consider swap-based EAFE alternative.", impact: "~$300/yr unrecoverable", color: "#FF6B35" },
@@ -780,27 +822,27 @@ export default function Dashboard() {
                 ].map(o => (
                   <div key={o.action} style={{ padding: "9px 0", borderBottom: "1px solid #0f0f22" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                      <span style={{ fontSize: 11, color: o.color, letterSpacing: 1 }}>{o.pri}</span>
-                      <span style={{ fontSize: 11, color: "#00FF88" }}>{o.impact}</span>
+                      <span style={{ fontSize: 8, color: o.color, letterSpacing: 1 }}>{o.pri}</span>
+                      <span style={{ fontSize: 8, color: "#00FF88" }}>{o.impact}</span>
                     </div>
-                    <div style={{ fontSize: 13, color: "#dde", marginBottom: 2 }}>{o.action}</div>
-                    <div style={{ fontSize: 12, color: "#667", lineHeight: 1.5 }}>{o.reason}</div>
+                    <div style={{ fontSize: 10, color: "#dde", marginBottom: 2 }}>{o.action}</div>
+                    <div style={{ fontSize: 9, color: "#667", lineHeight: 1.5 }}>{o.reason}</div>
                   </div>
                 ))}
               </div>
               <div className="card">
-                <div style={{ fontSize: 11, letterSpacing: 3, color: "#335", marginBottom: 8 }}>ANNUAL WHT DRAG ESTIMATE</div>
+                <div style={{ fontSize: 8, letterSpacing: 3, color: "#335", marginBottom: 8 }}>ANNUAL WHT DRAG ESTIMATE</div>
                 {[
                   { label: "XEF.TO (TFSA, EAFE WHT)", drag: withWeights.filter(h => h.ticker === "XEF.TO").reduce((s, h) => s + h.mktValueCAD, 0) * 0.0048, c: "#FF3366" },
                   { label: "VOO (TFSA, IRS WHT)", drag: withWeights.filter(h => h.ticker === "VOO").reduce((s, h) => s + h.mktValueCAD, 0) * 0.002, c: "#FF6B35" },
                   { label: "VFV.TO (fund-level WHT)", drag: withWeights.filter(h => h.ticker === "VFV.TO").reduce((s, h) => s + h.mktValueCAD, 0) * 0.002, c: "#FFCC44" },
                 ].map(d => (
                   <div key={d.label} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid #0f0f22" }}>
-                    <span style={{ fontSize: 12, color: "#667" }}>{d.label}</span>
-                    <span style={{ fontSize: 12, color: d.c }}>-{fmtCAD(d.drag)}/yr</span>
+                    <span style={{ fontSize: 9, color: "#667" }}>{d.label}</span>
+                    <span style={{ fontSize: 9, color: d.c }}>-{fmtCAD(d.drag)}/yr</span>
                   </div>
                 ))}
-                {(() => { const t = withWeights.filter(h => h.ticker === "XEF.TO").reduce((s, h) => s + h.mktValueCAD, 0) * 0.0048 + withWeights.filter(h => h.ticker === "VOO").reduce((s, h) => s + h.mktValueCAD, 0) * 0.002 + withWeights.filter(h => h.ticker === "VFV.TO").reduce((s, h) => s + h.mktValueCAD, 0) * 0.002; return (<div style={{ display: "flex", justifyContent: "space-between", paddingTop: 7 }}><span style={{ fontSize: 12, color: "#aab" }}>TOTAL</span><span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 18, color: "#FF3366" }}>-{fmtCAD(t)}/yr</span></div>); })()}
+                {(() => { const t = withWeights.filter(h => h.ticker === "XEF.TO").reduce((s, h) => s + h.mktValueCAD, 0) * 0.0048 + withWeights.filter(h => h.ticker === "VOO").reduce((s, h) => s + h.mktValueCAD, 0) * 0.002 + withWeights.filter(h => h.ticker === "VFV.TO").reduce((s, h) => s + h.mktValueCAD, 0) * 0.002; return (<div style={{ display: "flex", justifyContent: "space-between", paddingTop: 7 }}><span style={{ fontSize: 9, color: "#aab" }}>TOTAL</span><span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 18, color: "#FF3366" }}>-{fmtCAD(t)}/yr</span></div>); })()}
               </div>
             </div>
           </div>
@@ -810,20 +852,20 @@ export default function Dashboard() {
         {tab === "geography" && (
           <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 14 }}>
             <div className="card" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-              <div style={{ fontSize: 11, letterSpacing: 3, color: "#335" }}>GEOGRAPHIC EXPOSURE</div>
+              <div style={{ fontSize: 8, letterSpacing: 3, color: "#335" }}>GEOGRAPHIC EXPOSURE</div>
               <PieChart data={geoData} size={185} />
               {geoData.map(g => (
                 <div key={g.name} style={{ width: "100%" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                    <span style={{ fontSize: 12, color: "#aab" }}>{g.name}</span>
-                    <span style={{ fontSize: 12, color: g.color }}>{g.value.toFixed(1)}%</span>
+                    <span style={{ fontSize: 9, color: "#aab" }}>{g.name}</span>
+                    <span style={{ fontSize: 9, color: g.color }}>{g.value.toFixed(1)}%</span>
                   </div>
                   <Bar value={g.value} max={100} color={g.color} />
                 </div>
               ))}
             </div>
             <div className="card">
-              <div style={{ fontSize: 11, letterSpacing: 3, color: "#335", marginBottom: 12 }}>REGIONAL ANALYSIS</div>
+              <div style={{ fontSize: 8, letterSpacing: 3, color: "#335", marginBottom: 12 }}>REGIONAL ANALYSIS</div>
               {[
                 { region: "United States", pct: geoData.find(g => g.name === "United States")?.value || 0, risk: "MODERATE", color: "#00D4FF", note: "VOO, VFV.TO, AVUV, MSFT, NVDA, COST. Dominant exposure. S&P ~21x P/E. AVUV in RRSP (treaty-exempt)." },
                 { region: "Canada", pct: geoData.find(g => g.name === "Canada")?.value || 0, risk: "LOW", color: "#CC44FF", note: "VDY.TO (Open), XIU.TO, XEI.TO, WCP.TO (TFSA). DTC on Open dividends. TFSA positions fully sheltered." },
@@ -835,11 +877,11 @@ export default function Dashboard() {
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                     <span style={{ color: r.color, fontSize: 11 }}>{r.region}</span>
                     <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
-                      <span style={{ fontSize: 12, color: "#667" }}>{r.pct.toFixed(1)}%</span>
-                      <span style={{ padding: "1px 6px", borderRadius: 3, fontSize: 11, background: r.risk === "HIGH" ? "#FF336622" : r.risk === "MODERATE" ? "#FFD70022" : "#00FF8822", color: r.risk === "HIGH" ? "#FF3366" : r.risk === "MODERATE" ? "#FFD700" : "#00FF88" }}>{r.risk}</span>
+                      <span style={{ fontSize: 9, color: "#667" }}>{r.pct.toFixed(1)}%</span>
+                      <span style={{ padding: "1px 6px", borderRadius: 3, fontSize: 8, background: r.risk === "HIGH" ? "#FF336622" : r.risk === "MODERATE" ? "#FFD70022" : "#00FF8822", color: r.risk === "HIGH" ? "#FF3366" : r.risk === "MODERATE" ? "#FFD700" : "#00FF88" }}>{r.risk}</span>
                     </div>
                   </div>
-                  <div style={{ fontSize: 12, color: "#667", lineHeight: 1.5 }}>{r.note}</div>
+                  <div style={{ fontSize: 9, color: "#667", lineHeight: 1.5 }}>{r.note}</div>
                 </div>
               ))}
             </div>
@@ -850,7 +892,7 @@ export default function Dashboard() {
         {tab === "dividends" && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             <div className="card">
-              <div style={{ fontSize: 11, letterSpacing: 3, color: "#335", marginBottom: 12 }}>DIVIDEND INCOME BY HOLDING (CAD)</div>
+              <div style={{ fontSize: 8, letterSpacing: 3, color: "#335", marginBottom: 12 }}>DIVIDEND INCOME BY HOLDING (CAD)</div>
               {withWeights.filter(h => h.dividendYield > 0).sort((a, b) => b.annualDivCAD - a.annualDivCAD).map((h, i) => (
                 <div key={i} style={{ padding: "8px 0", borderBottom: "1px solid #0f0f22" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
@@ -860,26 +902,26 @@ export default function Dashboard() {
                     </div>
                     <span style={{ fontSize: 11, color: "#dde" }}>{fmtCAD(h.annualDivCAD)}/yr</span>
                   </div>
-                  <div style={{ fontSize: 11, color: "#445", marginBottom: 3 }}>Yield {h.dividendYield}% · {fmtCAD(h.annualDivCAD / 12)}/mo</div>
+                  <div style={{ fontSize: 8, color: "#445", marginBottom: 3 }}>Yield {h.dividendYield}% · {fmtCAD(h.annualDivCAD / 12)}/mo</div>
                   <Bar value={h.annualDivCAD} max={metrics.annualDiv} color={h.color} />
                 </div>
               ))}
               <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 10 }}>
-                <span style={{ fontSize: 12, color: "#aab", letterSpacing: 1 }}>TOTAL ANNUAL</span>
+                <span style={{ fontSize: 9, color: "#aab", letterSpacing: 1 }}>TOTAL ANNUAL</span>
                 <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 22, color: "#00FF88" }}>{fmtCAD(metrics.annualDiv)}</span>
               </div>
             </div>
             <div className="card">
-              <div style={{ fontSize: 11, letterSpacing: 3, color: "#335", marginBottom: 12 }}>DRIP PROJECTIONS</div>
-              {[1, 3, 5, 10, 15, 20].map((yr, index) => {
+              <div style={{ fontSize: 8, letterSpacing: 3, color: "#335", marginBottom: 12 }}>DRIP PROJECTIONS</div>
+              {[1, 3, 5, 10, 15, 20].map(yr => {
                 const proj = totalCAD * Math.pow(1 + metrics.wCAGR / 100, yr);
                 const div = proj * (metrics.wYield / 100);
                 return (
-                  <div key={`DIV-L856-${index}-${yr}`} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #0f0f22" }}>
-                    <span style={{ fontSize: 13, color: "#667" }}>YEAR {yr}</span>
+                  <div key={yr} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #0f0f22" }}>
+                    <span style={{ fontSize: 10, color: "#667" }}>YEAR {yr}</span>
                     <div style={{ textAlign: "right" }}>
                       <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 18, color: "#00FF88" }}>{fmtCAD(div)}/yr</div>
-                      <div style={{ fontSize: 11, color: "#334" }}>Portfolio: {fmtCAD(proj)}</div>
+                      <div style={{ fontSize: 8, color: "#334" }}>Portfolio: {fmtCAD(proj)}</div>
                     </div>
                   </div>
                 );
@@ -892,7 +934,7 @@ export default function Dashboard() {
         {tab === "projection" && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             <div className="card">
-              <div style={{ fontSize: 11, letterSpacing: 3, color: "#335", marginBottom: 14 }}>20-YEAR WEALTH SCENARIOS (CAD)</div>
+              <div style={{ fontSize: 8, letterSpacing: 3, color: "#335", marginBottom: 14 }}>20-YEAR WEALTH SCENARIOS (CAD)</div>
               {[
                 { label: "BEAR CASE", cagr: 5.0, color: "#FF3366" },
                 { label: "BASE (YOUR TARGET)", cagr: 8.0, color: "#FFD700" },
@@ -903,12 +945,12 @@ export default function Dashboard() {
                 return (
                   <div key={s.label} style={{ padding: "11px 0", borderBottom: "1px solid #0f0f22" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                      <span style={{ fontSize: 12, color: s.color, letterSpacing: 1 }}>{s.label}</span>
-                      <span style={{ fontSize: 12, color: "#445" }}>CAGR {s.cagr.toFixed(1)}%</span>
+                      <span style={{ fontSize: 9, color: s.color, letterSpacing: 1 }}>{s.label}</span>
+                      <span style={{ fontSize: 9, color: "#445" }}>CAGR {s.cagr.toFixed(1)}%</span>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 5 }}>
                       <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 28, color: s.color }}>{fmtCAD(proj)}</div>
-                      <span style={{ fontSize: 13, color: "#334" }}>{(proj / totalCAD).toFixed(1)}x</span>
+                      <span style={{ fontSize: 10, color: "#334" }}>{(proj / totalCAD).toFixed(1)}x</span>
                     </div>
                     <Bar value={proj} max={totalCAD * Math.pow(1.12, 20)} color={s.color} />
                   </div>
@@ -917,7 +959,7 @@ export default function Dashboard() {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div className="card">
-                <div style={{ fontSize: 11, letterSpacing: 3, color: "#335", marginBottom: 10 }}>MONTE CARLO · 10,000 SIMS (CAD)</div>
+                <div style={{ fontSize: 8, letterSpacing: 3, color: "#335", marginBottom: 10 }}>MONTE CARLO · 10,000 SIMS (CAD)</div>
                 {[
                   { pct: "10th percentile", val: totalCAD * Math.pow(1.04, 20), color: "#FF3366" },
                   { pct: "25th percentile", val: totalCAD * Math.pow(1.065, 20), color: "#FF8855" },
@@ -926,36 +968,30 @@ export default function Dashboard() {
                   { pct: "90th percentile", val: totalCAD * Math.pow(1.135, 20), color: "#00D4FF" },
                 ].map(s => (
                   <div key={s.pct} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid #0f0f20" }}>
-                    <span style={{ fontSize: 12, color: "#556" }}>{s.pct}</span>
-                    <span style={{ fontSize: 12, color: s.color }}>{fmtCAD(s.val)}</span>
+                    <span style={{ fontSize: 9, color: "#556" }}>{s.pct}</span>
+                    <span style={{ fontSize: 9, color: s.color }}>{fmtCAD(s.val)}</span>
                   </div>
                 ))}
-                <div style={{ marginTop: 8, fontSize: 11, color: "#223", lineHeight: 1.5 }}>Assumes annual rebalancing + DRIP. Excludes tax, inflation, FX. All values CAD.</div>
+                <div style={{ marginTop: 8, fontSize: 8, color: "#223", lineHeight: 1.5 }}>Assumes annual rebalancing + DRIP. Excludes tax, inflation, FX. All values CAD.</div>
               </div>
               <div className="card">
-                <div style={{ fontSize: 11, letterSpacing: 3, color: "#335", marginBottom: 10 }}>FACTOR PROFILE</div>
+                <div style={{ fontSize: 8, letterSpacing: 3, color: "#335", marginBottom: 10 }}>FACTOR PROFILE</div>
                 {withWeights.sort((a, b) => b.mktValueCAD - a.mktValueCAD).map((h, i) => (
-                  <div key={`FACT-L938-${i}-${h.ticker}-${h.account}-${h.broker}`} style={{ padding: "6px 0", borderBottom: "1px solid #0f0f22" }}>
+                  <div key={i} style={{ padding: "6px 0", borderBottom: "1px solid #0f0f22" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
-                      <div style={{ display: "flex", gap: 5 }}><span style={{ color: h.color, fontSize: 13 }}>{h.ticker}</span><ABadge a={h.account} /></div>
-                      <div style={{ display: "flex", gap: 7, fontSize: 12, color: "#556" }}><span>β{h.beta}</span><span>{h.expectedCAGR}%</span><span>S{h.sharpe}</span></div>
+                      <div style={{ display: "flex", gap: 5 }}><span style={{ color: h.color, fontSize: 10 }}>{h.ticker}</span><ABadge a={h.account} /></div>
+                      <div style={{ display: "flex", gap: 7, fontSize: 9, color: "#556" }}><span>β{h.beta}</span><span>{h.expectedCAGR}%</span><span>S{h.sharpe}</span></div>
                     </div>
-                    <div style={{ fontSize: 11, color: "#334" }}>{h.weight.toFixed(1)}% · {fmtCAD(h.mktValueCAD)}</div>
+                    <div style={{ fontSize: 8, color: "#334" }}>{h.weight.toFixed(1)}% · {fmtCAD(h.mktValueCAD)}</div>
                   </div>
                 ))}
               </div>
             </div>
           </div>
         )}
-
-        {/* ════ PAGE TABS (embedded from routes) */}
-        {tab === "pnl" && <div className="dash-embed"><PnLPage /></div>}
-        {tab === "trades" && <div className="dash-embed"><TradeAnalysisPage /></div>}
-        {tab === "quantmental" && <div className="dash-embed"><QuantmentalPage /></div>}
-        {tab === "transactions" && <div className="dash-embed"><TransactionsPage /></div>}
       </div>
 
-      <div style={{ borderTop: "1px solid var(--row-border)", padding: "10px 26px", display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--muted2)", letterSpacing: 1 }}>
+      <div style={{ borderTop: "1px solid #0f0f22", padding: "9px 26px", display: "flex", justifyContent: "space-between", fontSize: 7, color: "#1a1a44", letterSpacing: 1 }}>
         <span>PORTFOLIO TERMINAL · CIBC + RBC + TD · v6.0 · ALPHA VANTAGE</span>
         <span>NOT FINANCIAL ADVICE · PRICES FROM ALPHA VANTAGE OR CSV SNAPSHOT</span>
         <span>USD/CAD {usdcad.toFixed(5)} · {priceSource}</span>

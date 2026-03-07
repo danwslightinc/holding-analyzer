@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import Sidebar from "@/components/Sidebar";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { PortfolioProvider } from "@/lib/PortfolioContext";
 import { NextAuthProvider } from "@/components/NextAuthProvider";
@@ -35,12 +34,9 @@ export default function RootLayout({
         <NextAuthProvider>
           <ThemeProvider>
             <PortfolioProvider>
-              <div className="flex h-screen overflow-hidden">
-                <Sidebar />
-                <main className="flex-1 overflow-y-auto relative">
-                  {children}
-                </main>
-              </div>
+              <main className="min-h-screen overflow-y-auto relative">
+                {children}
+              </main>
             </PortfolioProvider>
           </ThemeProvider>
         </NextAuthProvider>
@@ -48,3 +44,4 @@ export default function RootLayout({
     </html>
   );
 }
+
