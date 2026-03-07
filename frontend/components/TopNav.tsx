@@ -29,7 +29,10 @@ export default function TopNav() {
     if (pathname === "/") return null;
 
     return (
-        <nav className="sticky top-0 z-50 backdrop-blur-xl bg-zinc-950/80 border-b border-white/10 px-6 py-2">
+        <nav className={`sticky top-0 z-50 backdrop-blur-xl border-b px-6 py-2 ${theme === 'dark'
+                ? 'bg-zinc-950/80 border-white/10'
+                : 'bg-white/80 border-black/10'
+            }`}>
             <div className="max-w-[1800px] mx-auto flex items-center justify-between gap-4">
                 {/* Brand + Nav Links */}
                 <div className="flex items-center gap-1">
@@ -40,8 +43,8 @@ export default function TopNav() {
                                 key={item.href}
                                 href={item.href}
                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold tracking-wider transition-all ${isActive
-                                        ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-                                        : "text-zinc-500 hover:text-zinc-200 hover:bg-white/5"
+                                    ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                                    : "text-zinc-500 hover:text-zinc-200 hover:bg-white/5"
                                     }`}
                             >
                                 {item.icon} {item.name.toUpperCase()}
@@ -56,8 +59,8 @@ export default function TopNav() {
                         onClick={() => refresh(true)}
                         disabled={loading}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold tracking-wider transition-all border ${loading
-                                ? "bg-zinc-800/50 border-zinc-700 text-zinc-600 cursor-not-allowed"
-                                : "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20"
+                            ? "bg-zinc-800/50 border-zinc-700 text-zinc-600 cursor-not-allowed"
+                            : "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20"
                             }`}
                     >
                         {loading ? "⟳ SYNCING..." : "⟳ FORCE SYNC"}
