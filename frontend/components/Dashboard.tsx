@@ -131,7 +131,7 @@ const META_MAP = {
 export default function Dashboard() {
   const { data: portData, dividends: divRaw, tickerPerf, loading, error, refresh } = usePortfolio();
 
-  const [tab, setTab] = useState("heatmap");
+  const [tab, setTab] = useState("overview");
   const [heatSort, setHeatSort] = useState("value");
   const [acctFilter, setAcctFilter] = useState("ALL");
   const [brokerFilter, setBrokerFilter] = useState("ALL");
@@ -183,7 +183,11 @@ export default function Dashboard() {
       const prevClose = cp; // Backend doesn't give prev cost easily unless using perf
       const dayChgPct = perfLookup[h.Symbol] || 0;
 
-      const mkt = h.Market_Value_CAD || h.Market_Value;
+      let mkt = h.Market_Value_CAD || h.Market_Value;
+      // Fallback calculation if backend market value is missing but we have price/qty
+      if (!mkt && h.Quantity && cp) {
+        mkt = h.Quantity * cp * (h.Currency === 'USD' ? usdcad : 1.0);
+      }
       const gl = h['Purchase Price'] > 0 ? ((cp / h['Purchase Price']) - 1) * 100 : null;
 
       const yieldPct = divLookup[h.Symbol] || meta.div;
@@ -290,7 +294,7 @@ export default function Dashboard() {
   const dateStr = clock.toLocaleDateString("en-CA", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
   const okCount = holdings.length;
   const errCount = 0;
-  const tabs = ["heatmap", "overview", "holdings", "tax", "geography", "dividends", "projection", "pnl", "trades", "quantmental", "transactions"];
+  const tabs = ["overview", "heatmap", "holdings", "tax", "geography", "dividends", "projection", "pnl", "trades", "quantmental", "transactions"];
 
   // Handle loading state before rendering main app view
   if (loading && !portData) {
@@ -519,7 +523,7 @@ export default function Dashboard() {
                 const isLoading = h.fetchStatus === "loading";
                 const isErr = h.fetchStatus === "error";
                 return (
-                  <div key={`HTILE-L522-${idx}-${h.ticker}-${h.account}-${h.broker}`}
+                  <div key={`tile-${idx}-${h.ticker}-${h.account}-${h.broker}`}
                     className="heat-tile"
                     onMouseEnter={() => setHoveredTicker(h.ticker)}
                     onMouseLeave={() => setHoveredTicker(null)}
@@ -591,7 +595,7 @@ export default function Dashboard() {
                   <div key={i} style={{ background: band.bg, border: `1px solid ${band.border}`, borderRadius: 8, padding: "9px 11px" }}>
                     <div style={{ fontSize: 13, color: band.text + "77", letterSpacing: 1, marginBottom: 6 }}>{band.label}</div>
                     {tickers.length === 0 ? <div style={{ fontSize: 12, color: band.text + "33" }}>—</div> : tickers.map((h, j) => (
-                      <div key={`BAND-L594-${i}-${j}-${h.ticker}-${h.account}-${h.broker}`} style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                      <div key={`band-${i}-${j}-${h.ticker}-${h.account}-${h.broker}`} style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
                         <span style={{ fontSize: 13, color: band.text, fontWeight: 500 }}>{h.ticker}</span>
                         <span style={{ fontSize: 12, color: band.text + "99" }}>{h.glPct >= 0 ? "+" : ""}{h.glPct.toFixed(1)}%</span>
                       </div>
@@ -614,7 +618,7 @@ export default function Dashboard() {
               <PieChart data={withWeights.map(h => ({ name: h.ticker, value: h.weight, color: h.color }))} size={175} />
               <div style={{ width: "100%", maxHeight: 240, overflowY: "auto" }}>
                 {withWeights.sort((a, b) => b.weight - a.weight).map((h, idx) => (
-                  <div key={`OV-L219-${idx}-${h.ticker}-${h.account}-${h.broker}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+                  <div key={`ov-${idx}-${h.ticker}-${h.account}-${h.broker}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                       <div style={{ width: 6, height: 6, borderRadius: 2, background: h.heatColor.text }} />
                       <span style={{ fontSize: 12, color: "#aab" }}>{h.ticker}</span>
@@ -708,7 +712,7 @@ export default function Dashboard() {
                 const gp = h.glPct || 0;
                 const statusColor = h.fetchStatus === "ok" ? "#00FF88" : h.fetchStatus === "error" ? "#FF4444" : h.fetchStatus === "loading" ? "#FFD700" : "#334";
                 return (
-                  <div key={`HLIST-711-${i}-${h.ticker}-${h.account}-${h.broker}`} className="hrow">
+                  <div key={`hold-${i}-${h.ticker}-${h.account}-${h.broker}`} className="hrow">
                     <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                       <div style={{ width: 4, height: 4, borderRadius: "50%", background: statusColor, flexShrink: 0 }} />
                       <span style={{ color: h.heatColor.text, fontWeight: 500, fontSize: 13 }}>{h.ticker}</span>
@@ -740,7 +744,7 @@ export default function Dashboard() {
             <div className="card">
               <div style={{ fontSize: 11, letterSpacing: 3, color: "#335", marginBottom: 10 }}>TAX PLACEMENT · RRSP FULL</div>
               {withWeights.sort((a, b) => b.mktValueCAD - a.mktValueCAD).map((h, i) => (
-                <div key={`TAX-L743-${i}-${h.ticker}-${h.account}-${h.broker}`} style={{ padding: "9px 0", borderBottom: "1px solid #0f0f22" }}>
+                <div key={`tax-${i}-${h.ticker}-${h.account}-${h.broker}`} style={{ padding: "9px 0", borderBottom: "1px solid #0f0f22" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                       <span style={{ color: h.heatColor.text, fontSize: 12, fontWeight: 500 }}>{h.ticker}</span>
@@ -875,7 +879,7 @@ export default function Dashboard() {
                 const proj = totalCAD * Math.pow(1 + metrics.wCAGR / 100, yr);
                 const div = proj * (metrics.wYield / 100);
                 return (
-                  <div key={`DIV-L856-${index}-${yr}`} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #0f0f22" }}>
+                  <div key={`div-${index}-${yr}`} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #0f0f22" }}>
                     <span style={{ fontSize: 13, color: "#667" }}>YEAR {yr}</span>
                     <div style={{ textAlign: "right" }}>
                       <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 18, color: "#00FF88" }}>{fmtCAD(div)}/yr</div>
@@ -935,7 +939,7 @@ export default function Dashboard() {
               <div className="card">
                 <div style={{ fontSize: 11, letterSpacing: 3, color: "#335", marginBottom: 10 }}>FACTOR PROFILE</div>
                 {withWeights.sort((a, b) => b.mktValueCAD - a.mktValueCAD).map((h, i) => (
-                  <div key={`FACT-L938-${i}-${h.ticker}-${h.account}-${h.broker}`} style={{ padding: "6px 0", borderBottom: "1px solid #0f0f22" }}>
+                  <div key={`fact-${i}-${h.ticker}-${h.account}-${h.broker}`} style={{ padding: "6px 0", borderBottom: "1px solid #0f0f22" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
                       <div style={{ display: "flex", gap: 5 }}><span style={{ color: h.color, fontSize: 13 }}>{h.ticker}</span><ABadge a={h.account} /></div>
                       <div style={{ display: "flex", gap: 7, fontSize: 12, color: "#556" }}><span>β{h.beta}</span><span>{h.expectedCAGR}%</span><span>S{h.sharpe}</span></div>

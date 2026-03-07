@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { API_BASE_URL } from "@/lib/api";
+import { usePortfolio } from "@/lib/PortfolioContext";
 
 interface Transaction {
     id: number;
@@ -39,6 +40,7 @@ const ACCOUNT_COLORS: Record<string, { bg: string; text: string; border: string 
 };
 
 export default function TransactionsPage() {
+    const { refresh } = usePortfolio();
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
@@ -119,6 +121,7 @@ export default function TransactionsPage() {
                     Comment: ""
                 });
                 fetchTransactions();
+                refresh(true); // Trigger global context refresh
             }
         } catch (err) {
             console.error("Failed to add", err);
@@ -131,7 +134,10 @@ export default function TransactionsPage() {
         if (!confirm("Are you sure you want to purge this record?")) return;
         try {
             const res = await fetch(`${API_BASE_URL}/api/transactions/${id}`, { method: "DELETE" });
-            if (res.ok) fetchTransactions();
+            if (res.ok) {
+                fetchTransactions();
+                refresh(true); // Trigger global context refresh
+            }
         } catch (err) {
             console.error("Delete failed", err);
         }
