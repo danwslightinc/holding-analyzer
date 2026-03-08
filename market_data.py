@@ -172,7 +172,7 @@ def get_weekly_changes(symbols):
     if not symbols: return {}
     
     try:
-        t = Ticker(symbols)
+        t = Ticker(symbols, timeout=5)
         # Fetch 5 days of history
         hist = t.history(period="5d")
         
@@ -202,7 +202,7 @@ def get_daily_changes(symbols):
     """
     if not symbols: return {}
     try:
-        t = Ticker(symbols)
+        t = Ticker(symbols, timeout=5)
         price_data = t.price
         changes = {}
         for sym in symbols:
@@ -246,7 +246,7 @@ def get_market_indices_change():
     }
     
     try:
-        t = Ticker(list(indices.keys()))
+        t = Ticker(list(indices.keys()), timeout=5)
         hist = t.history(period="5d")
         
         changes = {}
@@ -292,7 +292,7 @@ def get_technical_data(symbols):
     print(f"Fetching technical data (RSI & Patterns) for {len(symbols)} symbols...")
     
     try:
-        t = Ticker(symbols, asynchronous=True)
+        t = Ticker(symbols, asynchronous=True, timeout=5)
         # Fetch enough history for SMA 200
         hist = t.history(period="1y")
         
@@ -416,7 +416,7 @@ def get_latest_news(symbols):
     news_map = {}
     
     try:
-        t = Ticker(symbols)
+        t = Ticker(symbols, timeout=5)
         all_news = t.news(20) # Get a batch of news
         
         # Check if all_news is a valid list of dictionaries
@@ -475,7 +475,7 @@ def get_dividend_calendar(symbols):
     div_calendar = {}
     
     try:
-        t = Ticker(symbols, asynchronous=True)
+        t = Ticker(symbols, asynchronous=True, timeout=5)
         # Fetch 1 year of dividends
         all_divs = t.dividend_history(start=(datetime.now() - timedelta(days=366)).strftime('%Y-%m-%d'))
         
@@ -540,7 +540,7 @@ def get_fundamental_data(symbols):
     }
 
     try:
-        t = Ticker(symbols, asynchronous=True)
+        t = Ticker(symbols, asynchronous=True, timeout=5)
         # Fetch multiple modules at once
         modules = 'summaryDetail assetProfile quoteType defaultKeyStatistics calendarEvents financialData'
         all_data = t.get_modules(modules)
@@ -630,7 +630,7 @@ def get_portfolio_history(holdings_df):
     
     print(f"Fetching 10Y history for performance analysis via yahooquery...")
     try:
-        t = Ticker(all_tickers, asynchronous=True)
+        t = Ticker(all_tickers, asynchronous=True, timeout=8)
         # Fetch 10 years of history
         hist = t.history(start=start_date)
         
