@@ -142,7 +142,7 @@ export default function QuantmentalPage() {
         const val = Number(rsi);
         if (val > 70) return { color: '#e11d48', fontWeight: 'bold' }; // rose-600
         if (val < 30) return { color: '#059669', fontWeight: 'bold' }; // emerald-600
-        return { color: '#000', fontWeight: 'bold' };
+        return { fontWeight: 'bold' };
     };
 
     const getConvictionBadge = (conviction: string) => {
@@ -222,11 +222,10 @@ export default function QuantmentalPage() {
                                                 />
                                             ) : (
                                                 <div
-                                                    className="text-sm font-bold leading-relaxed line-clamp-2"
-                                                    style={{ color: '#000' }}
+                                                    className="text-sm font-bold leading-relaxed line-clamp-2 text-gray-900 dark:text-white/90"
                                                     title={row.Thesis}
                                                 >
-                                                    {row.Thesis || <span style={{ color: '#999', fontStyle: 'italic', fontWeight: 'normal' }}>--</span>}
+                                                    {row.Thesis || <span className="text-gray-400 dark:text-gray-500 italic font-normal">--</span>}
                                                 </div>
                                             )}
                                         </td>
@@ -276,18 +275,20 @@ export default function QuantmentalPage() {
                                         </td>
 
                                         <td className="p-4 text-sm">
-                                            <span style={getRSIColor(row.RSI)}>
+                                            <span
+                                                className="text-gray-900 dark:text-white"
+                                                style={getRSIColor(row.RSI)}
+                                            >
                                                 {row.RSI}
                                             </span>
                                         </td>
                                         <td
-                                            className="p-4 text-sm font-bold"
-                                            style={{ color: '#000' }}
+                                            className="p-4 text-sm font-bold text-gray-900 dark:text-white"
                                         >
                                             {row["Tech Scorecard"]}
                                         </td>
-                                        <td className="p-4 text-sm font-medium" style={{ color: '#333' }}>{row["Next Earnings"]}</td>
-                                        <td className="p-4 text-sm font-medium" style={{ color: '#333' }}>{row["Ex-Div"]}</td>
+                                        <td className="p-4 text-sm font-medium text-gray-700 dark:text-white/70">{row["Next Earnings"]}</td>
+                                        <td className="p-4 text-sm font-medium text-gray-700 dark:text-white/70">{row["Ex-Div"]}</td>
                                         <td className="p-4 text-sm font-bold" style={{ color: '#059669' }}>{row.Yield}</td>
 
                                         <td className="p-4">
@@ -305,14 +306,17 @@ export default function QuantmentalPage() {
 
                                         <td className="p-4 text-sm font-bold">
                                             {typeof row["PEG Ratio"] === 'number' && (
-                                                <span style={{ color: row["PEG Ratio"] < 1 ? '#059669' : row["PEG Ratio"] > 2 ? '#e11d48' : '#000' }}>
+                                                <span
+                                                    className="text-gray-900 dark:text-white"
+                                                    style={{ color: row["PEG Ratio"] < 1 ? '#059669' : row["PEG Ratio"] > 2 ? '#e11d48' : undefined }}
+                                                >
                                                     {row["PEG Ratio"].toFixed(2)}
                                                 </span>
                                             )}
                                             {row["PEG Ratio"] === 'N/A' && <span style={{ color: '#999' }}>--</span>}
                                         </td>
-                                        <td className="p-4 text-sm font-bold" style={{ color: '#000' }}>{row.Growth}</td>
-                                        <td className={`p-4 text-sm font-bold ${getRecommendationColor(row.Rec)}`} style={!getRecommendationColor(row.Rec) ? { color: '#000' } : {}}>
+                                        <td className="p-4 text-sm font-bold text-gray-900 dark:text-white">{row.Growth}</td>
+                                        <td className={`p-4 text-sm font-bold ${getRecommendationColor(row.Rec)}`} style={!getRecommendationColor(row.Rec) ? { color: 'inherit' } : {}}>
                                             {row.Rec}
                                         </td>
 

@@ -172,16 +172,18 @@ export default function TransactionsPage() {
                     </p>
                 </div>
 
-                <button
+                <motion.button
+                    whileHover={{ scale: 1.02, y: -1 }}
+                    whileTap={{ scale: 0.98 }}
                     onClick={() => setShowForm(!showForm)}
-                    className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold uppercase tracking-widest transition-all border ${showForm
-                        ? "bg-rose-500/10 border-rose-500/30 text-rose-400 hover:bg-rose-500/20"
-                        : "bg-blue-500/10 border-blue-500/30 text-blue-400 hover:bg-blue-500/20 shadow-[0_0_15px_rgba(59,130,246,0.15)] hover:shadow-[0_0_20px_rgba(59,130,246,0.25)]"
+                    className={`inline-flex items-center gap-2 px-6 py-3 rounded-2xl text-xs font-bold uppercase tracking-[0.2em] transition-all border shadow-lg ${showForm
+                        ? "bg-rose-500/10 border-rose-500/30 text-rose-400 hover:bg-rose-500/20 shadow-rose-500/5 rotate-0"
+                        : "bg-gradient-to-r from-blue-600 to-indigo-600 border-white/10 text-white hover:from-blue-500 hover:to-indigo-500 shadow-blue-500/20 hover:shadow-blue-500/40"
                         }`}
                 >
-                    {showForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                    {showForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />}
                     {showForm ? "Cancel Entry" : "Record Entry"}
-                </button>
+                </motion.button>
             </div>
 
             {/* Inline Form: Appears "Right under Add button" */}
@@ -216,7 +218,7 @@ export default function TransactionsPage() {
                                         value={form.Symbol}
                                         placeholder="e.g. NVDA"
                                         onChange={e => setForm({ ...form, Symbol: e.target.value.toUpperCase() })}
-                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground text-xl font-bold uppercase rounded-xl px-4 focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
+                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground text-xl font-black uppercase rounded-xl px-4 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all duration-300 shadow-sm focus:shadow-[0_0_20px_rgba(59,130,246,0.1)]"
                                     />
                                 </div>
 
@@ -228,7 +230,7 @@ export default function TransactionsPage() {
                                         step="0.0001"
                                         value={form.Purchase_Price}
                                         onChange={e => setForm({ ...form, Purchase_Price: e.target.value })}
-                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
+                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all duration-300 shadow-sm focus:shadow-[0_0_20px_rgba(59,130,246,0.1)]"
                                     />
                                 </div>
 
@@ -240,7 +242,7 @@ export default function TransactionsPage() {
                                         step="0.000001"
                                         value={form.Quantity}
                                         onChange={e => setForm({ ...form, Quantity: e.target.value })}
-                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
+                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all duration-300 shadow-sm focus:shadow-[0_0_20px_rgba(59,130,246,0.1)]"
                                     />
                                 </div>
 
@@ -251,7 +253,7 @@ export default function TransactionsPage() {
                                         type="date"
                                         value={form.Trade_Date.replace(/\//g, "-")}
                                         onChange={e => setForm({ ...form, Trade_Date: e.target.value.replace(/-/g, "/") })}
-                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:light] dark:[color-scheme:dark] transition-colors"
+                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 [color-scheme:light] dark:[color-scheme:dark] transition-all duration-300 shadow-sm focus:shadow-[0_0_20px_rgba(59,130,246,0.1)]"
                                     />
                                 </div>
 
@@ -275,7 +277,7 @@ export default function TransactionsPage() {
                                     <select
                                         value={form.Account_Type}
                                         onChange={e => setForm({ ...form, Account_Type: e.target.value })}
-                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 outline-none appearance-none cursor-pointer hover:bg-slate-200 dark:hover:bg-white/10 transition-colors"
+                                        className="w-full h-[56px] bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-foreground font-bold rounded-xl px-4 outline-none appearance-none cursor-pointer hover:bg-slate-200 dark:hover:bg-white/10 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all duration-300"
                                     >
                                         <option value="TFSA">TFSA</option>
                                         <option value="RRSP">RRSP</option>
@@ -294,12 +296,18 @@ export default function TransactionsPage() {
                                                     key={t}
                                                     type="button"
                                                     onClick={() => setForm({ ...form, Transaction_Type: t })}
-                                                    className={`flex-1 h-full rounded-lg text-xs font-bold transition-all ${isActive
-                                                        ? (t === 'SELL' ? "bg-rose-500 text-white shadow-md" : "bg-emerald-500 text-white shadow-md")
-                                                        : "text-gray-500 hover:text-foreground"
+                                                    className={`flex-1 h-full rounded-lg text-xs font-black tracking-widest transition-all duration-300 relative overflow-hidden ${isActive
+                                                        ? (t === 'SELL' ? "text-white" : "text-white")
+                                                        : "text-zinc-500 hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
                                                         }`}
                                                 >
-                                                    {t}
+                                                    {isActive && (
+                                                        <motion.div
+                                                            layoutId="active-type-bg"
+                                                            className={`absolute inset-0 z-0 ${t === 'SELL' ? "bg-gradient-to-r from-rose-500 to-orange-500" : t === 'BUY' ? "bg-gradient-to-r from-emerald-500 to-teal-500" : "bg-gradient-to-r from-blue-500 to-indigo-500"}`}
+                                                        />
+                                                    )}
+                                                    <span className="relative z-10">{t}</span>
                                                 </button>
                                             );
                                         })}
@@ -307,28 +315,31 @@ export default function TransactionsPage() {
                                 </div>
 
                                 <div className="flex items-end justify-end lg:col-span-1">
-                                    <button
+                                    <motion.button
+                                        whileHover={{ scale: 1.01 }}
+                                        whileTap={{ scale: 0.99 }}
                                         type="submit"
                                         disabled={submitting}
-                                        className={`h-[56px] px-8 w-full rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg text-white disabled:opacity-50 disabled:cursor-not-allowed ${form.Transaction_Type === 'SELL'
-                                            ? "bg-rose-600 hover:bg-rose-700 shadow-rose-900/20"
+                                        className={`h-[56px] px-8 w-full rounded-xl font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-3 transition-all shadow-xl text-white disabled:opacity-50 disabled:cursor-not-allowed ${form.Transaction_Type === 'SELL'
+                                            ? "bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 shadow-rose-500/20"
                                             : form.Transaction_Type === 'BUY'
-                                                ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-900/20"
-                                                : "bg-blue-600 hover:bg-blue-700 shadow-blue-900/20"
-                                            } border border-transparent dark:border-white/10 group`}
+                                                ? "bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 shadow-emerald-500/20"
+                                                : "bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 shadow-blue-500/20"
+                                            } group relative overflow-hidden`}
                                     >
+                                        <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
                                         {submitting ? (
                                             <div className="flex items-center gap-2">
                                                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                                <span>Processing...</span>
+                                                <span>Processing Transaction...</span>
                                             </div>
                                         ) : (
                                             <>
                                                 <span>Confirm {form.Transaction_Type === 'SELL' ? 'Disposal' : 'Acquisition'}</span>
-                                                <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+                                                <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
                                             </>
                                         )}
-                                    </button>
+                                    </motion.button>
                                 </div>
                             </form>
                         </div>
@@ -345,7 +356,6 @@ export default function TransactionsPage() {
                         placeholder="Search by ticker, broker, or notes..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full h-[46px] bg-white border border-gray-200 dark:bg-white/5 dark:border-white/10 text-foreground text-sm rounded-xl block pl-11 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all hover:bg-gray-50 dark:hover:bg-white/10 shadow-sm"
                     />
                 </div>
 
@@ -354,12 +364,18 @@ export default function TransactionsPage() {
                         <button
                             key={t}
                             onClick={() => setFilterType(t)}
-                            className={`flex-1 rounded-lg text-xs font-bold transition-all ${filterType === t
-                                ? "bg-blue-600 text-white shadow-md px-4"
-                                : "text-gray-500 hover:text-foreground"
+                            className={`flex-1 rounded-lg text-[10px] font-black uppercase tracking-[0.15em] transition-all relative overflow-hidden ${filterType === t
+                                ? "text-white"
+                                : "text-zinc-500 hover:text-foreground"
                                 }`}
                         >
-                            {t}
+                            {filterType === t && (
+                                <motion.div
+                                    layoutId="active-filter-bg"
+                                    className="absolute inset-0 z-0 bg-gradient-to-r from-blue-600 to-indigo-600 shadow-lg shadow-blue-500/20 rounded-lg"
+                                />
+                            )}
+                            <span className="relative z-10 px-4">{t}</span>
                         </button>
                     ))}
                 </div>
@@ -429,12 +445,14 @@ export default function TransactionsPage() {
                                             ${(tx.Amount ?? (Number(tx["Purchase Price"] || 0) * Number(tx.Quantity || 0) + (isSell ? -Number(tx.Commission || 0) : Number(tx.Commission || 0)))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                         </td>
                                         <td className="px-6 py-5 text-center">
-                                            <button
+                                            <motion.button
+                                                whileHover={{ scale: 1.1, rotate: 5 }}
+                                                whileTap={{ scale: 0.9 }}
                                                 onClick={() => handleDelete(tx.id)}
-                                                className="p-2 text-gray-600 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all active:scale-95"
+                                                className="p-2.5 text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all border border-transparent hover:border-rose-500/20 shadow-sm hover:shadow-rose-500/10"
                                             >
                                                 <Trash2 className="w-4 h-4" />
-                                            </button>
+                                            </motion.button>
                                         </td>
                                     </motion.tr>
                                 );
@@ -452,8 +470,12 @@ export default function TransactionsPage() {
             </div>
 
             {/* Persistence Layer Status */}
-            <div className="text-center text-[10px] text-gray-600 font-bold uppercase tracking-[0.3em] pb-8">
-                Authenticated Persistent Database • Distributed Ledger v3.0
+            <div className="flex items-center justify-center gap-4 pb-8">
+                <div className="h-[1px] w-12 bg-zinc-800" />
+                <div className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.4em]">
+                    Institutional Ledger <span className="text-zinc-700 mx-2">•</span> Precision Tier v3.0
+                </div>
+                <div className="h-[1px] w-12 bg-zinc-800" />
             </div>
 
         </div>

@@ -88,23 +88,21 @@ function PieChart({ data, size = 180 }) {
   }, 0);
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      {slices.map((s, i) => <path key={i} d={s.path} fill={s.color} opacity={.88} stroke="#0a0a14" strokeWidth={1.5} />)}
-      <circle cx={size / 2} cy={size / 2} r={size / 4} fill="#0a0a14" />
+      {slices.map((s, i) => <path key={i} d={s.path} fill={s.color} opacity={.88} stroke="var(--bg)" strokeWidth={1.5} />)}
+      <circle cx={size / 2} cy={size / 2} r={size / 4} fill="var(--bg)" />
     </svg>
   );
 }
 
 function Bar({ value, max = 100, color, height = 5 }) {
   return (
-    <div style={{ background: "#1a1a2e", borderRadius: 4, height, width: "100%", overflow: "hidden" }}>
+    <div style={{ background: "var(--bg2)", borderRadius: 4, height, width: "100%", overflow: "hidden" }}>
       <div style={{ width: `${Math.min((value / max) * 100, 100)}%`, height: "100%", background: color, borderRadius: 4, transition: "width .5s" }} />
     </div>
   );
 }
 
-const ABadge = ({ a }) => <span style={{ display: "inline-block", padding: "1px 5px", borderRadius: 3, fontSize: 11, letterSpacing: 1, background: ACCOUNT_BG[a], border: `1px solid ${ACCOUNT_COLORS[a]}44`, color: ACCOUNT_COLORS[a] }}>{a}</span>;
-const BBadge = ({ b }) => <span style={{ display: "inline-block", padding: "1px 5px", borderRadius: 3, fontSize: 11, letterSpacing: 1, background: (BROKER_COLORS[b] || "#333") + "22", border: `1px solid ${BROKER_COLORS[b] || "#555"}44`, color: BROKER_COLORS[b] || "#999" }}>{b}</span>;
-const TBadge = ({ r }) => <span style={{ display: "inline-block", padding: "1px 5px", borderRadius: 3, fontSize: 11, letterSpacing: 1, background: TAX_COLORS[r] + "18", border: `1px solid ${TAX_COLORS[r]}44`, color: TAX_COLORS[r] }}>{r}</span>;
+// ─────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────
 
@@ -142,6 +140,16 @@ export default function Dashboard() {
   const [theme, setTheme] = useState("dark");
   const isLight = theme === "light";
   const { data: session } = useSession();
+
+  const ABadge = ({ a }) => {
+    const baseBg = ACCOUNT_COLORS[a] || "#00D4FF";
+    return <span style={{ display: "inline-block", padding: "1px 5px", borderRadius: 3, fontSize: 11, letterSpacing: 1, background: isLight ? baseBg + "22" : (ACCOUNT_BG[a] || "#001a2a"), border: `1px solid ${baseBg}44`, color: baseBg }}>{a}</span>;
+  };
+  const BBadge = ({ b }) => {
+    const baseClr = BROKER_COLORS[b] || "#888";
+    return <span style={{ display: "inline-block", padding: "1px 5px", borderRadius: 3, fontSize: 11, letterSpacing: 1, background: isLight ? baseClr + "11" : baseClr + "22", border: `1px solid ${baseClr}44`, color: isLight ? baseClr : (BROKER_COLORS[b] || "#999") }}>{b}</span>;
+  };
+  const TBadge = ({ r }) => <span style={{ display: "inline-block", padding: "1px 5px", borderRadius: 3, fontSize: 11, letterSpacing: 1, background: TAX_COLORS[r] + (isLight ? "22" : "18"), border: `1px solid ${TAX_COLORS[r]}44`, color: TAX_COLORS[r] }}>{r}</span>;
 
   // Clock
   useEffect(() => {
@@ -404,7 +412,7 @@ export default function Dashboard() {
                 onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}
                 style={{ padding: "6px 12px", borderRadius: 6, fontSize: 12, letterSpacing: 1, background: isLight ? "#dde" : "#1a1a44", border: `1px solid ${isLight ? "#bbc" : "#2a2a60"}`, color: isLight ? "#555" : "#aab", cursor: "pointer", fontFamily: "inherit" }}
               >
-                {isLight ? "☀ LIGHT" : "☾ DARK"}
+                {isLight ? "☾ DARK" : "☀ LIGHT"}
               </button>
               {session && (
                 <button
@@ -722,10 +730,10 @@ export default function Dashboard() {
                 ))}
               </div>
             </div>
-            <div style={{ border: "1px solid #1a1a44", borderRadius: 10, overflow: "auto" }}>
-              <div className="hrow" style={{ background: "#09091e", borderBottom: "1px solid #1a1a44" }}>
+            <div style={{ border: "1px solid var(--card-border)", borderRadius: 10, overflow: "auto" }}>
+              <div className="hrow" style={{ background: "var(--bg2)", borderBottom: "1px solid var(--row-border)" }}>
                 {["TICKER", "NAME", "ACCT", "BROKER", "QTY", "AVG COST", "LAST PRICE", "DAY CHG", "MKT VAL (CAD)", "TOTAL G/L", "AS OF"].map((h, i) => (
-                  <div key={i} style={{ fontSize: 13, letterSpacing: 2, color: "#334" }}>{h}</div>
+                  <div key={i} style={{ fontSize: 13, letterSpacing: 2, color: "var(--muted2)" }}>{h}</div>
                 ))}
               </div>
               {filtered.map((h, i) => {
@@ -737,20 +745,20 @@ export default function Dashboard() {
                       <div style={{ width: 4, height: 4, borderRadius: "50%", background: statusColor, flexShrink: 0 }} />
                       <span style={{ color: h.heatColor.text, fontWeight: 500, fontSize: 13 }}>{h.ticker}</span>
                     </div>
-                    <div style={{ fontSize: 12, color: "#8899bb", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{h.name.split("(")[0].trim()}</div>
+                    <div style={{ fontSize: 12, color: "var(--muted)", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{h.name.split("(")[0].trim()}</div>
                     <ABadge a={h.account} />
                     <BBadge b={h.broker} />
-                    <span style={{ color: "#aab" }}>{h.qty % 1 === 0 ? h.qty : h.qty.toFixed(2)}</span>
-                    <span style={{ color: "#667", fontSize: 12 }}>{h.currency === "USD" ? "$" : "C$"}{fmt(h.avgCost, 2)}</span>
+                    <span style={{ color: "var(--muted)" }}>{h.qty % 1 === 0 ? h.qty : h.qty.toFixed(2)}</span>
+                    <span style={{ color: "var(--muted2)", fontSize: 12 }}>{h.currency === "USD" ? "$" : "C$"}{fmt(h.avgCost, 2)}</span>
                     <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 13, color: h.dayChgPct >= 0 ? "#00cc88" : "#ff6655", letterSpacing: .5 }}>
                       {h.currency === "USD" ? "$" : "C$"}{fmt(h.currPrice, 2)}
                     </span>
                     <span style={{ fontSize: 12, color: h.dayChgPct >= 0 ? "#00cc66" : "#ff5544" }}>
                       {h.dayChgPct !== 0 ? (h.dayChgPct >= 0 ? "▲" : "▼") + Math.abs(h.dayChgPct).toFixed(2) + "%" : "—"}
                     </span>
-                    <span style={{ color: "#dde", fontWeight: 500, fontSize: 13 }}>{fmtCAD(h.mktValueCAD)}</span>
+                    <span style={{ color: "var(--text)", fontWeight: 500, fontSize: 13 }}>{fmtCAD(h.mktValueCAD)}</span>
                     <span className={gp >= 0 ? "gl-pos" : "gl-neg"} style={{ fontSize: 13 }}>{gp >= 0 ? "+" : ""}{gp.toFixed(2)}%</span>
-                    <span style={{ fontSize: 11, color: "#334" }}>{h.latestDay}</span>
+                    <span style={{ fontSize: 11, color: "var(--muted2)" }}>{h.latestDay}</span>
                   </div>
                 );
               })}
@@ -762,17 +770,17 @@ export default function Dashboard() {
         {tab === "tax" && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             <div className="card">
-              <div style={{ fontSize: 11, letterSpacing: 3, color: "#335", marginBottom: 10 }}>TAX PLACEMENT · RRSP FULL</div>
+              <div style={{ fontSize: 11, letterSpacing: 3, color: "var(--muted2)", marginBottom: 10 }}>TAX PLACEMENT · RRSP FULL</div>
               {withWeights.sort((a, b) => b.mktValueCAD - a.mktValueCAD).map((h, i) => (
-                <div key={`tax-${i}-${h.ticker}-${h.account}-${h.broker}`} style={{ padding: "9px 0", borderBottom: "1px solid #0f0f22" }}>
+                <div key={`tax-${i}-${h.ticker}-${h.account}-${h.broker}`} style={{ padding: "9px 0", borderBottom: "1px solid var(--row-border)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                       <span style={{ color: h.heatColor.text, fontSize: 12, fontWeight: 500 }}>{h.ticker}</span>
                       <ABadge a={h.account} /><BBadge b={h.broker} />
                     </div>
-                    <div style={{ display: "flex", gap: 5 }}><span style={{ fontSize: 12, color: "#556" }}>{fmtCAD(h.mktValueCAD)}</span><TBadge r={h.taxRating} /></div>
+                    <div style={{ display: "flex", gap: 5 }}><span style={{ fontSize: 12, color: "var(--muted)" }}>{fmtCAD(h.mktValueCAD)}</span><TBadge r={h.taxRating} /></div>
                   </div>
-                  <div style={{ fontSize: 12, color: "#667", lineHeight: 1.5 }}>{
+                  <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>{
                     h.ticker === "AVUV" ? "RRSP (FULL): Treaty-exempt from 15% IRS WHT. Optimal. Hold as-is." :
                       h.ticker === "COST" ? "RRSP (FULL): US stock with tax-deferred compounding. Hold existing lot." :
                         h.ticker === "GLD" ? "Open: No dividends = no WHT issue. Capital gains taxed at 50% inclusion on exit." :
@@ -794,7 +802,7 @@ export default function Dashboard() {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div className="card">
-                <div style={{ fontSize: 11, letterSpacing: 3, color: "#335", marginBottom: 10 }}>PRIORITY ACTIONS (RRSP FULL)</div>
+                <div style={{ fontSize: 11, letterSpacing: 3, color: "var(--muted2)", marginBottom: 10 }}>PRIORITY ACTIONS (RRSP FULL)</div>
                 {[
                   { pri: "HIGH", action: "Stop buying VOO in Open/TFSA", reason: "RRSP full — no WHT-exempt home for new USD ETFs. Route S&P 500 to VFV.TO in TFSA instead.", impact: "Prevent further WHT drag", color: "#FF3366" },
                   { pri: "HIGH", action: "Accept XEF.TO drag — no fix", reason: "EAFE in TFSA loses ~0.48%/yr permanently. RRSP full. Consider swap-based EAFE alternative.", impact: "~$300/yr unrecoverable", color: "#FF6B35" },
@@ -802,25 +810,25 @@ export default function Dashboard() {
                   { pri: "MEDIUM", action: "SLV exit timing — pair with losses", reason: "High unrealized gain. No annual drag. Harvest offsetting losses in same tax year at exit.", impact: "Reduce CG tax", color: "#FFAA44" },
                   { pri: "WATCH", action: "QQQM entry → TFSA only", reason: "US/Iran trigger fires → TFSA is the only sheltered option. 0.60% yield = minimal WHT.", impact: "100% gains tax-free", color: "#00FF88" },
                 ].map(o => (
-                  <div key={o.action} style={{ padding: "9px 0", borderBottom: "1px solid #0f0f22" }}>
+                  <div key={o.action} style={{ padding: "9px 0", borderBottom: "1px solid var(--row-border)" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
                       <span style={{ fontSize: 11, color: o.color, letterSpacing: 1 }}>{o.pri}</span>
-                      <span style={{ fontSize: 11, color: "#00FF88" }}>{o.impact}</span>
+                      <span style={{ fontSize: 11, color: "var(--green)" }}>{o.impact}</span>
                     </div>
-                    <div style={{ fontSize: 13, color: "#dde", marginBottom: 2 }}>{o.action}</div>
-                    <div style={{ fontSize: 12, color: "#667", lineHeight: 1.5 }}>{o.reason}</div>
+                    <div style={{ fontSize: 13, color: "var(--text)", marginBottom: 2 }}>{o.action}</div>
+                    <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>{o.reason}</div>
                   </div>
                 ))}
               </div>
               <div className="card">
-                <div style={{ fontSize: 11, letterSpacing: 3, color: "#335", marginBottom: 8 }}>ANNUAL WHT DRAG ESTIMATE</div>
+                <div style={{ fontSize: 11, letterSpacing: 3, color: "var(--muted2)", marginBottom: 8 }}>ANNUAL WHT DRAG ESTIMATE</div>
                 {[
-                  { label: "XEF.TO (TFSA, EAFE WHT)", drag: withWeights.filter(h => h.ticker === "XEF.TO").reduce((s, h) => s + h.mktValueCAD, 0) * 0.0048, c: "#FF3366" },
-                  { label: "VOO (TFSA, IRS WHT)", drag: withWeights.filter(h => h.ticker === "VOO").reduce((s, h) => s + h.mktValueCAD, 0) * 0.002, c: "#FF6B35" },
-                  { label: "VFV.TO (fund-level WHT)", drag: withWeights.filter(h => h.ticker === "VFV.TO").reduce((s, h) => s + h.mktValueCAD, 0) * 0.002, c: "#FFCC44" },
+                  { label: "XEF.TO (TFSA, EAFE WHT)", drag: withWeights.filter(h => h.ticker === "XEF.TO").reduce((s, h) => s + h.mktValueCAD, 0) * 0.0048, c: "var(--red)" },
+                  { label: "VOO (TFSA, IRS WHT)", drag: withWeights.filter(h => h.ticker === "VOO").reduce((s, h) => s + h.mktValueCAD, 0) * 0.002, c: "var(--red)" },
+                  { label: "VFV.TO (fund-level WHT)", drag: withWeights.filter(h => h.ticker === "VFV.TO").reduce((s, h) => s + h.mktValueCAD, 0) * 0.002, c: "var(--gold)" },
                 ].map(d => (
-                  <div key={d.label} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid #0f0f22" }}>
-                    <span style={{ fontSize: 12, color: "#667" }}>{d.label}</span>
+                  <div key={d.label} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid var(--row-border)" }}>
+                    <span style={{ fontSize: 12, color: "var(--muted)" }}>{d.label}</span>
                     <span style={{ fontSize: 12, color: d.c }}>-{fmtCAD(d.drag)}/yr</span>
                   </div>
                 ))}
@@ -874,36 +882,36 @@ export default function Dashboard() {
         {tab === "dividends" && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             <div className="card">
-              <div style={{ fontSize: 11, letterSpacing: 3, color: "#335", marginBottom: 12 }}>DIVIDEND INCOME BY HOLDING (CAD)</div>
+              <div style={{ fontSize: 11, letterSpacing: 3, color: "var(--muted2)", marginBottom: 12 }}>DIVIDEND INCOME BY HOLDING (CAD)</div>
               {withWeights.filter(h => h.dividendYield > 0).sort((a, b) => b.annualDivCAD - a.annualDivCAD).map((h, i) => (
-                <div key={i} style={{ padding: "8px 0", borderBottom: "1px solid #0f0f22" }}>
+                <div key={i} style={{ padding: "8px 0", borderBottom: "1px solid var(--row-border)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
                     <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
                       <span style={{ color: h.color, fontSize: 11 }}>{h.ticker}</span>
                       <ABadge a={h.account} /><TBadge r={h.taxRating} />
                     </div>
-                    <span style={{ fontSize: 11, color: "#dde" }}>{fmtCAD(h.annualDivCAD)}/yr</span>
+                    <span style={{ fontSize: 11, color: "var(--text)" }}>{fmtCAD(h.annualDivCAD)}/yr</span>
                   </div>
-                  <div style={{ fontSize: 11, color: "#445", marginBottom: 3 }}>Yield {h.dividendYield}% · {fmtCAD(h.annualDivCAD / 12)}/mo</div>
+                  <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 3 }}>Yield {h.dividendYield}% · {fmtCAD(h.annualDivCAD / 12)}/mo</div>
                   <Bar value={h.annualDivCAD} max={metrics.annualDiv} color={h.color} />
                 </div>
               ))}
               <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 10 }}>
-                <span style={{ fontSize: 12, color: "#aab", letterSpacing: 1 }}>TOTAL ANNUAL</span>
+                <span style={{ fontSize: 12, color: "var(--muted)", letterSpacing: 1 }}>TOTAL ANNUAL</span>
                 <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 22, color: "#00FF88" }}>{fmtCAD(metrics.annualDiv)}</span>
               </div>
             </div>
             <div className="card">
-              <div style={{ fontSize: 11, letterSpacing: 3, color: "#335", marginBottom: 12 }}>DRIP PROJECTIONS</div>
+              <div style={{ fontSize: 11, letterSpacing: 3, color: "var(--muted2)", marginBottom: 12 }}>DRIP PROJECTIONS</div>
               {[1, 3, 5, 10, 15, 20].map((yr, index) => {
                 const proj = totalCAD * Math.pow(1 + metrics.wCAGR / 100, yr);
                 const div = proj * (metrics.wYield / 100);
                 return (
-                  <div key={`div-${index}-${yr}`} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #0f0f22" }}>
-                    <span style={{ fontSize: 13, color: "#667" }}>YEAR {yr}</span>
+                  <div key={`div-${index}-${yr}`} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid var(--row-border)" }}>
+                    <span style={{ fontSize: 13, color: "var(--muted)" }}>YEAR {yr}</span>
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 18, color: "#00FF88" }}>{fmtCAD(div)}/yr</div>
-                      <div style={{ fontSize: 11, color: "#334" }}>Portfolio: {fmtCAD(proj)}</div>
+                      <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 18, color: "var(--green)" }}>{fmtCAD(div)}/yr</div>
+                      <div style={{ fontSize: 11, color: "var(--muted2)" }}>Portfolio: {fmtCAD(proj)}</div>
                     </div>
                   </div>
                 );
@@ -916,7 +924,7 @@ export default function Dashboard() {
         {tab === "projection" && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             <div className="card">
-              <div style={{ fontSize: 11, letterSpacing: 3, color: "#335", marginBottom: 14 }}>20-YEAR WEALTH SCENARIOS (CAD)</div>
+              <div style={{ fontSize: 11, letterSpacing: 3, color: "var(--muted2)", marginBottom: 14 }}>20-YEAR WEALTH SCENARIOS (CAD)</div>
               {[
                 { label: "BEAR CASE", cagr: 5.0, color: "#FF3366" },
                 { label: "BASE (YOUR TARGET)", cagr: 8.0, color: "#FFD700" },
@@ -925,14 +933,14 @@ export default function Dashboard() {
               ].map(s => {
                 const proj = totalCAD * Math.pow(1 + s.cagr / 100, 20);
                 return (
-                  <div key={s.label} style={{ padding: "11px 0", borderBottom: "1px solid #0f0f22" }}>
+                  <div key={s.label} style={{ padding: "11px 0", borderBottom: "1px solid var(--row-border)" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
                       <span style={{ fontSize: 12, color: s.color, letterSpacing: 1 }}>{s.label}</span>
-                      <span style={{ fontSize: 12, color: "#445" }}>CAGR {s.cagr.toFixed(1)}%</span>
+                      <span style={{ fontSize: 12, color: "var(--muted)" }}>CAGR {s.cagr.toFixed(1)}%</span>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 5 }}>
                       <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 28, color: s.color }}>{fmtCAD(proj)}</div>
-                      <span style={{ fontSize: 13, color: "#334" }}>{(proj / totalCAD).toFixed(1)}x</span>
+                      <span style={{ fontSize: 13, color: "var(--muted2)" }}>{(proj / totalCAD).toFixed(1)}x</span>
                     </div>
                     <Bar value={proj} max={totalCAD * Math.pow(1.12, 20)} color={s.color} />
                   </div>
