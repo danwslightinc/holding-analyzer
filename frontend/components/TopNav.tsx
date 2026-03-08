@@ -30,8 +30,8 @@ export default function TopNav() {
 
     return (
         <nav className={`sticky top-0 z-50 backdrop-blur-xl border-b px-6 py-2 ${theme === 'dark'
-                ? 'bg-zinc-950/80 border-white/10'
-                : 'bg-white/80 border-black/10'
+            ? 'bg-zinc-950/80 border-white/10'
+            : 'bg-white/80 border-black/10'
             }`}>
             <div className="max-w-[1800px] mx-auto flex items-center justify-between gap-4">
                 {/* Brand + Nav Links */}

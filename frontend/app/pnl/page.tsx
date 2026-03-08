@@ -217,7 +217,7 @@ export default function PnLPage() {
                 <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-blue-500">
                     Profit & Loss
                 </h1>
-                <p className="text-zinc-400 mt-1">Unrealized and realized gains/losses across your portfolio</p>
+                <p className="text-zinc-600 dark:text-zinc-400 mt-1">Unrealized and realized gains/losses across your portfolio</p>
             </div>
 
             {/* Filters */}
@@ -230,7 +230,7 @@ export default function PnLPage() {
                         className="bg-white/5 border border-white/10 text-zinc-300 text-xs rounded-xl block w-full p-2.5 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all hover:bg-white/10"
                     >
                         {brokers.map((b: any) => (
-                            <option key={b} value={b} className="bg-zinc-900">{b === 'All' ? 'All Banks' : b}</option>
+                            <option key={b} value={b} className="bg-white dark:bg-zinc-900 text-black dark:text-zinc-300">{b === 'All' ? 'All Banks' : b}</option>
                         ))}
                     </select>
                 </div>
@@ -243,7 +243,7 @@ export default function PnLPage() {
                         className="bg-white/5 border border-white/10 text-zinc-300 text-xs rounded-xl block w-full p-2.5 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all hover:bg-white/10"
                     >
                         {accountTypes.map((at: any) => (
-                            <option key={at} value={at} className="bg-zinc-900">{at === 'All' ? 'All Accounts' : at}</option>
+                            <option key={at} value={at} className="bg-white dark:bg-zinc-900 text-black dark:text-zinc-300">{at === 'All' ? 'All Accounts' : at}</option>
                         ))}
                     </select>
                 </div>
@@ -266,19 +266,19 @@ export default function PnLPage() {
                 ].map((card: any, i: number) => (
                     <div key={i} className={`glass-panel rounded-2xl p-5 bg-gradient-to-br ${card.bg} border`}>
                         <div className="flex items-center justify-between mb-3">
-                            <span className="text-xs text-zinc-400 font-medium uppercase tracking-wider">{card.label}</span>
+                            <span className="text-xs text-zinc-500 dark:text-zinc-400 font-medium uppercase tracking-wider">{card.label}</span>
                             <card.icon className={`w-4 h-4 ${card.color}`} />
                         </div>
                         <div className={`text-2xl font-bold ${card.color}`}>{card.value}</div>
-                        <div className="text-xs text-zinc-500 mt-1">{card.sub}</div>
+                        <div className="text-xs text-zinc-600 dark:text-zinc-500 mt-1">{card.sub}</div>
                     </div>
                 ))}
             </div>
 
             {/* Bar Chart */}
             <div className="glass-panel rounded-2xl p-6">
-                <h2 className="text-lg font-bold mb-1">Unrealized P&L by Open Position (CAD)</h2>
-                <p className="text-xs text-zinc-500 mb-4">Sorted best to worst. Green = profit, red = loss</p>
+                <h2 className="text-lg font-bold mb-1 text-gray-900 dark:text-white">Unrealized P&L by Open Position (CAD)</h2>
+                <p className="text-xs text-zinc-600 dark:text-zinc-500 mb-4">Sorted best to worst. Green = profit, red = loss</p>
                 <ResponsiveContainer width="100%" height={280}>
                     <BarChart data={chartData} margin={{ top: 8, right: 16, left: 16, bottom: 40 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
@@ -286,9 +286,9 @@ export default function PnLPage() {
                         <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
                         <Tooltip
                             formatter={(v: number | undefined) => [`$${(v ?? 0).toLocaleString("en-CA")} CAD`, "Unrealized PnL"]}
-                            contentStyle={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "12px", color: "#e2e8f0" }}
+                            contentStyle={{ background: "var(--card)", border: "1px solid var(--card-border)", borderRadius: "12px", color: "var(--text)" }}
                         />
-                        <ReferenceLine y={0} stroke="rgba(255,255,255,0.2)" strokeWidth={1} />
+                        <ReferenceLine y={0} stroke="var(--muted2)" strokeWidth={1} />
                         <Bar dataKey="pnl" radius={[4, 4, 0, 0]}>
                             {chartData.map((entry, idx) => (
                                 <Cell key={idx} fill={entry.pnl >= 0 ? "#10b981" : "#f43f5e"} />
@@ -300,16 +300,16 @@ export default function PnLPage() {
 
             {/* Unrealized Table */}
             <div className="glass-panel rounded-2xl overflow-hidden">
-                <div className="p-6 border-b border-white/10">
-                    <h2 className="text-lg font-bold">Open Positions — Unrealized P&L</h2>
-                    <p className="text-xs text-zinc-500 mt-1">Click any column header to sort. Values in CAD.</p>
+                <div className="p-6 border-b border-black/5 dark:border-white/10">
+                    <h2 className="text-lg font-bold text-gray-900 dark:text-white">Open Positions — Unrealized P&L</h2>
+                    <p className="text-xs text-zinc-600 dark:text-zinc-500 mt-1">Click any column header to sort. Values in CAD.</p>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
-                        <thead className="bg-white/5 text-zinc-400 text-xs uppercase tracking-wider">
+                        <thead className="bg-black/5 dark:bg-white/5 text-zinc-600 dark:text-zinc-400 text-xs uppercase tracking-wider">
                             <tr>
                                 <SortTh label="Symbol" sortKey="symbol" cfg={uSort} onSort={handleUSort} align="left" />
-                                <th className="p-4 text-left text-zinc-400 text-xs uppercase tracking-wider whitespace-nowrap">Broker / Account</th>
+                                <th className="p-4 text-left text-zinc-600 dark:text-zinc-400 text-xs uppercase tracking-wider whitespace-nowrap">Broker / Account</th>
                                 <SortTh label="Qty" sortKey="qty" cfg={uSort} onSort={handleUSort} />
                                 <SortTh label="Avg Cost" sortKey="avgCost" cfg={uSort} onSort={handleUSort} />
                                 <SortTh label="Current Price" sortKey="currentPrice" cfg={uSort} onSort={handleUSort} />
@@ -319,7 +319,7 @@ export default function PnLPage() {
                                 <SortTh label="Return %" sortKey="pnlPct" cfg={uSort} onSort={handleUSort} />
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-white/5">
+                        <tbody className="divide-y divide-black/5 dark:divide-white/5">
                             {rows.map((r: any) => {
                                 const isWin = r.pnl >= 0;
                                 const accounts = symbolAccounts[r.symbol] ?? [];
@@ -352,13 +352,13 @@ export default function PnLPage() {
                                                     }) : <span className="text-zinc-600 text-xs">—</span>}
                                             </div>
                                         </td>
-                                        <td className="p-4 text-right text-zinc-400">{r.qty.toLocaleString()}</td>
-                                        <td className="p-4 text-right text-zinc-400">{r.currencyPrefix}{r.avgCost.toFixed(2)}</td>
-                                        <td className="p-4 text-right text-zinc-400">{r.currencyPrefix}{r.currentPrice.toFixed(2)}</td>
-                                        <td className="p-4 text-right text-zinc-300">${r.costBasis.toLocaleString("en-CA", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
-                                        <td className="p-4 text-right text-zinc-300">${r.marketValue.toLocaleString("en-CA", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
-                                        <td className={`p-4 text-right font-semibold ${isWin ? "text-emerald-400" : "text-rose-400"}`}>{fmt(r.pnl)}</td>
-                                        <td className={`p-4 text-right font-semibold ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
+                                        <td className="p-4 text-right text-zinc-600 dark:text-zinc-400">{r.qty.toLocaleString()}</td>
+                                        <td className="p-4 text-right text-zinc-600 dark:text-zinc-400">{r.currencyPrefix}{r.avgCost.toFixed(2)}</td>
+                                        <td className="p-4 text-right text-zinc-600 dark:text-zinc-400">{r.currencyPrefix}{r.currentPrice.toFixed(2)}</td>
+                                        <td className="p-4 text-right text-zinc-900 dark:text-zinc-300">${r.costBasis.toLocaleString("en-CA", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+                                        <td className="p-4 text-right text-zinc-900 dark:text-zinc-300">${r.marketValue.toLocaleString("en-CA", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+                                        <td className={`p-4 text-right font-semibold ${isWin ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>{fmt(r.pnl)}</td>
+                                        <td className={`p-4 text-right font-semibold ${isWin ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
                                             <span className="flex items-center justify-end gap-1">
                                                 {isWin ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
                                                 {r.pnlPct.toFixed(2)}%
@@ -368,9 +368,9 @@ export default function PnLPage() {
                                 );
                             })}
                         </tbody>
-                        <tfoot className="bg-white/5 font-bold border-t border-white/10">
+                        <tfoot className="bg-black/5 dark:bg-white/5 font-bold border-t border-black/10 dark:border-white/10">
                             <tr>
-                                <td className="p-4 text-zinc-300" colSpan={5}>Portfolio Total</td>
+                                <td className="p-4 text-zinc-900 dark:text-zinc-300" colSpan={5}>Portfolio Total</td>
                                 <td className="p-4 text-right text-zinc-300">${totalCostBasis.toLocaleString("en-CA", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
                                 <td className="p-4 text-right text-zinc-300">${(totalCostBasis + totalUnrealizedPnL).toLocaleString("en-CA", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
                                 <td className={`p-4 text-right ${totalUnrealizedPnL >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{fmt(totalUnrealizedPnL)}</td>
