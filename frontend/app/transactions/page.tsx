@@ -151,7 +151,7 @@ export default function TransactionsPage() {
     );
 
     return (
-        <div className="p-8 max-w-[1600px] mx-auto space-y-8 font-sans">
+        <div className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-8 font-sans">
 
             {/* Header: Institutional Grade */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-2">

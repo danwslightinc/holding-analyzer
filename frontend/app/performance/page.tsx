@@ -212,7 +212,7 @@ export default function PerformancePage() {
     if (!rawHistory || (rawHistory as PerformancePoint[]).length === 0) return <div className="p-10 text-center text-red-500">No historical data available.</div>;
 
     return (
-        <div className="p-8 max-w-[1600px] mx-auto space-y-8 font-sans">
+        <div className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-8 font-sans">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                 <div>
                     <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">

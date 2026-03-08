@@ -46,7 +46,7 @@ export default function DividendsPage() {
     const maxVal = Math.max(...data.calendar.map((d: any) => d.total));
 
     return (
-        <div className="p-8 max-w-[1600px] mx-auto space-y-8">
+        <div className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-8">
             <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-cyan-500">
                 Projected Dividends
             </h1>
