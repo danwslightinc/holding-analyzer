@@ -15,10 +15,10 @@ def get_yq_ticker(symbols):
     try:
         from curl_cffi import requests
         session = requests.Session(impersonate="chrome110")
-        return Ticker(symbols, session=session)
+        return Ticker(symbols, session=session, timeout=10)
     except Exception as e:
         print(f"Warning: curl_cffi failed ({e}), falling back to direct Ticker")
-        return Ticker(symbols)
+        return Ticker(symbols, timeout=10)
 
 # ETF Look-Through Weights (Approximate)
 ETF_SECTOR_WEIGHTS = {
@@ -147,29 +147,63 @@ def get_current_prices(symbols):
     
     try:
         from yahooquery import Ticker
-        # Set timeout to prevent Vercel hanging
+        # Attempt 1: yahooquery with Chrome Spoofing
         t = get_yq_ticker(symbols)
         price_data = t.price
         
-        if not price_data or isinstance(price_data, str):
-            print(f"Failed to fetch prices: {price_data}")
-            return {}
+        if price_data and isinstance(price_data, dict):
+            for sym in symbols:
+                sym_data = price_data.get(sym)
+                if isinstance(sym_data, dict):
+                    p = sym_data.get('regularMarketPrice')
+                    if p is not None:
+                        prices[sym] = float(p)
+                        continue
             
+        # Attempt 2: If we are still missing prices, try yfinance as a secondary fallback
+        missing_symbols = [s for s in symbols if s not in prices]
+        if missing_symbols:
+            print(f"  ⚠️  YQ failed or missing items for {missing_symbols}. Trying yfinance fallback...")
+            try:
+                # Use a slower but more reliable single-thread download for fallback
+                data = yf.download(missing_symbols, period="1d", progress=False, threads=False)
+                if not data.empty:
+                    if len(missing_symbols) == 1:
+                        # Single symbol handler
+                        try:
+                            val = data['Close'].iloc[-1]
+                            p = float(val.iloc[0]) if hasattr(val, 'iloc') and isinstance(val, pd.Series) else float(val)
+                            if not np.isnan(p) and p > 0:
+                                prices[missing_symbols[0]] = p
+                        except: pass
+                    else:
+                        # Multi symbol handler
+                        last_row = data['Close'].iloc[-1]
+                        for sym in missing_symbols:
+                            try:
+                                p = float(last_row[sym])
+                                if not np.isnan(p) and p > 0:
+                                    prices[sym] = p
+                            except: pass
+            except Exception as yfe:
+                print(f"  ❌ yfinance fallback also failed: {yfe}")
+
+        # Validation: Final check for any $0 and print summary
         for sym in symbols:
-            # Check if the symbol data is a valid dict
-            sym_data = price_data.get(sym)
-            if isinstance(sym_data, dict):
-                p = sym_data.get('regularMarketPrice')
-                if p is not None:
-                    prices[sym] = float(p)
-                    continue
-            print(f"Warning: No valid price returned for {sym}")
+            if sym not in prices:
+                print(f"  ❌ ERROR: Could not resolve price for {sym}")
+                prices[sym] = 0.0
+            elif prices[sym] == 0:
+                print(f"  ⚠️  WARNING: Resolved price for {sym} is exactly 0.0")
 
         return prices
 
     except Exception as e:
-        print(f"Error fetching prices via yahooquery: {e}")
-        return {}
+        print(f"🔥 Critical error in get_current_prices: {e}")
+        import traceback
+        traceback.print_exc()
+        # Ensure we return a dict with 0.0s rather than crashing
+        return {s: 0.0 for s in symbols}
 
 def get_weekly_changes(symbols):
     """
@@ -231,11 +265,24 @@ def get_usd_to_cad_rate():
     Uses 'CAD=X'.
     """
     try:
+        # Try primary route: get_current_prices (which uses YQ + Chrome Spoofing)
         from market_data import get_current_prices
         prices = get_current_prices(['CAD=X'])
-        rate = prices.get('CAD=X')
-        if rate and rate > 0:
+        rate = prices.get('CAD=X', 0.0)
+        
+        if rate and rate > 1.0:
             return float(rate)
+            
+        # Try secondary route: direct yahooquery modules if price was missing
+        print("  ⚠️  Primary FX fetch failed. Trying secondary yahooquery module...")
+        t = get_yq_ticker('CAD=X')
+        detail = t.summary_detail.get('CAD=X', {})
+        rate = detail.get('previousClose') or detail.get('bid') or detail.get('ask')
+        
+        if rate and rate > 1.0:
+            return float(rate)
+
+        print("  ⚠️  Secondary FX fetch failed. Returning stable fallback 1.40")
         return 1.40 
     except Exception as e:
         print(f"Error fetching exchange rate: {e}")
