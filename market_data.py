@@ -6,6 +6,20 @@ import numpy as np
 import time
 from backend.cache import cache_result, prices_cache, fundamentals_cache, technicals_cache, news_cache, dividend_cache, fx_cache, history_cache
 
+def get_yq_ticker(symbols):
+    """
+    Returns a yahooquery Ticker instance initialized with a curl_cffi requests session
+    to successfully evade Yahoo Finance TLS fingerprinting blocks and IP Rate Limits.
+    asynchronous=True is forbidden here since aiohttp ignores curl_cffi.
+    """
+    try:
+        from curl_cffi import requests
+        session = requests.Session(impersonate="chrome110")
+        return Ticker(symbols, session=session)
+    except Exception as e:
+        print(f"Warning: curl_cffi failed ({e}), falling back to direct Ticker")
+        return Ticker(symbols)
+
 # ETF Look-Through Weights (Approximate)
 ETF_SECTOR_WEIGHTS = {
     'VOO': {
@@ -134,7 +148,7 @@ def get_current_prices(symbols):
     try:
         from yahooquery import Ticker
         # Set timeout to prevent Vercel hanging
-        t = Ticker(symbols, asynchronous=True, timeout=5)
+        t = get_yq_ticker(symbols)
         price_data = t.price
         
         if not price_data or isinstance(price_data, str):
@@ -165,7 +179,7 @@ def get_weekly_changes(symbols):
     if not symbols: return {}
     
     try:
-        t = Ticker(symbols, timeout=5)
+        t = get_yq_ticker(symbols)
         # Fetch 5 days of history
         hist = t.history(period="5d")
         
@@ -195,7 +209,7 @@ def get_daily_changes(symbols):
     """
     if not symbols: return {}
     try:
-        t = Ticker(symbols, timeout=5)
+        t = get_yq_ticker(symbols)
         price_data = t.price
         changes = {}
         for sym in symbols:
@@ -239,7 +253,7 @@ def get_market_indices_change():
     }
     
     try:
-        t = Ticker(list(indices.keys()), timeout=5)
+        t = get_yq_ticker(list(indices.keys()))
         hist = t.history(period="5d")
         
         changes = {}
@@ -285,7 +299,7 @@ def get_technical_data(symbols):
     print(f"Fetching technical data (RSI & Patterns) for {len(symbols)} symbols...")
     
     try:
-        t = Ticker(symbols, asynchronous=True, timeout=5)
+        t = get_yq_ticker(symbols)
         # Fetch enough history for SMA 200
         hist = t.history(period="1y")
         
@@ -409,7 +423,7 @@ def get_latest_news(symbols):
     news_map = {}
     
     try:
-        t = Ticker(symbols, timeout=5)
+        t = get_yq_ticker(symbols)
         all_news = t.news(20) # Get a batch of news
         
         # Check if all_news is a valid list of dictionaries
@@ -468,7 +482,7 @@ def get_dividend_calendar(symbols):
     div_calendar = {}
     
     try:
-        t = Ticker(symbols, asynchronous=True, timeout=5)
+        t = get_yq_ticker(symbols)
         # Fetch 1 year of dividends
         all_divs = t.dividend_history(start=(datetime.now() - timedelta(days=366)).strftime('%Y-%m-%d'))
         
@@ -533,7 +547,7 @@ def get_fundamental_data(symbols):
     }
 
     try:
-        t = Ticker(symbols, asynchronous=True, timeout=5)
+        t = get_yq_ticker(symbols)
         # Fetch multiple modules at once
         modules = 'summaryDetail assetProfile quoteType defaultKeyStatistics calendarEvents financialData'
         all_data = t.get_modules(modules)
@@ -623,7 +637,7 @@ def get_portfolio_history(holdings_df):
     
     print(f"Fetching 10Y history for performance analysis via yahooquery...")
     try:
-        t = Ticker(all_tickers, asynchronous=True, timeout=8)
+        t = get_yq_ticker(all_tickers)
         # Fetch 10 years of history
         hist = t.history(start=start_date)
         
