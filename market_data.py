@@ -132,36 +132,29 @@ def get_current_prices(symbols):
     prices = {}
     
     try:
-        data = yf.download(symbols, period="1d", progress=False)
+        from yahooquery import Ticker
+        # Set timeout to prevent Vercel hanging
+        t = Ticker(symbols, asynchronous=True, timeout=5)
+        price_data = t.price
         
-        # Depending on yfinance version and single/multi symbol, data['Close'] could be a Series or DataFrame
-        if len(symbols) == 1:
-            try:
-                closes = data['Close'].iloc[-1]
-                # If only 1 symbol, it might just return the scalar
-                p = float(closes.iloc[0]) if isinstance(closes, pd.Series) else float(closes)
-                prices[symbols[0]] = p if not np.isnan(p) else 0.0
-            except Exception as e:
-                print(f"Failed extracting single symbol {symbols[0]}: {e}")
-                prices[symbols[0]] = 0.0
-        else:
-            try:
-                last_row = data['Close'].iloc[-1]
-                for sym in symbols:
-                    try:
-                        p = float(last_row[sym])
-                        prices[sym] = p if not np.isnan(p) else 0.0
-                    except Exception as inner_e:
-                        print(f"Failed to extract price for {sym}: {inner_e}")
-                        prices[sym] = 0.0
-            except Exception as e:
-                print(f"Failed extracting multi-symbol row: {e}")
-                for sym in symbols: prices[sym] = 0.0
-                
+        if not price_data or isinstance(price_data, str):
+            print(f"Failed to fetch prices: {price_data}")
+            return {}
+            
+        for sym in symbols:
+            # Check if the symbol data is a valid dict
+            sym_data = price_data.get(sym)
+            if isinstance(sym_data, dict):
+                p = sym_data.get('regularMarketPrice')
+                if p is not None:
+                    prices[sym] = float(p)
+                    continue
+            print(f"Warning: No valid price returned for {sym}")
+
         return prices
 
     except Exception as e:
-        print(f"Error fetching prices via yfinance: {e}")
+        print(f"Error fetching prices via yahooquery: {e}")
         return {}
 
 def get_weekly_changes(symbols):
