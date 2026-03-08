@@ -23,28 +23,34 @@ export default function TopNav() {
     const { theme, toggleTheme } = useTheme();
     const { data: session } = useSession();
 
-    // Don't render on login page
+    // Don't render on the home page on desktop — Sidebar handles it.
+    // On mobile, we NEED it for navigation.
+    // Note: Since we can't easily detect screen width in a server component (or before mount),
+    // we let it render and handle visibility in the JSX using Tailwind classes.
     if (pathname === "/login") return null;
-    // Don't render on the home page — Dashboard has its own nav
-    if (pathname === "/") return null;
 
     return (
-        <nav className={`sticky top-0 z-50 backdrop-blur-xl border-b px-6 py-2 ${theme === 'dark'
+        <nav className={`md:hidden sticky top-0 z-50 backdrop-blur-xl border-b px-6 py-2 ${theme === 'dark'
             ? 'bg-zinc-950/80 border-white/10'
             : 'bg-white/80 border-black/10'
             }`}>
             <div className="max-w-[1800px] mx-auto flex items-center justify-between gap-4">
-                {/* Brand + Nav Links */}
-                <div className="flex items-center gap-1">
+                {/* Brand / Logo - Only visible on Mobile TopNav */}
+                <div className="flex md:hidden items-center gap-2">
+                    <span className="text-sm font-black tracking-tighter text-blue-500">DL</span>
+                </div>
+
+                {/* Mobile Navigation - Horizontal Scrollable Bar */}
+                <div className="flex flex-1 md:hidden items-center gap-1 overflow-x-auto no-scrollbar py-1">
                     {NAV_ITEMS.map((item) => {
                         const isActive = pathname === item.href;
                         return (
                             <Link
                                 key={item.href}
                                 href={item.href}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-bold tracking-wider transition-all ${isActive
+                                className={`px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest transition-all whitespace-nowrap ${isActive
                                     ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-                                    : "text-zinc-500 hover:text-zinc-200 hover:bg-white/5"
+                                    : "text-zinc-500 hover:text-zinc-200"
                                     }`}
                             >
                                 {item.icon} {item.name.toUpperCase()}
@@ -54,7 +60,7 @@ export default function TopNav() {
                 </div>
 
                 {/* Right side: sync + theme + user */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 ml-auto">
                     <button
                         onClick={() => refresh(true)}
                         disabled={loading}

@@ -342,6 +342,32 @@ export default function Dashboard() {
         .tab.on{background:var(--tab-bg);color:var(--accent)}
         .tab:hover:not(.on){color:var(--text)}
         .hrow{display:grid;grid-template-columns:130px 1fr 65px 68px 72px 88px 100px 90px 100px 90px 82px;gap:6px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--row-border);transition:background .15s;font-size:13px}
+        
+        /* ── MEDIA QUERIES FOR RESPONSIVENESS ── */
+        @media (max-width: 1200px) {
+          .hrow { grid-template-columns: 100px 1fr 60px 60px 80px 80px 80px 80px; }
+          .hrow > *:nth-child(n+9) { display: none; }
+        }
+        @media (max-width: 1024px) {
+          .stat-grid { grid-template-columns: repeat(3, 1fr) !important; }
+        }
+        @media (max-width: 768px) {
+          .dash-header { display: none !important; } /* Hide the internal dashboard header as TopNav covers it */
+          .tabs-container { padding: 10px 20px !important; border-bottom: 1px solid var(--header-border); background: var(--header-bg); position: sticky; top: 48px; z-index: 40; }
+          .stat-grid { grid-template-columns: repeat(2, 1fr) !important; padding: 0 16px !important; }
+          .hrow { grid-template-columns: 80px 1fr 65px 65px !important; }
+          .hrow > *:nth-child(n+5) { display: none; }
+          .heat-tile { width: 100% !important; min-height: 140px !important; }
+          .card-split { grid-template-columns: 1fr !important; }
+          .content-container { padding: 10px 16px !important; }
+        }
+        @media (max-width: 480px) {
+          .stat-grid { grid-template-columns: 1fr !important; }
+          .heat-tile { width: 100% !important; }
+          .hrow { grid-template-columns: 60px 1fr 55px !important; font-size: 11px; }
+          .hrow > *:nth-child(4) { display: none; }
+        }
+
         .hrow:hover{background:var(--row-hover)}
         .pill{padding:4px 10px;border-radius:10px;font-size:12px;letter-spacing:1px;cursor:pointer;border:1px solid transparent;font-family:inherit;transition:all .15s}
         .gl-pos{color:var(--green)}.gl-neg{color:var(--red)}
@@ -395,17 +421,38 @@ export default function Dashboard() {
         .dash-embed [class*="rounded-2xl"]{border-radius:12px !important}
         .dash-embed [class*="rounded-xl"]{border-radius:10px !important}
         .dash-embed .animate-pulse{color:var(--accent) !important}
+        
+        @media (max-width: 1024px) {
+          .stat-grid { grid-template-columns: repeat(3, 1fr) !important; }
+        }
+        @media (max-width: 768px) {
+          .dash-header { flex-direction: column !important; gap: 12px !important; align-items: stretch !important; padding: 12px 16px !important; }
+          .dash-header > div:nth-child(2) { text-align: left !important; display: flex; flex-direction: column; align-items: flex-start !important; }
+          .clock-area { align-items: flex-start !important; }
+          .stat-grid { grid-template-columns: repeat(2, 1fr) !important; padding: 0 16px !important; }
+          .tabs-container { overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; padding: 8px 16px !important; gap: 8px !important; background: var(--header-bg); border-bottom: 1px solid var(--header-border); position: sticky; top: 0; z-index: 50; }
+          .tab { font-size: 11px !important; padding: 6px 12px !important; border-radius: 4px !important; border: 1px solid var(--muted2) !important; }
+          .tab.on { border-color: var(--accent) !important; }
+          .hrow { grid-template-columns: 80px 1fr 60px 60px !important; font-size: 11px !important; }
+          .hrow > *:nth-child(n+5) { display: none !important; }
+          .heat-tile { width: 100% !important; min-height: 120px !important; }
+          .card-split { grid-template-columns: 1fr !important; }
+          .content-container { padding: 12px 16px !important; }
+        }
+        @media (max-width: 480px) {
+          .stat-grid { grid-template-columns: 1fr !important; }
+        }
       `}</style>
 
       {/* ── HEADER ── */}
-      <div style={{ background: "var(--header-bg)", borderBottom: "1px solid var(--header-border)", padding: "18px 26px 0" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+      <div style={{ background: "var(--header-bg)", borderBottom: "1px solid var(--header-border)", padding: "18px 26px 0" }} className="dash-header-wrap">
+        <div className="dash-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
           <div>
             <div style={{ fontSize: 11, letterSpacing: 4, color: "var(--muted2)", marginBottom: 4 }}>REAL-TIME PRICES · CIBC + RBC + TD · TFSA + OPEN · RRSP FULL</div>
             <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 38, letterSpacing: 3, color: "var(--text)", lineHeight: 1 }}>LONG-TERM WEALTH ENGINE</div>
             <div style={{ fontSize: 11, color: "var(--muted2)", marginTop: 4, letterSpacing: 2 }}>20-YEAR HORIZON · 8% CAGR TARGET · USD/CAD {usdcad.toFixed(5)}</div>
           </div>
-          <div style={{ textAlign: "right" }}>
+          <div className="clock-area" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 38, color: "var(--accent)", letterSpacing: 2, lineHeight: 1 }}>{clockStr}</div>
               <button
@@ -478,7 +525,7 @@ export default function Dashboard() {
         </div>
 
         {/* METRICS BAR */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2, marginBottom: -1 }}>
+        <div className="stat-grid" style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 14, marginBottom: 20 }}>
           {[
             { label: "TOTAL VALUE (CAD)", value: fmtCAD(totalCAD), color: "#00D4FF" },
             { label: "UNREALIZED G/L", value: `${totalGLpct >= 0 ? "+" : ""}${totalGLpct.toFixed(2)}%`, color: totalGLpct >= 0 ? "#00FF88" : "#FF4455" },
@@ -494,7 +541,7 @@ export default function Dashboard() {
             </div>
           ))}
         </div>
-        <div style={{ display: "flex", gap: 2, marginTop: 10, flexWrap: "wrap" }}>
+        <div className="tabs-container" style={{ display: "flex", gap: 2, marginTop: 10, flexWrap: "wrap" }}>
           {tabs.map(t => {
             const labels = {
               heatmap: "▦ HEATMAP", overview: "OVERVIEW", holdings: "HOLDINGS",
@@ -512,7 +559,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── CONTENT ── */}
-      <div style={{ padding: "18px 26px" }}>
+      <div className="content-container" style={{ padding: "18px 26px" }}>
 
         {/* ════ HEATMAP */}
         {tab === "heatmap" && (
@@ -880,7 +927,7 @@ export default function Dashboard() {
 
         {/* ════ DIVIDENDS */}
         {tab === "dividends" && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <div className="card-split" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             <div className="card">
               <div style={{ fontSize: 11, letterSpacing: 3, color: "var(--muted2)", marginBottom: 12 }}>DIVIDEND INCOME BY HOLDING (CAD)</div>
               {withWeights.filter(h => h.dividendYield > 0).sort((a, b) => b.annualDivCAD - a.annualDivCAD).map((h, i) => (
@@ -922,7 +969,7 @@ export default function Dashboard() {
 
         {/* ════ PROJECTION */}
         {tab === "projection" && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <div className="card-split" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             <div className="card">
               <div style={{ fontSize: 11, letterSpacing: 3, color: "var(--muted2)", marginBottom: 14 }}>20-YEAR WEALTH SCENARIOS (CAD)</div>
               {[

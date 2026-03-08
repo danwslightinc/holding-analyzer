@@ -80,7 +80,7 @@ export default function TradeAnalysisPage() {
     }));
 
     return (
-        <div className="p-8 max-w-[1400px] mx-auto space-y-8">
+        <div className="p-4 md:p-8 max-w-[1400px] mx-auto space-y-8">
             {/* Portseido-style Top Header */}
             <div>
                 <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-500">

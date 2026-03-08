@@ -210,7 +210,7 @@ export default function PnLPage() {
     }, 0);
 
     return (
-        <div className="p-8 max-w-[1400px] mx-auto space-y-8">
+        <div className="p-4 md:p-8 max-w-[1400px] mx-auto space-y-8">
 
             {/* Header */}
             <div>
@@ -279,23 +279,25 @@ export default function PnLPage() {
             <div className="glass-panel rounded-2xl p-6">
                 <h2 className="text-lg font-bold mb-1 text-gray-900 dark:text-white">Unrealized P&L by Open Position (CAD)</h2>
                 <p className="text-xs text-zinc-600 dark:text-zinc-500 mb-4">Sorted best to worst. Green = profit, red = loss</p>
-                <ResponsiveContainer width="100%" height={280}>
-                    <BarChart data={chartData} margin={{ top: 8, right: 16, left: 16, bottom: 40 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                        <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#9ca3af" }} angle={-35} textAnchor="end" interval={0} />
-                        <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-                        <Tooltip
-                            formatter={(v: number | undefined) => [`$${(v ?? 0).toLocaleString("en-CA")} CAD`, "Unrealized PnL"]}
-                            contentStyle={{ background: "var(--card)", border: "1px solid var(--card-border)", borderRadius: "12px", color: "var(--text)" }}
-                        />
-                        <ReferenceLine y={0} stroke="var(--muted2)" strokeWidth={1} />
-                        <Bar dataKey="pnl" radius={[4, 4, 0, 0]}>
-                            {chartData.map((entry, idx) => (
-                                <Cell key={idx} fill={entry.pnl >= 0 ? "#10b981" : "#f43f5e"} />
-                            ))}
-                        </Bar>
-                    </BarChart>
-                </ResponsiveContainer>
+                <div className="h-[280px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData} margin={{ top: 8, right: 16, left: 16, bottom: 40 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                            <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#9ca3af" }} angle={-35} textAnchor="end" interval={0} />
+                            <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
+                            <Tooltip
+                                formatter={(v: number | undefined) => [`$${(v ?? 0).toLocaleString("en-CA")} CAD`, "Unrealized PnL"]}
+                                contentStyle={{ background: "var(--card)", border: "1px solid var(--card-border)", borderRadius: "12px", color: "var(--text)" }}
+                            />
+                            <ReferenceLine y={0} stroke="var(--muted2)" strokeWidth={1} />
+                            <Bar dataKey="pnl" radius={[4, 4, 0, 0]}>
+                                {chartData.map((entry, idx) => (
+                                    <Cell key={idx} fill={entry.pnl >= 0 ? "#10b981" : "#f43f5e"} />
+                                ))}
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
             </div>
 
             {/* Unrealized Table */}

@@ -175,7 +175,7 @@ export default function QuantmentalPage() {
     }
 
     return (
-        <div className="p-8 max-w-[1800px] mx-auto space-y-6">
+        <div className="p-4 md:p-8 max-w-[1800px] mx-auto space-y-6">
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
