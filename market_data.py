@@ -220,13 +220,14 @@ def get_daily_changes(symbols):
 @cache_result(fx_cache)
 def get_usd_to_cad_rate():
     """
-    Fetches the current USD to CAD exchange rate using yahooquery.
+    Fetches the current USD to CAD exchange rate safely.
     Uses 'CAD=X'.
     """
     try:
-        t = Ticker("CAD=X")
-        rate = t.price.get('CAD=X', {}).get('regularMarketPrice')
-        if rate:
+        from market_data import get_current_prices
+        prices = get_current_prices(['CAD=X'])
+        rate = prices.get('CAD=X')
+        if rate and rate > 0:
             return float(rate)
         return 1.40 
     except Exception as e:
