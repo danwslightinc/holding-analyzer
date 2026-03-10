@@ -1,24 +1,10 @@
 import yfinance as yf
-from yahooquery import Ticker
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 import time
+import concurrent.futures
 from backend.cache import cache_result, prices_cache, fundamentals_cache, technicals_cache, news_cache, dividend_cache, fx_cache, history_cache
-
-def get_yq_ticker(symbols):
-    """
-    Returns a yahooquery Ticker instance initialized with a curl_cffi requests session
-    to successfully evade Yahoo Finance TLS fingerprinting blocks and IP Rate Limits.
-    asynchronous=True is forbidden here since aiohttp ignores curl_cffi.
-    """
-    try:
-        from curl_cffi import requests
-        session = requests.Session(impersonate="chrome110")
-        return Ticker(symbols, session=session, timeout=10)
-    except Exception as e:
-        print(f"Warning: curl_cffi failed ({e}), falling back to direct Ticker")
-        return Ticker(symbols, timeout=10)
 
 # ETF Look-Through Weights (Approximate)
 ETF_SECTOR_WEIGHTS = {
@@ -60,273 +46,161 @@ ETF_SECTOR_WEIGHTS = {
 }
 
 def find_purchase_date_from_price(symbol, purchase_price, tolerance=0.05, min_days_ago=30):
-    """
-    Finds the most recent date when a stock was at or below the purchase price.
-    Prefers dates that are at least min_days_ago in the past to avoid unrealistic short-term gains.
-    
-    Args:
-        symbol: Stock ticker symbol
-        purchase_price: The price paid for the stock
-        tolerance: Price tolerance (5% by default) to account for price fluctuations
-        min_days_ago: Minimum days ago to consider (default 30 days)
-    
-    Returns:
-        datetime object of estimated purchase date, or None if not found
-    """
     try:
-        # Skip special symbols that don't have meaningful historical data
         if symbol in ['CAD=X', 'CASH.TO']:
             return None
-            
-        # Fetch maximum available historical data (typically 20-30 years for most stocks)
         ticker = yf.Ticker(symbol)
         hist = ticker.history(period="max")
-        
         if hist.empty:
-            print(f"  ⚠️  No historical data for {symbol}, using CSV date")
             return None
-        
-        # Calculate price range with tolerance
-        # We look for when the stock was at or below purchase price (plus tolerance)
         max_price = purchase_price * (1 + tolerance)
-        
-        # Calculate cutoff date (must be at least min_days_ago in the past)
         cutoff_date = datetime.now() - timedelta(days=min_days_ago)
-        
-        # Filter for dates where Close price was <= max_price AND before cutoff
         matching_dates = hist[hist['Close'] <= max_price]
-        
-        # Convert index to naive datetimes for comparison
         matching_dates_naive = matching_dates.copy()
         matching_dates_naive.index = matching_dates_naive.index.tz_localize(None) if matching_dates_naive.index.tz else matching_dates_naive.index
-        
-        # Filter to only dates before cutoff
         old_matches = matching_dates_naive[matching_dates_naive.index < cutoff_date]
-        
         if not old_matches.empty:
-            # Prefer the most recent date that's still older than min_days_ago
             purchase_date = old_matches.index[-1]
         elif not matching_dates.empty:
-            # If no old matches, but there are recent matches, use CSV date instead
-            # This avoids unrealistic short-term CAGRs
-            print(f"  ⚠️  {symbol} only at ${purchase_price:.2f} in last {min_days_ago} days, using CSV date")
             return None
         else:
-            # Stock never traded at or below this price in available history
-            print(f"  ⚠️  {symbol} never at ${purchase_price:.2f} in available history, using CSV date")
             return None
-        
-        # Convert to naive datetime
         if hasattr(purchase_date, 'to_pydatetime'):
             purchase_date = purchase_date.to_pydatetime()
         if hasattr(purchase_date, 'replace'):
             purchase_date = purchase_date.replace(tzinfo=None)
-        
-        # Sanity check: date shouldn't be in the future
         if purchase_date > datetime.now():
-            print(f"  ⚠️  {symbol} calculated date is in future, using CSV date")
             return None
-            
         return purchase_date
-        
     except Exception as e:
-        print(f"  ⚠️  Error finding purchase date for {symbol}: {e}")
         return None
 
 @cache_result(prices_cache)
 def get_current_prices(symbols):
-    """
-    Fetches real-time prices for a list of symbols using yfinance.
-    Returns a dictionary {symbol: price}.
-    """
-    if not symbols:
-        return {}
-
-    print(f"Fetching prices for: {' '.join(symbols)}...")
+    if not symbols: return {}
+    print(f"Fetching prices for: {' '.join(symbols)} via yfinance...")
     prices = {}
-    
     try:
-        from yahooquery import Ticker
-        # Attempt 1: yahooquery with Chrome Spoofing
-        t = get_yq_ticker(symbols)
-        price_data = t.price
-        
-        if price_data and isinstance(price_data, dict):
-            for sym in symbols:
-                sym_data = price_data.get(sym)
-                if isinstance(sym_data, dict):
-                    p = sym_data.get('regularMarketPrice')
-                    if p is not None:
-                        prices[sym] = float(p)
-                        continue
-            
-        # Attempt 2: If we are still missing prices, try yfinance as a secondary fallback
-        missing_symbols = [s for s in symbols if s not in prices]
-        if missing_symbols:
-            print(f"  ⚠️  YQ failed or missing items for {missing_symbols}. Trying yfinance fallback...")
-            try:
-                # Use a slower but more reliable single-thread download for fallback
-                data = yf.download(missing_symbols, period="1d", progress=False, threads=False)
-                if not data.empty:
-                    if len(missing_symbols) == 1:
-                        # Single symbol handler
-                        try:
-                            val = data['Close'].iloc[-1]
-                            p = float(val.iloc[0]) if hasattr(val, 'iloc') and isinstance(val, pd.Series) else float(val)
-                            if not np.isnan(p) and p > 0:
-                                prices[missing_symbols[0]] = p
-                        except: pass
-                    else:
-                        # Multi symbol handler
-                        last_row = data['Close'].iloc[-1]
-                        for sym in missing_symbols:
-                            try:
-                                p = float(last_row[sym])
-                                if not np.isnan(p) and p > 0:
-                                    prices[sym] = p
-                            except: pass
-            except Exception as yfe:
-                print(f"  ❌ yfinance fallback also failed: {yfe}")
-
-        # Validation: Final check for any $0 and print summary
+        data = yf.download(symbols, period="1d", progress=False, threads=True)
+        if not data.empty:
+            if len(symbols) == 1:
+                val = data['Close'].iloc[-1]
+                p = float(val.iloc[0]) if hasattr(val, 'iloc') and isinstance(val, pd.Series) else float(val)
+                if not np.isnan(p) and p > 0:
+                    prices[symbols[0]] = p
+            else:
+                last_row = data['Close'].iloc[-1]
+                for sym in symbols:
+                    try:
+                        p = float(last_row[sym])
+                        if not np.isnan(p) and p > 0: prices[sym] = p
+                    except: pass
         for sym in symbols:
             if sym not in prices:
-                print(f"  ❌ ERROR: Could not resolve price for {sym}")
                 prices[sym] = 0.0
-            elif prices[sym] == 0:
-                print(f"  ⚠️  WARNING: Resolved price for {sym} is exactly 0.0")
-
         return prices
-
     except Exception as e:
-        print(f"🔥 Critical error in get_current_prices: {e}")
-        import traceback
-        traceback.print_exc()
-        # Ensure we return a dict with 0.0s rather than crashing
+        print(f"Error in get_current_prices: {e}")
         return {s: 0.0 for s in symbols}
 
 def get_weekly_changes(symbols):
-    """
-    Fetches 5-day history and calculates % change using yahooquery.
-    Returns dict: {Symbol: percent_change_float}
-    """
     if not symbols: return {}
-    
     try:
-        t = get_yq_ticker(symbols)
-        # Fetch 5 days of history
-        hist = t.history(period="5d")
-        
+        data = yf.download(symbols, period="5d", progress=False)
         changes = {}
-        
-        for sym in symbols:
-            if sym in hist.index.levels[0] if isinstance(hist.index, pd.MultiIndex) else sym in hist.index:
-                sym_hist = hist.xs(sym) if isinstance(hist.index, pd.MultiIndex) else hist
-                if len(sym_hist) >= 2:
-                    start = float(sym_hist['close'].iloc[0])
-                    end = float(sym_hist['close'].iloc[-1])
-                    changes[sym] = (end - start) / start
-                else:
-                    changes[sym] = 0.0
+        if data.empty: return {s: 0.0 for s in symbols}
+        close_data = data['Close']
+        if len(symbols) == 1:
+            sym = symbols[0]
+            if len(close_data) >= 2:
+                start = float(close_data.iloc[0])
+                end = float(close_data.iloc[-1])
+                changes[sym] = (end - start) / start if start > 0 else 0.0
             else:
                 changes[sym] = 0.0
+        else:
+            for sym in symbols:
+                try:
+                    sym_col = close_data[sym].dropna()
+                    if len(sym_col) >= 2:
+                        start = float(sym_col.iloc[0])
+                        end = float(sym_col.iloc[-1])
+                        changes[sym] = (end - start) / start if start > 0 else 0.0
+                    else:
+                        changes[sym] = 0.0
+                except:
+                    changes[sym] = 0.0
         return changes
-                        
-    except Exception as e:
-        print(f"Error fetching weekly changes: {e}")
-        return {}
+    except Exception:
+        return {s: 0.0 for s in symbols}
 
 def get_daily_changes(symbols):
-    """
-    Fetches daily % change using yahooquery price module.
-    Returns dict: {Symbol: percent_change_float}
-    """
     if not symbols: return {}
     try:
-        t = get_yq_ticker(symbols)
-        price_data = t.price
+        data = yf.download(symbols, period="2d", progress=False)
         changes = {}
-        for sym in symbols:
-            s_data = price_data.get(sym, {})
-            if isinstance(s_data, dict):
-                # regularMarketChangePercent is usually 0.015 for 1.5%
-                changes[sym] = float(s_data.get('regularMarketChangePercent', 0.0)) * 100
+        if data.empty: return {s: 0.0 for s in symbols}
+        close_data = data['Close']
+        if len(symbols) == 1:
+            sym = symbols[0]
+            if len(close_data) >= 2:
+                start = float(close_data.iloc[-2])
+                end = float(close_data.iloc[-1])
+                changes[sym] = ((end - start) / start) * 100 if start > 0 else 0.0
             else:
                 changes[sym] = 0.0
+        else:
+            for sym in symbols:
+                try:
+                    sym_col = close_data[sym].dropna()
+                    if len(sym_col) >= 2:
+                        start = float(sym_col.iloc[-2])
+                        end = float(sym_col.iloc[-1])
+                        changes[sym] = ((end - start) / start) * 100 if start > 0 else 0.0
+                    else:
+                        changes[sym] = 0.0
+                except:
+                    changes[sym] = 0.0
         return changes
-    except Exception as e:
-        print(f"Error fetching daily changes: {e}")
-        return {}
+    except Exception:
+        return {s: 0.0 for s in symbols}
 
 @cache_result(fx_cache)
 def get_usd_to_cad_rate():
-    """
-    Fetches the current USD to CAD exchange rate safely.
-    Uses 'CAD=X'.
-    """
     try:
-        # Try primary route: get_current_prices (which uses YQ + Chrome Spoofing)
-        from market_data import get_current_prices
         prices = get_current_prices(['CAD=X'])
         rate = prices.get('CAD=X', 0.0)
-        
         if rate and rate > 1.0:
             return float(rate)
-            
-        # Try secondary route: direct yahooquery modules if price was missing
-        print("  ⚠️  Primary FX fetch failed. Trying secondary yahooquery module...")
-        t = get_yq_ticker('CAD=X')
-        detail = t.summary_detail.get('CAD=X', {})
-        rate = detail.get('previousClose') or detail.get('bid') or detail.get('ask')
-        
-        if rate and rate > 1.0:
-            return float(rate)
-
-        print("  ⚠️  Secondary FX fetch failed. Returning stable fallback 1.40")
-        return 1.40 
-    except Exception as e:
-        print(f"Error fetching exchange rate: {e}")
+        return 1.40
+    except Exception:
         return 1.40
 
 def get_market_indices_change():
-    """
-    Fetches 5-day % change for S&P 500, NASDAQ, and TSX using yahooquery.
-    Returns dict: {Index Name: percent_change_float}
-    """
-    indices = {
-        '^GSPC': '🇺🇸 S&P 500',
-        '^IXIC': '🇺🇸 NASDAQ',
-        '^GSPTSE': '🇨🇦 TSX'
-    }
-    
+    indices = {'^GSPC': '🇺🇸 S&P 500', '^IXIC': '🇺🇸 NASDAQ', '^GSPTSE': '🇨🇦 TSX'}
     try:
-        t = get_yq_ticker(list(indices.keys()))
-        hist = t.history(period="5d")
-        
+        data = yf.download(list(indices.keys()), period="5d", progress=False)
         changes = {}
-        for symbol, name in indices.items():
-            if symbol in hist.index.levels[0]:
-                sym_hist = hist.xs(symbol)
-                if len(sym_hist) >= 2:
-                    start = float(sym_hist['close'].iloc[0])
-                    end = float(sym_hist['close'].iloc[-1])
-                    changes[name] = (end - start) / start
-                else:
-                    changes[name] = 0.0
+        if not data.empty:
+            close_data = data['Close']
+            for symbol, name in indices.items():
+                try:
+                    sym_col = close_data[symbol].dropna()
+                    if len(sym_col) >= 2:
+                        start = float(sym_col.iloc[0])
+                        end = float(sym_col.iloc[-1])
+                        changes[name] = (end - start) / start if start > 0 else 0.0
+                    else:
+                        changes[name] = 0.0
+                except: changes[name] = 0.0
         return changes
-    except Exception as e:
-        print(f"Error fetching indices: {e}")
+    except Exception:
         return {}
 
 def calculate_rsi(series, period=14):
-    """
-    Calculates the RSI of a price series.
-    Returns the latest RSI value (float).
-    """
     delta = series.diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-
     rs = gain / loss
     rsi = 100 - (100 / (1 + rs))
     return rsi.iloc[-1]
@@ -336,76 +210,56 @@ def calculate_sma(series, window):
 
 @cache_result(technicals_cache)
 def get_technical_data(symbols):
-    """
-    Fetches 1-year history and calculates RSI and Moving Averages using yahooquery.
-    Returns dict: {Symbol: {'RSI': float, 'Signal': str, 'Scorecard': str}}
-    """
     if not symbols: return {}
-
     technical_data = {}
-    print(f"Fetching technical data (RSI & Patterns) for {len(symbols)} symbols...")
-    
     try:
-        t = get_yq_ticker(symbols)
-        # Fetch enough history for SMA 200
-        hist = t.history(period="1y")
+        data = yf.download(symbols, period="1y", progress=False)
+        if data.empty: return {s: {'RSI': 'N/A', 'Signal': 'N/A', 'Scorecard': ''} for s in symbols}
         
+        is_multi = len(symbols) > 1
         for sym in symbols:
             try:
-                # Handle MultiIndex or SingleIndex
-                if isinstance(hist.index, pd.MultiIndex):
-                    if sym not in hist.index.levels[0]:
-                        technical_data[sym] = {'RSI': 'N/A', 'Signal': 'N/A', 'Scorecard': ''}
-                        continue
-                    sym_hist = hist.xs(sym)
+                sym_hist = pd.DataFrame()
+                if is_multi:
+                    sym_hist['close'] = data['Close'][sym]
+                    sym_hist['open'] = data['Open'][sym]
+                    sym_hist['high'] = data['High'][sym]
+                    sym_hist['low'] = data['Low'][sym]
                 else:
-                    if len(symbols) > 1: # Unexpected but handle
-                        continue
-                    sym_hist = hist
+                    sym_hist['close'] = data['Close']
+                    sym_hist['open'] = data['Open']
+                    sym_hist['high'] = data['High']
+                    sym_hist['low'] = data['Low']
+                    
+                sym_hist = sym_hist.dropna()
                 
-                if sym_hist.empty or 'close' not in sym_hist.columns:
+                if sym_hist.empty or len(sym_hist) < 14:
                     technical_data[sym] = {'RSI': 'N/A', 'Signal': 'N/A', 'Scorecard': ''}
                     continue
                     
-                series = sym_hist['close'].dropna()
-                
-                if len(series) < 14:
-                    technical_data[sym] = {'RSI': 'N/A', 'Signal': 'N/A', 'Scorecard': ''}
-                    continue
-            
-                # RSI
+                series = sym_hist['close']
                 rsi = calculate_rsi(series)
                 
-                # Moving Averages
                 sma_50 = calculate_sma(series, 50).iloc[-1] if len(series) >= 50 else None
                 sma_200 = calculate_sma(series, 200).iloc[-1] if len(series) >= 200 else None
                 current_price = series.iloc[-1]
                 
-                # Pattern Detection
                 signal = "Neutral"
-                
                 if sma_50 and sma_200:
                     sma_50_vec = calculate_sma(series, 50)
                     sma_200_vec = calculate_sma(series, 200)
                     sma_50_prev = sma_50_vec.iloc[-5] if len(sma_50_vec) >= 5 else sma_50_vec.iloc[0]
                     sma_200_prev = sma_200_vec.iloc[-5] if len(sma_200_vec) >= 5 else sma_200_vec.iloc[0]
                     
-                    if sma_50_prev < sma_200_prev and sma_50 > sma_200:
-                        signal = "🌟 Golden Cross"
-                    elif sma_50_prev > sma_200_prev and sma_50 < sma_200:
-                        signal = "💀 Death Cross"
-                    elif current_price > sma_50 > sma_200:
-                        signal = "📈 Strong Uptrend"
-                    elif current_price < sma_50 < sma_200:
-                        signal = "📉 Downtrend"
-                    elif current_price > sma_200 and current_price < sma_50:
-                        signal = "⚠️ Below SMA50"
-                    elif current_price < sma_200 and current_price > sma_50:
-                        signal = "🔄 Recovery?"
+                    if sma_50_prev < sma_200_prev and sma_50 > sma_200: signal = "🌟 Golden Cross"
+                    elif sma_50_prev > sma_200_prev and sma_50 < sma_200: signal = "💀 Death Cross"
+                    elif current_price > sma_50 > sma_200: signal = "📈 Strong Uptrend"
+                    elif current_price < sma_50 < sma_200: signal = "📉 Downtrend"
+                    elif current_price > sma_200 and current_price < sma_50: signal = "⚠️ Below SMA50"
+                    elif current_price < sma_200 and current_price > sma_50: signal = "🔄 Recovery?"
                 elif sma_50:
                     signal = "Above SMA50" if current_price > sma_50 else "Below SMA50"
                          
-                # MACD
                 fast = series.ewm(span=12, adjust=False).mean()
                 slow = series.ewm(span=26, adjust=False).mean()
                 macd = fast - slow
@@ -413,12 +267,9 @@ def get_technical_data(symbols):
                 
                 macd_sig = "Neutral"
                 if len(macd) >= 2:
-                    if macd.iloc[-1] > signal_line.iloc[-1] and macd.iloc[-2] <= signal_line.iloc[-2]:
-                        macd_sig = "🚀 MACD Buy"
-                    elif macd.iloc[-1] < signal_line.iloc[-1] and macd.iloc[-2] >= signal_line.iloc[-2]:
-                        macd_sig = "🔻 MACD Sell"
+                    if macd.iloc[-1] > signal_line.iloc[-1] and macd.iloc[-2] <= signal_line.iloc[-2]: macd_sig = "🚀 MACD Buy"
+                    elif macd.iloc[-1] < signal_line.iloc[-1] and macd.iloc[-2] >= signal_line.iloc[-2]: macd_sig = "🔻 MACD Sell"
                     
-                # Bollinger Bands
                 sma_20 = calculate_sma(series, 20)
                 std_20 = series.rolling(window=20).std()
                 upper_bb = sma_20 + (std_20 * 2)
@@ -426,159 +277,85 @@ def get_technical_data(symbols):
                 
                 bb_sig = "Neutral"
                 if len(upper_bb) > 0:
-                    if current_price > upper_bb.iloc[-1]:
-                        bb_sig = "Upper Band Breakout"
-                    elif current_price < lower_bb.iloc[-1]:
-                        bb_sig = "Lower Band Breakout"
-                    elif (upper_bb.iloc[-1] - lower_bb.iloc[-1]) / sma_20.iloc[-1] < 0.05:
-                        bb_sig = "Squeeze"
+                    if current_price > upper_bb.iloc[-1]: bb_sig = "Upper Band Breakout"
+                    elif current_price < lower_bb.iloc[-1]: bb_sig = "Lower Band Breakout"
+                    elif (upper_bb.iloc[-1] - lower_bb.iloc[-1]) / sma_20.iloc[-1] < 0.05: bb_sig = "Squeeze"
 
-                # Candlestick Patterns
                 candle_sig = ""
-                if 'open' in sym_hist.columns and 'high' in sym_hist.columns and 'low' in sym_hist.columns:
-                    latest = sym_hist.iloc[-1]
-                    o, h, l, c = latest['open'], latest['high'], latest['low'], latest['close']
-                    body = abs(c - o)
-                    upper_wick = h - max(c, o)
-                    lower_wick = min(c, o) - l
-                    if lower_wick > 2 * body and upper_wick < body: candle_sig = "🔨 Hammer"
-                    elif upper_wick > 2 * body and lower_wick < body: candle_sig = "🌠 Shooting Star"
-                    elif body < (h - l) * 0.1: candle_sig = "Doji"
+                latest = sym_hist.iloc[-1]
+                o, h, l, c = latest['open'], latest['high'], latest['low'], latest['close']
+                body = abs(c - o)
+                upper_wick = h - max(c, o)
+                lower_wick = min(c, o) - l
+                if lower_wick > 2 * body and upper_wick < body: candle_sig = "🔨 Hammer"
+                elif upper_wick > 2 * body and lower_wick < body: candle_sig = "🌠 Shooting Star"
+                elif body < (h - l) * 0.1: candle_sig = "Doji"
                 
                 components = [s for s in [macd_sig, bb_sig, candle_sig] if s != "Neutral" and s != ""]
                 scorecard = " | ".join(components) if components else "Neutral"
                 
                 technical_data[sym] = {'RSI': rsi, 'Signal': signal, 'Scorecard': scorecard}
-            
-            except Exception as e:
-                print(f"Error processing technicals for {sym}: {e}")
+            except Exception:
                 technical_data[sym] = {'RSI': 'N/A', 'Signal': 'N/A', 'Scorecard': ''}
-    except Exception as e:
-        print(f"Error calculating technicals: {e}")
+    except Exception: pass
     return technical_data
 
+def fetch_symbol_news(sym):
+    try:
+        yt = yf.Ticker(sym)
+        y_news = yt.news
+        if y_news and isinstance(y_news, list):
+            top = y_news[0]
+            content = top.get('content', top)
+            title = content.get('title', 'No Title')
+            link = content.get('link', f"https://finance.yahoo.com/quote/{sym}")
+            if len(title) > 80: title = title[:77] + "..."
+            return sym, {'headline': f"📰 {title}", 'link': link}
+    except Exception: pass
+    return sym, None
 
 @cache_result(news_cache)
 def get_latest_news(symbols):
-    """
-    Fetches the latest news headline for each symbol using yahooquery.
-    Returns dict: {Symbol: {'headline': str, 'link': str}}
-    """
     if not symbols: return {}
-
-    print(f"Fetching latest news for {len(symbols)} symbols...")
     news_map = {}
-    
-    try:
-        t = get_yq_ticker(symbols)
-        all_news = t.news(20) # Get a batch of news
-        
-        # Check if all_news is a valid list of dictionaries
-        if isinstance(all_news, list):
-            for sym in symbols:
-                for item in all_news:
-                    if not isinstance(item, dict):
-                        continue
-                        
-                    item_syms = item.get('symbols', [])
-                    if sym in item_syms:
-                        title = item.get('title', 'No Title')
-                        link = item.get('link', f"https://finance.yahoo.com/quote/{sym}")
-                        if len(title) > 80:
-                            title = title[:77] + "..."
-                        news_map[sym] = {'headline': f"📰 {title}", 'link': link}
-                        break
-        
-        # Fallback for missing symbols: try yfinance for news (often bypasses crumb issues)
-        remaining = [s for s in symbols if s not in news_map]
-        if remaining:
-            # ONLY fetch for the first 3 symbols to avoid hanging for a long time
-            # 13+ symbols can take 30+ seconds via yfinance synchronous calls
-            limit = 3
-            print(f"Using yfinance fallback for news for top {min(len(remaining), limit)} symbols...")
-            for sym in remaining[:limit]:
-                try:
-                    yt = yf.Ticker(sym)
-                    y_news = yt.news
-                    if y_news and isinstance(y_news, list):
-                        top = y_news[0]
-                        # Structure varies: sometimes it's nested in 'content'
-                        content = top.get('content', top)
-                        title = content.get('title', 'No Title')
-                        link = content.get('link', f"https://finance.yahoo.com/quote/{sym}")
-                        if len(title) > 80:
-                            title = title[:77] + "..."
-                        news_map[sym] = {'headline': f"📰 {title}", 'link': link}
-                except Exception:
-                    pass
-
-    except Exception as e:
-        print(f"Error fetching news: {e}")
-        
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(fetch_symbol_news, sym): sym for sym in symbols}
+        for future in concurrent.futures.as_completed(futures):
+            sym, res = future.result()
+            if res: news_map[sym] = res
     return news_map
 
-@cache_result(dividend_cache)
-def get_dividend_calendar(symbols):
-    """
-    Fetches dividend history to project future income using yahooquery.
-    Returns dict: {Symbol: {'Frequency': 'Monthly', 'Rate': 0.50, 'Months': [1,2,3...]}}
-    """
-    if not symbols: return {}
-
-    print(f"Fetching dividend calendar for {len(symbols)} symbols...")
-    div_calendar = {}
-    
+def fetch_symbol_dividends(sym):
     try:
-        t = get_yq_ticker(symbols)
-        # Fetch 1 year of dividends
-        all_divs = t.dividend_history(start=(datetime.now() - timedelta(days=366)).strftime('%Y-%m-%d'))
-        
-        for sym in symbols:
-            try:
-                if all_divs.empty: continue
-                
-                # Filter for this symbol
-                if isinstance(all_divs.index, pd.MultiIndex):
-                    if sym not in all_divs.index.levels[0]: continue
-                    sym_divs = all_divs.xs(sym)
-                else:
-                    sym_divs = all_divs
-                
-                if sym_divs.empty: continue
-                
-                # Process Dividends
-                count = len(sym_divs)
+        yt = yf.Ticker(sym)
+        divs = yt.dividends
+        if not divs.empty:
+            divs = divs[divs.index >= pd.to_datetime(datetime.now() - pd.Timedelta(days=366), utc=True)]
+            if not divs.empty:
+                count = len(divs)
                 freq = "None"
                 if count >= 10: freq = "Monthly"
                 elif count >= 3: freq = "Quarterly"
                 elif count >= 2: freq = "Semi-Annual"
                 elif count >= 1: freq = "Annual"
-                
-                months = list(set([d.month for d in sym_divs.index]))
-                rate = float(sym_divs['dividends'].iloc[-1])
-                
-                div_calendar[sym] = {
-                    'Frequency': freq,
-                    'Rate': rate,
-                    'Months': sorted(months)
-                }
-            except Exception:
-                pass
-    except Exception as e:
-        print(f"Error fetching dividends via yahooquery: {e}")
-        
+                months = list(set([d.month for d in divs.index]))
+                rate = float(divs.iloc[-1])
+                return sym, {'Frequency': freq, 'Rate': rate, 'Months': sorted(months)}
+    except Exception: pass
+    return sym, None
+
+@cache_result(dividend_cache)
+def get_dividend_calendar(symbols):
+    if not symbols: return {}
+    div_calendar = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(fetch_symbol_dividends, sym): sym for sym in symbols}
+        for future in concurrent.futures.as_completed(futures):
+            sym, res = future.result()
+            if res: div_calendar[sym] = res
     return div_calendar
 
-@cache_result(fundamentals_cache)
-def get_fundamental_data(symbols):
-    """
-    Fetches fundamental data for a list of symbols using yahooquery.
-    """
-    if not symbols: return {}
-    
-    fundamentals = {}
-    print(f"Fetching fundamentals for {len(symbols)} symbols via yahooquery...")
-    
+def fetch_symbol_fundamentals(sym):
     custom_sectors = {
         'VOO': 'US Broad Market', 'XQQ.TO': 'US Technology', 'XEI.TO': 'Canadian Dividends',
         'XIU.TO': 'Canadian Broad Market', 'XEF.TO': 'International Developed', 'XEC.TO': 'Emerging Markets',
@@ -588,152 +365,90 @@ def get_fundamental_data(symbols):
         'V': 'Financial Services', 'UNH': 'Healthcare', 'TD.TO': 'Financial Services',
         'CM.TO': 'Financial Services', 'AC.TO': 'Industrials', 'WCP.TO': 'Energy', 'VDY.TO': 'Canadian Dividends',
         'AVUV': 'US Small Cap Value', 'JPST': 'Short-Term Fixed Income',
-        'QQQ': 'US Technology',   # Nasdaq-100 ETF — yahooquery category field is often missing
-        'XQQ': 'US Technology',   # TSX-listed equivalent without .TO suffix
-        'SMH': 'US Semiconductors', # VanEck Semiconductor ETF
+        'QQQ': 'US Technology', 'XQQ': 'US Technology', 'SMH': 'US Semiconductors'
     }
-
     try:
-        t = get_yq_ticker(symbols)
-        # Fetch multiple modules at once
-        modules = 'summaryDetail assetProfile quoteType defaultKeyStatistics calendarEvents financialData'
-        all_data = t.get_modules(modules)
+        yt = yf.Ticker(sym)
+        info = yt.info
+        q_type = info.get('quoteType', 'EQUITY')
+        sector = info.get('sector') or 'N/A'
+        if sym in custom_sectors: normalized_sector = custom_sectors[sym]
+        elif q_type == 'ETF': normalized_sector = info.get('category', 'Other ETF')
+        elif q_type == 'CRYPTOCURRENCY': normalized_sector = 'Crypto'
+        else: normalized_sector = sector
         
-        for sym in symbols:
-            try:
-                data = all_data.get(sym, {})
-                if not isinstance(data, dict): continue
-                
-                asset = data.get('assetProfile', {})
-                stats = data.get('defaultKeyStatistics', {})
-                detail = data.get('summaryDetail', {})
-                cal = data.get('calendarEvents', {})
-                q_type = data.get('quoteType', {}).get('quoteType', 'EQUITY')
-                fin = data.get('financialData', {})
-                
-                # Sector
-                sector = asset.get('sector') or 'N/A'
-                if sym in custom_sectors:
-                    normalized_sector = custom_sectors[sym]
-                elif q_type == 'ETF':
-                    normalized_sector = asset.get('category', 'Other ETF')
-                elif q_type == 'CRYPTOCURRENCY':
-                    normalized_sector = 'Crypto'
-                else:
-                    normalized_sector = sector
-                
-                # Yield
-                div_yield = detail.get('dividendYield', 0)
-                yield_str = f"{div_yield*100:.2f}%" if div_yield else "0.00%"
-                
-                # Ex-Div
-                ex_div = detail.get('exDividendDate', 'N/A')
-                
-                # Next Earnings
-                next_earnings = 'N/A'
-                if isinstance(cal, dict):
-                    earnings_dates = cal.get('earnings', {}).get('earningsDate', [])
-                    if earnings_dates:
-                        try:
-                            next_earnings = earnings_dates[0]
-                        except Exception: pass
-
-                # PEG
-                peg = stats.get('pegRatio', 'N/A')
-                
-                f_data = {
-                    'Market Cap': detail.get('marketCap', 'N/A'),
-                    'Trailing P/E': detail.get('trailingPE', 'N/A'),
-                    'Forward P/E': detail.get('forwardPE', 'N/A'),
-                    'PEG Ratio': peg,
-                    'Rev Growth': fin.get('revenueGrowth', 'N/A'),
-                    'Profit Margin': fin.get('profitMargins', 'N/A'),
-                    '52w High': detail.get('fiftyTwoWeekHigh', 'N/A'),
-                    'Recommendation': detail.get('recommendationKey', 'N/A').replace('_', ' ').title(),
-                    'Sector': normalized_sector,
-                    'Country': asset.get('country', 'Unknown'),
-                    'Yield': yield_str,
-                    'Ex-Dividend': str(ex_div),
-                    'Next Earnings': str(next_earnings)
-                }
-                fundamentals[sym] = f_data
-            except Exception as e:
-                print(f"Error processing {sym}: {e}")
-                fundamentals[sym] = {'Sector': 'Unknown'}
-    except Exception as e:
-        print(f"Error fetching fundamentals via yahooquery: {e}")
-        
-    return fundamentals
+        div_yield = info.get('dividendYield', 0)
+        yield_str = f"{div_yield:.2f}%" if div_yield else "0.00%"
+        ex_div = info.get('exDividendDate', 'N/A')
+        if ex_div != 'N/A':
+            try: ex_div = datetime.fromtimestamp(ex_div).strftime('%Y-%m-%d')
+            except: pass
             
+        f_data = {
+            'Market Cap': info.get('marketCap', 'N/A'),
+            'Trailing P/E': info.get('trailingPE', 'N/A'),
+            'Forward P/E': info.get('forwardPE', 'N/A'),
+            'PEG Ratio': info.get('pegRatio', 'N/A'),
+            'Rev Growth': info.get('revenueGrowth', 'N/A'),
+            'Profit Margin': info.get('profitMargins', 'N/A'),
+            '52w High': info.get('fiftyTwoWeekHigh', 'N/A'),
+            'Recommendation': info.get('recommendationKey', 'N/A').replace('_', ' ').title() if info.get('recommendationKey') else 'N/A',
+            'Sector': normalized_sector,
+            'Country': info.get('country', 'Unknown'),
+            'Yield': yield_str,
+            'Ex-Dividend': str(ex_div),
+            'Next Earnings': 'N/A' # Next Earnings usually requires calendar event fetching which is often empty in standard yfinance info
+        }
+        return sym, f_data
+    except Exception:
+        return sym, {'Sector': 'Unknown'}
+
+@cache_result(fundamentals_cache)
+def get_fundamental_data(symbols):
+    if not symbols: return {}
+    fundamentals = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(fetch_symbol_fundamentals, sym): sym for sym in symbols}
+        for future in concurrent.futures.as_completed(futures):
+            sym, res = future.result()
+            if res: fundamentals[sym] = res
+    return fundamentals
+
 @cache_result(history_cache)
 def get_portfolio_history(holdings_df):
-    """
-    Simulates historical portfolio performance by backtesting current holdings using yahooquery.
-    """
     if holdings_df.empty: return pd.DataFrame()
-
     symbols = holdings_df['Symbol'].unique().tolist()
-    
-    # Needs 10 years of data
     start_date = (datetime.now() - timedelta(days=365*10)).strftime('%Y-%m-%d')
-    
-    # Benchmarks and FX
     benchmarks = ['^GSPC', '^IXIC', '^GSPTSE']
     fx_symbol = 'CAD=X'
     all_tickers = symbols + benchmarks + [fx_symbol]
     
-    print(f"Fetching 10Y history for performance analysis via yahooquery...")
     try:
-        t = get_yq_ticker(all_tickers)
-        # Fetch 10 years of history
-        hist = t.history(start=start_date)
-        
-        if hist.empty: return pd.DataFrame()
-
-        # Pivot the MultiIndex long format to wide format (date x symbol)
-        # yahooquery returns columns like 'close', 'adjclose', etc.
-        # Handling for both cases of history returning Dataframe with symbol index or just Symbol column
-        if isinstance(hist.index, pd.MultiIndex):
-            closes = hist.reset_index().pivot(index='date', columns='symbol', values='close')
-        else:
-            # Handle single symbol if asynchronous=True still gave a non-multiindex
-            closes = hist[['close']].copy()
-            closes.columns = [all_tickers[0]]
-            
-        # Ensure chronological order and properly handle timezones before filling missing values
+        data = yf.download(all_tickers, start=start_date, progress=False, threads=True)
+        if data.empty: return pd.DataFrame()
+        closes = data['Close']
         closes.index = pd.to_datetime(closes.index, utc=True)
-        closes = closes.sort_index()
-
-        closes = closes.ffill()
+        closes = closes.sort_index().ffill()
         
-        # FX Rates
-        if fx_symbol in closes.columns:
-            fx_rates = closes[fx_symbol]
-        else:
-            fx_rates = pd.Series(1.35, index=closes.index)
-
-        # Calculate Daily Portfolio Value
+        fx_rates = closes[fx_symbol] if fx_symbol in closes.columns else pd.Series(1.35, index=closes.index)
         portfolio_daily = pd.Series(0.0, index=closes.index)
         holdings_dict = holdings_df.set_index('Symbol')['Quantity'].to_dict()
         
         for sym, qty in holdings_dict.items():
             if sym in closes.columns:
+                series = closes[sym].dropna()
+                # Instead of dropping NA and shifting array, align series to the common index
+                # Series will automatically align on index when multiplied and added
+                # But to avoid missing prices, ffill was used above globally on closes
                 series = closes[sym]
-                if not str(sym).endswith('.TO'):
-                    series = series * fx_rates
-                portfolio_daily += (series * qty)
-        
-        # Construct Result
+                if not str(sym).endswith('.TO'): series = series * fx_rates
+                portfolio_daily += (series * qty).fillna(0)
+                
         result = pd.DataFrame(index=closes.index)
         result['Portfolio'] = portfolio_daily
         for bench in benchmarks:
-            if bench in closes.columns:
-                result[bench] = closes[bench]
+            if bench in closes.columns: result[bench] = closes[bench]
                 
-        result = result.dropna().reset_index()
-        return result
-
-    except Exception as e:
-        print(f"History Fetch Error via yahooquery: {e}")
+        return result.dropna().reset_index()
+    except Exception:
         return pd.DataFrame()
-
