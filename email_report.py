@@ -25,6 +25,7 @@ if not SENDER_EMAIL or not SENDER_PASSWORD or not RECIPIENT_EMAIL:
 
 def send_email():
     print("Generating latest analysis...")
+    os.environ["USE_YFINANCE_FOR_EMAIL"] = "true"
     summary_text = run_stock_analysis()
     
     file_path = "portfolio_dashboard.html"

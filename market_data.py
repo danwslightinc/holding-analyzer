@@ -54,12 +54,31 @@ def find_purchase_date_from_price(symbol, purchase_price, tolerance=0.05, min_da
     # compared to yfinance ticker history without eating our daily 25-req allowance on TIME_SERIES_DAILY
     return None
 
+from yfinance_weekly import get_prices_yq
+import os
+
 def get_current_prices(symbols):
+    # If running in email context, prefer Yahoo Finance to save AV quota
+    if os.environ.get("USE_YFINANCE_FOR_EMAIL") == "true":
+        print("Using Yahoo Finance to fetch current prices (Email Mode)...")
+        prices = get_prices_yq(symbols)
+        # Fall back to AV if YF completely fails (returns 0s)
+        if not any(prices.values()):
+            print("YF failed, falling back to Alpha Vantage.")
+            return get_current_prices_av(symbols)
+        return prices
     return get_current_prices_av(symbols)
 
+from yfinance_weekly import get_weekly_changes_yq
+
 def get_weekly_changes(symbols):
-    # We fallback to daily for AV because weekly requires a different API hit 
-    # doing TIME_SERIES_WEEKLY for 15+ symbols would destroy our free tier allowance.
+    # For email reporting, we want to try Yahoo Finance first to save AV quota
+    if os.environ.get("USE_YFINANCE_FOR_EMAIL") == "true":
+        print("Fetching weekly changes using yfinance to save quota...")
+        prices = get_weekly_changes_yq(symbols)
+        if not any(prices.values()):
+            return get_daily_changes_av(symbols)
+        return prices
     return get_daily_changes_av(symbols)
 
 def get_daily_changes(symbols):
@@ -76,23 +95,38 @@ def get_usd_to_cad_rate():
     except Exception:
         return 1.40
 
+from yfinance_weekly import get_indices_changes_yq
 def get_market_indices_change():
-    # AV does not support index lookups like ^GSPC natively on the free tier properly
-    # We will return static 0 or simple bypass to avoid eating 3 extra API requests per day
+    if os.environ.get("USE_YFINANCE_FOR_EMAIL") == "true":
+        print("Fetching market indices using yfinance...")
+        return get_indices_changes_yq()
     return {'🇺🇸 S&P 500': 0.0, '🇺🇸 NASDAQ': 0.0, '🇨🇦 TSX': 0.0}
 
+from yfinance_weekly import (
+    get_technical_data_yq,
+    get_latest_news_yq,
+    get_dividend_calendar_yq,
+    get_fundamental_data_yq,
+    get_portfolio_history_yq
+)
+
 def get_technical_data(symbols):
+    if os.environ.get("USE_YFINANCE_FOR_EMAIL") == "true": return get_technical_data_yq(symbols)
     return get_technical_data_av(symbols)
 
 def get_latest_news(symbols):
+    if os.environ.get("USE_YFINANCE_FOR_EMAIL") == "true": return get_latest_news_yq(symbols)
     return get_latest_news_av(symbols)
 
 def get_dividend_calendar(symbols):
+    if os.environ.get("USE_YFINANCE_FOR_EMAIL") == "true": return get_dividend_calendar_yq(symbols)
     return get_dividend_calendar_av(symbols)
 
 def get_fundamental_data(symbols):
+    if os.environ.get("USE_YFINANCE_FOR_EMAIL") == "true": return get_fundamental_data_yq(symbols)
     return get_fundamental_data_av(symbols)
 
 def get_portfolio_history(holdings_df):
+    if os.environ.get("USE_YFINANCE_FOR_EMAIL") == "true": return get_portfolio_history_yq(holdings_df)
     return get_portfolio_history_av(holdings_df)
 
