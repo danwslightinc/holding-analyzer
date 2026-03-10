@@ -14,7 +14,6 @@ _performance_cache = {
     'ttl': 300  # Cache for 5 minutes
 }
 
-
 def get_ticker_performance(symbols, timeframes=['1d', '1w', '1m', '3m', '6m', 'YTD', '1y']):
     """
     Get performance data for each ticker over multiple timeframes
@@ -49,76 +48,80 @@ def get_ticker_performance(symbols, timeframes=['1d', '1w', '1m', '3m', '6m', 'Y
     }
     
     try:
-        from yahooquery import Ticker
-        t = Ticker(symbols, asynchronous=True)
-        # Fetch 1 year of data for all tickers at once
-        all_hist = t.history(period='1y')
+        from market_data import get_yf_session
+        session = get_yf_session()
+        
+        # Fetch 1 year of data for all tickers at once using yfinance
+        all_hist = yf.download(symbols, period='1y', progress=False, threads=True)
         
         if all_hist.empty:
             print("No history data returned from Yahoo Finance")
             return {}
 
+        close_data = all_hist['Close']
+
         for symbol in symbols:
             try:
-                # Handle MultiIndex or single index correctly
-                if isinstance(all_hist.index, pd.MultiIndex):
-                    if symbol not in all_hist.index.levels[0]:
+                # Handle single vs multi symbol downloaded data
+                if len(symbols) == 1:
+                    hist = close_data.dropna()
+                else:
+                    if symbol not in close_data.columns:
                         results[symbol] = {}
                         continue
-                    hist = all_hist.xs(symbol)
-                else:
-                    if len(symbols) > 1: continue
-                    hist = all_hist
+                    hist = close_data[symbol].dropna()
                 
                 if hist.empty:
                     results[symbol] = {}
                     continue
                     
-                current_price = hist['close'].iloc[-1]
+                current_price = hist.iloc[-1]
+                
+                # Make sure the index is explicitly DateTimeIndex and UTC to avoid mixed timezone errors
+                if not isinstance(hist.index, pd.DatetimeIndex):
+                    hist.index = pd.to_datetime(hist.index, utc=True)
+                elif hist.index.tz is None:
+                    hist.index = hist.index.tz_localize('UTC')
+                else:
+                    hist.index = hist.index.tz_convert('UTC')
                 
                 results[symbol] = {}
                 for tf in timeframes:
                     if tf == '1d' and len(hist) > 1:
-                        start_price = hist['close'].iloc[-2]
+                        start_price = hist.iloc[-2]
                         change_value = current_price - start_price
                         change_pct = (change_value / start_price) * 100 if start_price > 0 else 0
                         results[symbol][tf] = {
                             'change_pct': round(change_pct, 2),
                             'change_value': round(change_value, 2),
-                            'current_price': round(current_price, 2),
-                            'start_price': round(start_price, 2)
+                            'current_price': round(float(current_price), 2),
+                            'start_price': round(float(start_price), 2)
                         }
                         continue
 
                     days = timeframe_map.get(tf, 30)
                     target_date = now - timedelta(days=days)
                     
-                    # Convert to pd.Timestamp for comparison with index
-                    if not isinstance(hist.index, pd.DatetimeIndex):
-                        hist.index = pd.to_datetime(hist.index)
-                        
-                    target_ts = pd.Timestamp(target_date)
-                    if getattr(hist.index, 'tz', None) is not None:
-                        target_ts = target_ts.tz_localize(hist.index.tz)
+                    target_ts = pd.Timestamp(target_date).tz_localize('UTC')
                     
                     hist_filtered = hist[hist.index >= target_ts]
                     
                     if not hist_filtered.empty:
-                        start_price = hist_filtered['close'].iloc[0]
+                        start_price = hist_filtered.iloc[0]
                         change_value = current_price - start_price
                         change_pct = (change_value / start_price) * 100 if start_price > 0 else 0
                         
                         results[symbol][tf] = {
                             'change_pct': round(change_pct, 2),
                             'change_value': round(change_value, 2),
-                            'current_price': round(current_price, 2),
-                            'start_price': round(start_price, 2)
+                            'current_price': round(float(current_price), 2),
+                            'start_price': round(float(start_price), 2)
                         }
                     else:
                         results[symbol][tf] = {
                             'change_pct': 0, 'change_value': 0,
-                            'current_price': round(current_price, 2),
-                            'start_price': round(current_price, 2)
+                            'current_price': round(float(current_price), 2),
+                            'start_price': round(float(current_price), 2)
                         }
             except Exception as e:
                 print(f"Error processing performance for {symbol}: {e}")
