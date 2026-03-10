@@ -1,0 +1,23 @@
+
+> frontend@0.1.0 dev
+> next dev
+
+▲ Next.js 16.1.1 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.86.42:3000
+- Environments: .env.local
+
+✓ Starting...
+✓ Ready in 516ms
+ GET / 200 in 1518ms (compile: 1361ms, proxy.ts: 59ms, render: 99ms)
+Initializing NextAuth handler...
+Initializing NextAuth handler...
+ GET /api/auth/session 200 in 451ms (compile: 433ms, render: 19ms)
+ GET / 200 in 52ms (compile: 9ms, proxy.ts: 10ms, render: 33ms)
+ GET /api/auth/session 200 in 21ms (compile: 11ms, render: 10ms)
+ GET /api/auth/session 200 in 6ms (compile: 982µs, render: 5ms)
+ GET /api/auth/session 200 in 8ms (compile: 2ms, render: 6ms)
+Initializing NextAuth handler...
+ GET /api/auth/session 200 in 18ms (compile: 8ms, render: 10ms)
+ GET /api/auth/session 200 in 17ms (compile: 4ms, render: 13ms)
+Initializing NextAuth handler...

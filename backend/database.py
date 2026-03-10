@@ -4,11 +4,24 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./portfolio.db")
+def get_processed_database_url():
+    url = os.getenv("DATABASE_URL", "sqlite:///./portfolio.db")
+    
+    # SQLAlchemy 1.4+ requires "postgresql://" instead of "postgres://"
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+    
+    # Handle Supabase-specific connection issues
+    if "supabase.co" in url:
+        # Ensure SSL is required for Supabase
+        if "sslmode=" not in url:
+            if "?" in url:
+                url += "&sslmode=require"
+            else:
+                url += "?sslmode=require"
+    return url
 
-# SQLAlchemy 1.4+ requires "postgresql://" instead of "postgres://"
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+DATABASE_URL = get_processed_database_url()
 
 # Check same thread is only needed for SQLite
 connect_args = {}
@@ -17,19 +30,7 @@ if DATABASE_URL.startswith("sqlite"):
 else:
     connect_args["connect_timeout"] = 10
 
-# Handle Supabase-specific connection issues
 if "supabase.co" in DATABASE_URL:
-    # Ensure SSL is required for Supabase
-    if "sslmode=" not in DATABASE_URL:
-        if "?" in DATABASE_URL:
-            DATABASE_URL += "&sslmode=require"
-        else:
-            DATABASE_URL += "?sslmode=require"
-    
-    # Fix for DNS resolution issues on some machines
-    if "db.oytloymrzmriqueyockm.supabase.co" in DATABASE_URL:
-        DATABASE_URL = DATABASE_URL.replace("db.oytloymrzmriqueyockm.supabase.co", "oytloymrzmriqueyockm.supabase.co")
-    
     # Log connection attempt (redacted)
     from urllib.parse import urlparse
     parsed = urlparse(DATABASE_URL)
