@@ -5,14 +5,15 @@ import json
 import pandas as pd
 from datetime import datetime, timedelta
 from backend.database import engine
-from backend.models import MarketDataCache, UserSettings
+from backend.models import MarketDataCache, UserSettings, Holding
 from sqlmodel import Session, select
 import urllib.parse
 
 ALPHA_VANTAGE_API_KEY = os.environ.get("ALPHA_VANTAGE_API_KEY", "demo")
 BASE_URL = "https://www.alphavantage.co/query"
 
-# Maximum time to keep cache (24 hours)
+
+# Max time to keep cache (24 hours)
 CACHE_TTL = timedelta(hours=24)
 
 def get_session():
@@ -138,22 +139,40 @@ def fetch_av_data(function, symbol, **kwargs):
 
 def get_current_prices_av(symbols):
     prices = {}
-    for sym in symbols:
-        if sym == 'CAD=X':
-            data = fetch_av_data("CURRENCY_EXCHANGE_RATE", sym)
+    with get_session() as db_session:
+        for sym in symbols:
+            # 1. Try fetching from Alpha Vantage (which has internal DB cache check)
+            data = fetch_av_data("GLOBAL_QUOTE", sym)
+            
             try:
-                rate = float(data['Realtime Currency Exchange Rate']['5. Exchange Rate'])
-                prices[sym] = rate
-                continue
-            except:
-                prices[sym] = 1.35
-                continue
+                if sym == 'CAD=X':
+                    # Currency handles slightly differently
+                    rate_data = fetch_av_data("CURRENCY_EXCHANGE_RATE", sym)
+                    if 'Realtime Currency Exchange Rate' in rate_data:
+                        prices[sym] = float(rate_data['Realtime Currency Exchange Rate']['5. Exchange Rate'])
+                        continue
                 
-        data = fetch_av_data("GLOBAL_QUOTE", sym)
-        try:
-            prices[sym] = float(data['Global Quote']['05. price'])
-        except Exception:
-            prices[sym] = 0.0
+                if data and 'Global Quote' in data and '05. price' in data['Global Quote']:
+                    prices[sym] = float(data['Global Quote']['05. price'])
+                    continue
+            except Exception:
+                pass
+                
+            # 2. If API fails, fetch_av_data already tries to return DB MarketDataCache.
+            # If we still don't have a price, fall back to the Holding table's purchase price.
+            try:
+                holding = db_session.exec(
+                    select(Holding).where(Holding.symbol == sym)
+                ).first()
+                if holding and holding.purchase_price:
+                    print(f"FALLBACK [Holding Table]: Using purchase price for {sym}")
+                    prices[sym] = float(holding.purchase_price)
+                else:
+                    prices[sym] = 0.0
+            except Exception as e:
+                print(f"Error during fallback lookup for {sym}: {e}")
+                prices[sym] = 0.0
+                
     return prices
 
 def get_daily_changes_av(symbols):
@@ -355,3 +374,17 @@ def get_portfolio_history_av(holdings_df):
     result = result[result.index >= pd.Timestamp(start_date)]
     
     return result.dropna().reset_index()
+
+def get_av_call_count():
+    """
+    Returns the number of unique symbols updated in the cache today.
+    A proxy for API calls if cache was empty or expired.
+    """
+    from sqlalchemy import func
+    with get_session() as db_session:
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        count = db_session.exec(
+            select(func.count(MarketDataCache.symbol))
+            .where(MarketDataCache.updated_at >= today_start)
+        ).first()
+        return count or 0
