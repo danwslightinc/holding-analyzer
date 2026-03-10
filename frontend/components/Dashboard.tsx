@@ -157,14 +157,36 @@ export default function Dashboard() {
     return () => clearInterval(t);
   }, []);
 
-  const apiKey = null;
+  const [apiKey, setApiKey] = useState("");
+  const [showKeyInput, setShowKeyInput] = useState(false);
+
+  useEffect(() => {
+    fetch("http://127.0.0.1:8000/api/settings/ALPHA_VANTAGE_API_KEY")
+      .then(r => r.json())
+      .then(d => { if (d.value) setApiKey(d.value); })
+      .catch(e => console.error(e));
+  }, []);
+
+  const saveApiKey = async () => {
+    try {
+      await fetch("http://127.0.0.1:8000/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "ALPHA_VANTAGE_API_KEY", value: apiKey })
+      });
+      setShowKeyInput(false);
+      refresh(true);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const isFetching = loading;
-  const priceSource = "Backend API";
+  const priceSource = "Alpha Vantage (Native)";
   const lastUpdated = new Date();
   const usdcad = portData?.summary?.usd_cad_rate || FALLBACK_USDCAD;
   const callsUsed = 0;
   const fetchStatus = {}; // Mock
-  const showKeyInput = false;
 
   // ── DERIVED DATA ─────────────────────────────────────────────
 
@@ -494,8 +516,33 @@ export default function Dashboard() {
               >
                 {isFetching ? "FETCHING..." : "↻ FORCE REFRESH"}
               </button>
-
+              <button
+                onClick={() => setShowKeyInput(!showKeyInput)}
+                style={{ padding: "6px 12px", borderRadius: 6, fontSize: 12, letterSpacing: 1, background: "rgba(0, 212, 255, 0.1)", border: "1px solid rgba(0, 212, 255, 0.3)", color: "#00D4FF", cursor: "pointer", fontFamily: "inherit" }}
+              >
+                ⚿ API KEY
+              </button>
             </div>
+
+            {showKeyInput && (
+              <div style={{ marginTop: 8, display: "flex", gap: 6, width: "100%", justifyContent: "flex-end" }}>
+                <input
+                  type="text"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="Alpha Vantage key..."
+                  className="api-input"
+                  style={{ width: "220px", padding: "6px 10px", fontSize: 12 }}
+                />
+                <button
+                  onClick={saveApiKey}
+                  className="fetch-btn"
+                  style={{ padding: "6px 12px", fontSize: 12 }}
+                >
+                  SAVE
+                </button>
+              </div>
+            )}
             {lastUpdated && (
               <div style={{ fontSize: 13, color: "var(--muted2)", letterSpacing: 1, marginTop: 4, textAlign: "right" }}>
                 CAD: {fmtCAD(1)} = USD: {(1 / usdcad).toFixed(4)}
