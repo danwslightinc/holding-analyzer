@@ -6,6 +6,20 @@ import time
 import concurrent.futures
 from backend.cache import cache_result, prices_cache, fundamentals_cache, technicals_cache, news_cache, dividend_cache, fx_cache, history_cache
 
+_yf_session = None
+def get_yf_session():
+    global _yf_session
+    if _yf_session is None:
+        try:
+            from curl_cffi import requests
+            _yf_session = requests.Session(impersonate="chrome110")
+        except ImportError:
+            import requests
+            _yf_session = requests.Session()
+            _yf_session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'})
+    return _yf_session
+
+
 # ETF Look-Through Weights (Approximate)
 ETF_SECTOR_WEIGHTS = {
     'VOO': {
@@ -318,7 +332,7 @@ def fetch_symbol_news(sym):
 def get_latest_news(symbols):
     if not symbols: return {}
     news_map = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         futures = {executor.submit(fetch_symbol_news, sym): sym for sym in symbols}
         for future in concurrent.futures.as_completed(futures):
             sym, res = future.result()
@@ -348,7 +362,7 @@ def fetch_symbol_dividends(sym):
 def get_dividend_calendar(symbols):
     if not symbols: return {}
     div_calendar = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         futures = {executor.submit(fetch_symbol_dividends, sym): sym for sym in symbols}
         for future in concurrent.futures.as_completed(futures):
             sym, res = future.result()
@@ -407,7 +421,7 @@ def fetch_symbol_fundamentals(sym):
 def get_fundamental_data(symbols):
     if not symbols: return {}
     fundamentals = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         futures = {executor.submit(fetch_symbol_fundamentals, sym): sym for sym in symbols}
         for future in concurrent.futures.as_completed(futures):
             sym, res = future.result()
