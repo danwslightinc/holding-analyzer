@@ -19,6 +19,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from data_loader import load_portfolio_from_db, get_processed_transactions
 from market_data import get_current_prices, get_fundamental_data, get_technical_data, get_dividend_calendar, get_usd_to_cad_rate, get_portfolio_history, get_latest_news, get_daily_changes
+from backend.alpha_vantage import get_av_call_count
 from analysis import calculate_metrics
 from backend.ticker_performance import get_ticker_performance
 from backend.cache import clear_all_caches
@@ -65,11 +66,25 @@ def on_startup():
 
 @app.get("/")
 def read_root():
-    return {"message": "Holding Analyzer API is running", "health": "ok"}
+    return {
+        "message": "Holding Analyzer API is running",
+        "health": "ok",
+        "alpha_vantage_calls": get_av_call_count()
+    }
 
 @app.get("/health")
+@app.get("/api/health")
 def health_check():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "alpha_vantage_calls": get_av_call_count(),
+        "database_connected": engine is not None,
+        "env_check": {
+            "DATABASE_URL": bool(os.getenv("DATABASE_URL")),
+            "ALPHA_VANTAGE_API_KEY_ENV": bool(os.getenv("ALPHA_VANTAGE_API_KEY")),
+            "TARGET_CAGR": os.getenv("TARGET_CAGR", "0.08")
+        }
+    }
 
 @app.get("/api/portfolio")
 def get_portfolio():

@@ -3,6 +3,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { usePortfolio } from "@/lib/PortfolioContext";
 import { signOut, useSession } from "next-auth/react";
+import { API_BASE_URL } from "@/lib/api";
 
 const PnLPage = dynamic(() => import("@/app/pnl/page"), { ssr: false, loading: () => <div style={{ color: '#00D4FF', padding: 40, textAlign: 'center', letterSpacing: 4, fontFamily: "'Bebas Neue',sans-serif", fontSize: 18 }}>LOADING P&L...</div> });
 const TradeAnalysisPage = dynamic(() => import("@/app/trade-analysis/page"), { ssr: false, loading: () => <div style={{ color: '#00D4FF', padding: 40, textAlign: 'center', letterSpacing: 4, fontFamily: "'Bebas Neue',sans-serif", fontSize: 18 }}>LOADING TRADE ANALYSIS...</div> });
@@ -161,7 +162,7 @@ export default function Dashboard() {
   const [showKeyInput, setShowKeyInput] = useState(false);
 
   useEffect(() => {
-    fetch("http://127.0.0.1:8000/api/settings/ALPHA_VANTAGE_API_KEY")
+    fetch(`${API_BASE_URL}/api/settings/ALPHA_VANTAGE_API_KEY`)
       .then(r => r.json())
       .then(d => { if (d.value) setApiKey(d.value); })
       .catch(e => console.error(e));
@@ -169,7 +170,7 @@ export default function Dashboard() {
 
   const saveApiKey = async () => {
     try {
-      await fetch("http://127.0.0.1:8000/api/settings", {
+      await fetch(`${API_BASE_URL}/api/settings`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key: "ALPHA_VANTAGE_API_KEY", value: apiKey })
