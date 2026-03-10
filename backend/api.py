@@ -23,7 +23,7 @@ from analysis import calculate_metrics
 from backend.ticker_performance import get_ticker_performance
 from backend.cache import clear_all_caches
 from backend.database import engine, get_session, create_db_and_tables
-from backend.models import Holding, Transaction as DBTransaction, InvestmentThesis
+from backend.models import Holding, Transaction as DBTransaction, InvestmentThesis, UserSettings
 from sqlmodel import Session, select
 
 app = FastAPI(title="Holding Analyzer API")
@@ -769,5 +769,36 @@ def get_symbol_accounts():
                     add_entry(h.symbol, h.broker, h.account_type)
                     
         return result
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class SettingPayload(BaseModel):
+    key: str
+    value: str
+
+@app.get("/api/settings/{key}")
+def get_setting(key: str):
+    try:
+        with Session(engine) as session:
+            setting = session.exec(select(UserSettings).where(UserSettings.key == key)).first()
+            if setting:
+                return {"key": setting.key, "value": setting.value}
+            return {"key": key, "value": None}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/settings")
+def save_setting(payload: SettingPayload):
+    try:
+        with Session(engine) as session:
+            setting = session.exec(select(UserSettings).where(UserSettings.key == payload.key)).first()
+            if not setting:
+                setting = UserSettings(key=payload.key, value=payload.value)
+                session.add(setting)
+            else:
+                setting.value = payload.value
+            session.commit()
+            return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
