@@ -98,7 +98,8 @@ def generate_static_preview(df, target_cagr, fundamentals=None, realized_pnl=Non
             else:
                 sector_map[base_sector] = sector_map.get(base_sector, 0) + val
         
-        plot_data = pd.Series(sector_map).sort_values(ascending=False)
+        plot_data = pd.Series(sector_map).sort_values(ascending=False).dropna()
+        plot_data = plot_data[plot_data > 0]
         title_text = 'Sector Exposure (Look-Through)'
         
         # Region Allocation Logic
@@ -117,7 +118,8 @@ def generate_static_preview(df, target_cagr, fundamentals=None, realized_pnl=Non
                 for reg, w in weights.items():
                     region_map[reg] = region_map.get(reg, 0) + (val * w)
         
-        region_data = pd.Series(region_map).sort_values(ascending=False)
+        region_data = pd.Series(region_map).sort_values(ascending=False).dropna()
+        region_data = region_data[region_data > 0]
         
     else:
         # Fallback to Holdings if no fundamentals
@@ -148,10 +150,13 @@ def generate_static_preview(df, target_cagr, fundamentals=None, realized_pnl=Non
     
     # Row 1, Col 1: Sector Donut Chart
     ax1 = fig.add_subplot(gs[0, 0])
-    # Re-use plot_data (Sector Series)
-    wedges, texts, autotexts = ax1.pie(plot_data, labels=plot_data.index, autopct='%1.1f%%', startangle=90, pctdistance=0.85)
-    plt.setp(texts, size=8)
-    plt.setp(autotexts, size=8, weight="bold")
+    if not plot_data.empty and plot_data.sum() > 0:
+        wedges, texts, autotexts = ax1.pie(plot_data, labels=plot_data.index, autopct='%1.1f%%', startangle=90, pctdistance=0.85)
+        plt.setp(texts, size=8)
+        plt.setp(autotexts, size=8, weight="bold")
+    else:
+        ax1.text(0.5, 0.5, "Sector Data N/A", ha='center')
+        
     # Donut Circle
     centre_circle = plt.Circle((0,0),0.70,fc='white')
     ax1.add_artist(centre_circle)
@@ -170,7 +175,7 @@ def generate_static_preview(df, target_cagr, fundamentals=None, realized_pnl=Non
     
     # Row 1, Col 3: Region Donut (New)
     ax_reg = fig.add_subplot(gs[0, 2])
-    if fundamentals and not region_data.empty:
+    if fundamentals and not region_data.empty and region_data.sum() > 0:
         # Map colors for Matplotlib
         reg_colors = [REGION_COLORS.get(label, '#808080') for label in region_data.index]
         r_wedges, r_texts, r_autotexts = ax_reg.pie(region_data, labels=region_data.index, autopct='%1.1f%%', startangle=90, pctdistance=0.85, colors=reg_colors)
@@ -209,11 +214,16 @@ def generate_static_preview(df, target_cagr, fundamentals=None, realized_pnl=Non
     
     # Labels with % for treemap
     total_val_static = plot_data.sum()
-    labels = [f"{i}\n{v/total_val_static:.1%}" if v/total_val_static > 0.03 else "" for i, v in zip(plot_data.index, plot_data.values)]
+    labels = []
+    if total_val_static > 0:
+        labels = [f"{i}\n{v/total_val_static:.1%}" if v/total_val_static > 0.03 else "" for i, v in zip(plot_data.index, plot_data.values)]
     try:
-        squarify.plot(sizes=plot_data.values, label=labels, 
-                      color=tm_colors, alpha=0.8, ax=ax3, 
-                      text_kwargs={'fontsize':9, 'weight':'bold', 'color':'white'})
+        if not plot_data.empty and total_val_static > 0:
+            squarify.plot(sizes=plot_data.values, label=labels, 
+                          color=tm_colors, alpha=0.8, ax=ax3, 
+                          text_kwargs={'fontsize':9, 'weight':'bold', 'color':'white'})
+        else:
+            ax3.text(0.5, 0.5, "Treemap Data N/A", ha='center')
     except Exception as e:
         print(f"Treemap error: {e}")
         ax3.text(0.5, 0.5, "Treemap Error", ha='center')
@@ -324,6 +334,7 @@ def generate_dashboard(df, target_cagr, fundamentals=None, technicals=None, news
                 )
 
     # --- Treemap Data Preparation (Look-Through) ---
+    if fundamentals:
         # 0. Performance Color Map Logic
         def get_perf_color(val):
             if val <= 0: return '#FF3B30' # Red
