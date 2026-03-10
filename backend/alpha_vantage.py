@@ -54,13 +54,24 @@ def fetch_av_data(function, symbol, **kwargs):
                 print(f"Database error on cache lookup: {e}")
                 cache_hit = None
         
+        api_key_to_use = get_api_key(db_session)
+        
         if cache_hit:
             # Check if still valid (less than 24h old)
             if datetime.utcnow() - cache_hit.updated_at < CACHE_TTL:
                 print(f"CACHE HIT [Alpha Vantage]: {function} for {symbol}")
                 return json.loads(cache_hit.data)
+            
+            # If expired but we don't have a real API key, just keep using the expired cache!
+            if api_key_to_use == 'demo':
+                print(f"CACHE HIT (Expired) [Alpha Vantage]: {function} for {symbol} (No API Key Provided)")
+                return json.loads(cache_hit.data)
 
-        api_key_to_use = get_api_key(db_session)
+        # If we have no cache at all and no real API key, return empty
+        if api_key_to_use == 'demo':
+            print(f"⚠️ Skipped Fetching {function} for {symbol} (No Alpha Vantage API Key)")
+            return {}
+
         print(f"FETCHING [Alpha Vantage]: {function} for {symbol} (Using API Key: {'***' if api_key_to_use != 'demo' else 'demo'})")
         
         params = {
@@ -81,9 +92,9 @@ def fetch_av_data(function, symbol, **kwargs):
             resp = requests.get(BASE_URL, params=params, timeout=15)
             data = resp.json()
             
-            # API Limit Hit message
-            if "Information" in data and "rate limit" in data["Information"].lower():
-                print(f"⚠️ Alpha Vantage Rate Limit Hit for {symbol}!")
+            # API Limit or Demo Key message
+            if "Information" in data or "Note" in data:
+                print(f"⚠️ Alpha Vantage System Message for {symbol}: {data.get('Information', data.get('Note'))}")
                 # Return old cache if it exists, even if expired
                 if cache_hit:
                     return json.loads(cache_hit.data)
@@ -226,14 +237,31 @@ def get_latest_news_av(symbols):
 
 def get_fundamental_data_av(symbols):
     fundamentals = {}
+    custom_sectors = {
+        'VOO': 'US Broad Market', 'XQQ.TO': 'US Technology', 'XEI.TO': 'Canadian Dividends',
+        'XIU.TO': 'Canadian Broad Market', 'XEF.TO': 'International Developed', 'XEC.TO': 'Emerging Markets',
+        'SLV': 'Commodities', 'GLD': 'Commodities', 'BTC-USD': 'Crypto', 'ETH-USD': 'Crypto',
+        'CAD=X': 'Currency', 'CASH.TO': 'Cash & Equivalents', 'NVDA': 'Technology',
+        'MSFT': 'Technology', 'CRM': 'Technology', 'COST': 'Consumer Defensive',
+        'V': 'Financial Services', 'UNH': 'Healthcare', 'TD.TO': 'Financial Services',
+        'CM.TO': 'Financial Services', 'AC.TO': 'Industrials', 'WCP.TO': 'Energy', 'VDY.TO': 'Canadian Dividends',
+        'AVUV': 'US Small Cap Value', 'JPST': 'Short-Term Fixed Income',
+        'QQQ': 'US Technology', 'XQQ': 'US Technology', 'SMH': 'US Semiconductors'
+    }
     for sym in symbols:
         if sym in ['CAD=X', 'CASH.TO', 'ETH-USD', 'BTC-USD']:
             fundamentals[sym] = {'Sector': 'Other'}
             continue
             
+        # If it's a known ETF or custom mapping, skip hitting OVERVIEW since AV doesn't support ETFs
+        if sym in custom_sectors:
+            fundamentals[sym] = {'Sector': custom_sectors[sym]}
+            continue
+            
         data = fetch_av_data("OVERVIEW", sym)
         try:
             if not data or not data.get("Symbol"):
+                fundamentals[sym] = {'Sector': 'Unknown'}
                 continue
                 
             fundamentals[sym] = {
@@ -257,7 +285,12 @@ def get_fundamental_data_av(symbols):
 
 def get_dividend_calendar_av(symbols):
     divs = {}
+    
+    # Custom ETF skip block to save bandwidth
+    custom_sectors = ['VOO', 'XQQ.TO', 'XEI.TO', 'XIU.TO', 'XEF.TO', 'XEC.TO', 'SLV', 'GLD', 'BTC-USD']
     for sym in symbols:
+        if sym in custom_sectors or '.TO' in sym: continue
+        
         data = fetch_av_data("OVERVIEW", sym)
         try:
             y = data.get('DividendYield')
