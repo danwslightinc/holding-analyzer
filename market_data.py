@@ -1,3 +1,21 @@
+import os
+from pathlib import Path
+
+# Wipe the poisoned yfinance cache before importing yfinance
+try:
+    cache_dirs = [
+        os.path.join(os.path.expanduser('~'), '.cache', 'yfinance'),
+        '/tmp/yfinance'
+    ]
+    for cache_dir in cache_dirs:
+        cache_path = Path(cache_dir)
+        if cache_path.exists() and cache_path.is_dir():
+            import shutil
+            shutil.rmtree(cache_path)
+            print(f"Purged poisoned yfinance cache at {cache_path}")
+except Exception as e:
+    print(f"Failed to clear yfinance cache: {e}")
+
 import yfinance as yf
 from datetime import datetime, timedelta
 import pandas as pd
@@ -6,17 +24,22 @@ import time
 import concurrent.futures
 from backend.cache import cache_result, prices_cache, fundamentals_cache, technicals_cache, news_cache, dividend_cache, fx_cache, history_cache
 
+# We MUST inject a custom Safari curl_cffi session globally to bypass Render Cloudflare blocks
+# The default yfinance Chrome curl_cffi is heavily targeted and results in 401s.
 _yf_session = None
 def get_yf_session():
     global _yf_session
     if _yf_session is None:
         try:
             from curl_cffi import requests
-            _yf_session = requests.Session(impersonate="chrome110")
+            # safari15_3 / edge99 often bypasses Cloudflare where chrome110 fails
+            _yf_session = requests.Session(impersonate="safari15_3")
         except ImportError:
             import requests
             _yf_session = requests.Session()
-            _yf_session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'})
+            _yf_session.headers.update({
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.3 Safari/605.1.15'
+            })
     return _yf_session
 
 
@@ -63,7 +86,7 @@ def find_purchase_date_from_price(symbol, purchase_price, tolerance=0.05, min_da
     try:
         if symbol in ['CAD=X', 'CASH.TO']:
             return None
-        ticker = yf.Ticker(symbol)
+        ticker = yf.Ticker(symbol, session=get_yf_session())
         hist = ticker.history(period="max")
         if hist.empty:
             return None
@@ -95,7 +118,7 @@ def get_current_prices(symbols):
     print(f"Fetching prices for: {' '.join(symbols)} via yfinance...")
     prices = {}
     try:
-        data = yf.download(symbols, period="1d", progress=False, threads=True)
+        data = yf.download(symbols, period="1d", progress=False, threads=True, session=get_yf_session())
         if not data.empty:
             if len(symbols) == 1:
                 val = data['Close'].iloc[-1]
@@ -120,7 +143,7 @@ def get_current_prices(symbols):
 def get_weekly_changes(symbols):
     if not symbols: return {}
     try:
-        data = yf.download(symbols, period="5d", progress=False)
+        data = yf.download(symbols, period="5d", progress=False, session=get_yf_session())
         changes = {}
         if data.empty: return {s: 0.0 for s in symbols}
         close_data = data['Close']
@@ -151,7 +174,7 @@ def get_weekly_changes(symbols):
 def get_daily_changes(symbols):
     if not symbols: return {}
     try:
-        data = yf.download(symbols, period="2d", progress=False)
+        data = yf.download(symbols, period="2d", progress=False, session=get_yf_session())
         changes = {}
         if data.empty: return {s: 0.0 for s in symbols}
         close_data = data['Close']
@@ -193,7 +216,7 @@ def get_usd_to_cad_rate():
 def get_market_indices_change():
     indices = {'^GSPC': '🇺🇸 S&P 500', '^IXIC': '🇺🇸 NASDAQ', '^GSPTSE': '🇨🇦 TSX'}
     try:
-        data = yf.download(list(indices.keys()), period="5d", progress=False)
+        data = yf.download(list(indices.keys()), period="5d", progress=False, session=get_yf_session())
         changes = {}
         if not data.empty:
             close_data = data['Close']
@@ -227,7 +250,7 @@ def get_technical_data(symbols):
     if not symbols: return {}
     technical_data = {}
     try:
-        data = yf.download(symbols, period="1y", progress=False)
+        data = yf.download(symbols, period="1y", progress=False, session=get_yf_session())
         if data.empty: return {s: {'RSI': 'N/A', 'Signal': 'N/A', 'Scorecard': ''} for s in symbols}
         
         is_multi = len(symbols) > 1
@@ -316,7 +339,7 @@ def get_technical_data(symbols):
 
 def fetch_symbol_news(sym):
     try:
-        yt = yf.Ticker(sym)
+        yt = yf.Ticker(sym, session=get_yf_session())
         y_news = yt.news
         if y_news and isinstance(y_news, list):
             top = y_news[0]
@@ -341,7 +364,7 @@ def get_latest_news(symbols):
 
 def fetch_symbol_dividends(sym):
     try:
-        yt = yf.Ticker(sym)
+        yt = yf.Ticker(sym, session=get_yf_session())
         divs = yt.dividends
         if not divs.empty:
             divs = divs[divs.index >= pd.to_datetime(datetime.now() - pd.Timedelta(days=366), utc=True)]
@@ -382,7 +405,7 @@ def fetch_symbol_fundamentals(sym):
         'QQQ': 'US Technology', 'XQQ': 'US Technology', 'SMH': 'US Semiconductors'
     }
     try:
-        yt = yf.Ticker(sym)
+        yt = yf.Ticker(sym, session=get_yf_session())
         info = yt.info
         q_type = info.get('quoteType', 'EQUITY')
         sector = info.get('sector') or 'N/A'
@@ -438,7 +461,7 @@ def get_portfolio_history(holdings_df):
     all_tickers = symbols + benchmarks + [fx_symbol]
     
     try:
-        data = yf.download(all_tickers, start=start_date, progress=False, threads=True)
+        data = yf.download(all_tickers, start=start_date, progress=False, threads=True, session=get_yf_session())
         if data.empty: return pd.DataFrame()
         closes = data['Close']
         closes.index = pd.to_datetime(closes.index, utc=True)

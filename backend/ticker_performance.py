@@ -52,7 +52,7 @@ def get_ticker_performance(symbols, timeframes=['1d', '1w', '1m', '3m', '6m', 'Y
         session = get_yf_session()
         
         # Fetch 1 year of data for all tickers at once using yfinance
-        all_hist = yf.download(symbols, period='1y', progress=False, threads=True)
+        all_hist = yf.download(symbols, period='1y', progress=False, threads=True, session=session)
         
         if all_hist.empty:
             print("No history data returned from Yahoo Finance")
