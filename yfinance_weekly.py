@@ -105,17 +105,25 @@ def get_weekly_changes_yq(symbols):
     try:
         t = get_yq_ticker(symbols)
         hist = t.history(period="5d")
+        if hist.empty: return {}
+        
+        is_multi = isinstance(hist.index, pd.MultiIndex)
+        hist = hist.reset_index()
+        if 'date' in hist.columns:
+            hist['date'] = pd.to_datetime(hist['date']).dt.tz_localize(None)
         
         changes = {}
         for sym in symbols:
             try:
-                if isinstance(hist.index, pd.MultiIndex):
-                    if sym in hist.index.levels[0]:
-                        sym_hist = hist.xs(sym)
-                    else: continue
+                if is_multi and 'symbol' in hist.columns:
+                    sym_hist = hist[hist['symbol'] == sym].copy()
                 else:
-                    sym_hist = hist
+                    sym_hist = hist.copy()
                 
+                # Sort by date to ensure iloc[0] and iloc[-1] are correct
+                if 'date' in sym_hist.columns:
+                    sym_hist = sym_hist.set_index('date').sort_index()
+
                 if len(sym_hist) >= 2:
                     s_val = sym_hist['close'].iloc[0]
                     e_val = sym_hist['close'].iloc[-1]
@@ -138,11 +146,24 @@ def get_indices_changes_yq():
     try:
         t = get_yq_ticker(list(indices.keys()))
         hist = t.history(period="5d")
+        if hist.empty: return {name: 0.0 for name in indices.values()}
         
+        is_multi = isinstance(hist.index, pd.MultiIndex)
+        hist = hist.reset_index()
+        if 'date' in hist.columns:
+            hist['date'] = pd.to_datetime(hist['date']).dt.tz_localize(None)
+
         changes = {}
         for symbol, name in indices.items():
-            if symbol in hist.index.levels[0] if isinstance(hist.index, pd.MultiIndex) else symbol in hist.index:
-                sym_hist = hist.xs(symbol) if isinstance(hist.index, pd.MultiIndex) else hist
+            try:
+                if is_multi and 'symbol' in hist.columns:
+                    sym_hist = hist[hist['symbol'] == symbol].copy()
+                else:
+                    sym_hist = hist[hist['symbol'] == symbol].copy() if 'symbol' in hist.columns else hist.copy()
+                
+                if 'date' in sym_hist.columns:
+                    sym_hist = sym_hist.set_index('date').sort_index()
+
                 if len(sym_hist) >= 2:
                     s_val = sym_hist['close'].iloc[0]
                     e_val = sym_hist['close'].iloc[-1]
@@ -154,11 +175,11 @@ def get_indices_changes_yq():
                     changes[name] = (end - start) / start
                 else:
                     changes[name] = 0.0
-            else:
-                 changes[name] = 0.0
+            except:
+                changes[name] = 0.0
         return changes
     except Exception as e:
-        return {'🇺🇸 S&P 500': 0.0, '🇺🇸 NASDAQ': 0.0, '🇨🇦 TSX': 0.0}
+        return {name: 0.0 for name in indices.values()}
 
 from datetime import datetime, timedelta
 
@@ -303,13 +324,17 @@ def get_portfolio_history_yq(holdings_df):
         hist = t.history(start=start_date)
         if hist.empty: return pd.DataFrame()
 
-        if isinstance(hist.index, pd.MultiIndex):
-            closes = hist.reset_index().pivot(index='date', columns='symbol', values='close')
+        # Normalize immediately to avoid mixed date/datetime comparison errors in pivot/sort
+        hist = hist.reset_index()
+        if 'date' in hist.columns:
+            hist['date'] = pd.to_datetime(hist['date']).dt.tz_localize(None)
+
+        if 'symbol' in hist.columns:
+            closes = hist.pivot(index='date', columns='symbol', values='close')
         else:
-            closes = hist[['close']].copy()
+            closes = hist.set_index('date')[['close']]
             closes.columns = [all_tickers[0]]
             
-        closes.index = pd.to_datetime(closes.index, utc=True)
         closes = closes.sort_index().ffill()
         
         fx_rates = closes['CAD=X'] if 'CAD=X' in closes.columns else pd.Series(1.35, index=closes.index)

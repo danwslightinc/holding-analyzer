@@ -9,6 +9,7 @@ from backend.alpha_vantage import (
 )
 from backend.cache import cache_result, fx_cache
 import pandas as pd
+import numpy as np
 
 # ETF Look-Through Weights (Approximate)
 ETF_SECTOR_WEIGHTS = {

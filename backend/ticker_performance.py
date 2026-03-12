@@ -29,23 +29,32 @@ def get_ticker_performance(symbols, timeframes=['1d', '1w', '1m', '3m', '6m', 'Y
         t = get_yq_ticker(symbols)
         # Fetch 2 years to be safe for 1y calculations
         hist = t.history(period="2y")
+        if hist.empty: return {}
+
+        # Normalize the DataFrame: Handle MultiIndex by resetting and converting to unified datetime
+        is_multi = isinstance(hist.index, pd.MultiIndex)
+        hist = hist.reset_index()
+        
+        if 'date' in hist.columns:
+            hist['date'] = pd.to_datetime(hist['date']).dt.tz_localize(None)
         
         for symbol in symbols:
             results[symbol] = {}
             try:
-                if isinstance(hist.index, pd.MultiIndex):
-                    if symbol in hist.index.levels[0]:
-                        sym_hist = hist.xs(symbol)
-                    else: continue
+                if is_multi and 'symbol' in hist.columns:
+                    sym_hist = hist[hist['symbol'] == symbol].copy()
                 else:
-                    sym_hist = hist
+                    sym_hist = hist.copy()
                 
                 if sym_hist.empty or 'close' not in sym_hist.columns:
                     continue
                     
-                sym_hist = sym_hist['close'].dropna().sort_index()
-                # Ensure index is DatetimeIndex and naive for comparison
-                sym_hist.index = pd.to_datetime(sym_hist.index).tz_localize(None)
+                # Use 'date' as index and ensure it's sorted
+                sym_hist = sym_hist.set_index('date').sort_index()
+                sym_hist = sym_hist['close'].dropna()
+                
+                if sym_hist.empty:
+                    continue
                 
                 current_price = float(sym_hist.iloc[-1])
                 
