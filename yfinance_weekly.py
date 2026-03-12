@@ -76,7 +76,8 @@ def get_daily_changes_yq(symbols):
                     # regularMarketChangePercent is usually e.g. 0.015 for 1.5%
                     c = sym_data.get('regularMarketChangePercent')
                     if c is not None:
-                        changes[sym] = float(c) * 100
+                        # Return as decimal (0.015) not whole number (1.5)
+                        changes[sym] = float(c)
                         continue
         
         missing = [s for s in symbols if s not in changes]
@@ -88,7 +89,8 @@ def get_daily_changes_yq(symbols):
                     if not df.empty and len(df) >= 2:
                         prev = df['Close'].iloc[-2]
                         curr = df['Close'].iloc[-1]
-                        changes[sym] = ((curr - prev) / prev) * 100
+                        # Return as decimal (0.015) not whole number (1.5)
+                        changes[sym] = (curr - prev) / prev
                 except: pass
     except Exception: pass
     return changes
@@ -112,7 +114,7 @@ def get_weekly_changes_yq(symbols):
                 if len(sym_hist) >= 2:
                     start = float(sym_hist['close'].iloc[0])
                     end = float(sym_hist['close'].iloc[-1])
-                    changes[sym] = ((end - start) / start) * 100
+                    changes[sym] = (end - start) / start
                 else:
                     changes[sym] = 0.0
             except:
@@ -230,7 +232,7 @@ def get_dividend_calendar_yq(symbols):
                 if rate and rate > 0:
                     divs[sym] = {
                         'Rate': float(rate),
-                        'Yield': float(y) * 100 if y else 0.0,
+                        'Yield': float(y) if y else 0.0,
                         'Last_Ex': ex if ex else 'N/A',
                         'Frequency': 'Unknown', # YF doesnt explicitly provide freq in summaryDetail easily as a string
                         'Months': [] # Hard to get from modules without history
