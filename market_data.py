@@ -88,7 +88,18 @@ def get_weekly_changes(symbols):
     # Prefer Yahoo Finance
     print("Fetching weekly changes using yfinance to save quota...")
     changes = get_weekly_changes_yq(symbols)
-    if not any(v != 0.0 for v in changes.values()):
+    
+    # Robust check if we got any valid non-zero changes
+    def has_valid_changes(c_dict):
+        for v in c_dict.values():
+            try:
+                # Handle if v is a Series/array
+                val = float(v.iloc[0]) if hasattr(v, 'iloc') and isinstance(v, pd.Series) else float(v)
+                if val != 0.0: return True
+            except: continue
+        return False
+
+    if not has_valid_changes(changes):
         return get_daily_changes_av(symbols)
     return changes
 
@@ -98,7 +109,19 @@ def get_daily_changes(symbols):
     changes = get_daily_changes_yq(symbols)
     
     # Identify failures
-    failed = [s for s in symbols if s not in changes or changes[s] == 0.0]
+    def is_failed(sym):
+        if sym not in changes: return True
+        val = changes[sym]
+        # Handle if val is a Series/array
+        if hasattr(val, 'iloc') or isinstance(val, (list, np.ndarray)):
+            try:
+                # Use .any() or just check the first element
+                val = float(val.iloc[0]) if hasattr(val, 'iloc') else float(val[0])
+            except:
+                return True
+        return float(val) == 0.0
+
+    failed = [s for s in symbols if is_failed(s)]
     if failed:
         print(f"YF failed for daily changes of {len(failed)} symbols, falling back to AV.")
         av_changes = get_daily_changes_av(failed)
