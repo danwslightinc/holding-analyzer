@@ -44,7 +44,8 @@ def get_ticker_performance(symbols, timeframes=['1d', '1w', '1m', '3m', '6m', 'Y
                     continue
                     
                 sym_hist = sym_hist['close'].dropna().sort_index()
-                sym_hist.index = pd.to_datetime(sym_hist.index, utc=True)
+                # Ensure index is DatetimeIndex and naive for comparison
+                sym_hist.index = pd.to_datetime(sym_hist.index).tz_localize(None)
                 
                 current_price = float(sym_hist.iloc[-1])
                 
@@ -63,7 +64,8 @@ def get_ticker_performance(symbols, timeframes=['1d', '1w', '1m', '3m', '6m', 'Y
 
                     days = timeframe_map.get(tf, 30)
                     target_date = now - timedelta(days=days)
-                    target_ts = pd.Timestamp(target_date, tz='UTC')
+                    # Create a naive Timestamp for comparison
+                    target_ts = pd.Timestamp(target_date).replace(hour=0, minute=0, second=0, microsecond=0)
                     
                     # Find closest date
                     hist_filtered = sym_hist[sym_hist.index >= target_ts]
