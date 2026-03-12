@@ -190,7 +190,8 @@ def get_portfolio():
             holding_dict = {k: sanitize_val(v) for k, v in row.to_dict().items()}
             
             # Add daily change
-            holding_dict['Day Change'] = float(daily_changes.get(sym, 0.0))
+            # Multiply by 100 because the frontend expects percentage (1.5 for 1.5%)
+            holding_dict['Day Change'] = float(daily_changes.get(sym, 0.0)) * 100.0
             
             # Add technical data
             tech = technical_data.get(sym, {})

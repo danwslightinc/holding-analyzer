@@ -185,7 +185,9 @@ def get_daily_changes_av(symbols):
             continue
         data = fetch_av_data("GLOBAL_QUOTE", sym)
         try:
-            changes[sym] = float(data['Global Quote']['10. change percent'].replace('%', ''))
+            # Shift from whole number (1.5) to decimal (0.015) for consistency
+            val = float(data['Global Quote']['10. change percent'].replace('%', ''))
+            changes[sym] = val / 100.0
         except Exception:
             changes[sym] = 0.0
     return changes
