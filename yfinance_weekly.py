@@ -87,8 +87,13 @@ def get_daily_changes_yq(symbols):
                 try:
                     df = yf.download(sym, period="2d", progress=False)
                     if not df.empty and len(df) >= 2:
-                        prev = df['Close'].iloc[-2]
-                        curr = df['Close'].iloc[-1]
+                        p_val = df['Close'].iloc[-2]
+                        c_val = df['Close'].iloc[-1]
+                        
+                        # Handle if yf.download returns a Series for these (multi-column)
+                        prev = float(p_val.iloc[0]) if hasattr(p_val, 'iloc') and isinstance(p_val, pd.Series) else float(p_val)
+                        curr = float(c_val.iloc[0]) if hasattr(c_val, 'iloc') and isinstance(c_val, pd.Series) else float(c_val)
+                        
                         # Return as decimal (0.015) not whole number (1.5)
                         changes[sym] = (curr - prev) / prev
                 except: pass
@@ -112,8 +117,13 @@ def get_weekly_changes_yq(symbols):
                     sym_hist = hist
                 
                 if len(sym_hist) >= 2:
-                    start = float(sym_hist['close'].iloc[0])
-                    end = float(sym_hist['close'].iloc[-1])
+                    s_val = sym_hist['close'].iloc[0]
+                    e_val = sym_hist['close'].iloc[-1]
+                    
+                    # Handle potential MultiIndex/Series
+                    start = float(s_val.iloc[0]) if hasattr(s_val, 'iloc') and isinstance(s_val, pd.Series) else float(s_val)
+                    end = float(e_val.iloc[0]) if hasattr(e_val, 'iloc') and isinstance(e_val, pd.Series) else float(e_val)
+                    
                     changes[sym] = (end - start) / start
                 else:
                     changes[sym] = 0.0
@@ -134,8 +144,13 @@ def get_indices_changes_yq():
             if symbol in hist.index.levels[0] if isinstance(hist.index, pd.MultiIndex) else symbol in hist.index:
                 sym_hist = hist.xs(symbol) if isinstance(hist.index, pd.MultiIndex) else hist
                 if len(sym_hist) >= 2:
-                    start = float(sym_hist['close'].iloc[0])
-                    end = float(sym_hist['close'].iloc[-1])
+                    s_val = sym_hist['close'].iloc[0]
+                    e_val = sym_hist['close'].iloc[-1]
+                    
+                    # Handle potential MultiIndex/Series
+                    start = float(s_val.iloc[0]) if hasattr(s_val, 'iloc') and isinstance(s_val, pd.Series) else float(s_val)
+                    end = float(e_val.iloc[0]) if hasattr(e_val, 'iloc') and isinstance(e_val, pd.Series) else float(e_val)
+                    
                     changes[name] = (end - start) / start
                 else:
                     changes[name] = 0.0
