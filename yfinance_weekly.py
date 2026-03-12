@@ -63,6 +63,36 @@ def get_prices_yq(symbols):
     except Exception as e:
         return {s: 0.0 for s in symbols}
 
+def get_daily_changes_yq(symbols):
+    if not symbols: return {}
+    changes = {}
+    try:
+        t = get_yq_ticker(symbols)
+        price_data = t.price
+        if price_data and isinstance(price_data, dict):
+            for sym in symbols:
+                sym_data = price_data.get(sym)
+                if isinstance(sym_data, dict):
+                    # regularMarketChangePercent is usually e.g. 0.015 for 1.5%
+                    c = sym_data.get('regularMarketChangePercent')
+                    if c is not None:
+                        changes[sym] = float(c) * 100
+                        continue
+        
+        missing = [s for s in symbols if s not in changes]
+        if missing:
+            # Fallback to period=2d to calculate manually
+            for sym in missing:
+                try:
+                    df = yf.download(sym, period="2d", progress=False)
+                    if not df.empty and len(df) >= 2:
+                        prev = df['Close'].iloc[-2]
+                        curr = df['Close'].iloc[-1]
+                        changes[sym] = ((curr - prev) / prev) * 100
+                except: pass
+    except Exception: pass
+    return changes
+
 def get_weekly_changes_yq(symbols):
     if not symbols: return {}
     try:
@@ -71,15 +101,21 @@ def get_weekly_changes_yq(symbols):
         
         changes = {}
         for sym in symbols:
-            if sym in hist.index.levels[0] if isinstance(hist.index, pd.MultiIndex) else sym in hist.index:
-                sym_hist = hist.xs(sym) if isinstance(hist.index, pd.MultiIndex) else hist
+            try:
+                if isinstance(hist.index, pd.MultiIndex):
+                    if sym in hist.index.levels[0]:
+                        sym_hist = hist.xs(sym)
+                    else: continue
+                else:
+                    sym_hist = hist
+                
                 if len(sym_hist) >= 2:
                     start = float(sym_hist['close'].iloc[0])
                     end = float(sym_hist['close'].iloc[-1])
-                    changes[sym] = (end - start) / start
+                    changes[sym] = ((end - start) / start) * 100
                 else:
                     changes[sym] = 0.0
-            else:
+            except:
                 changes[sym] = 0.0
         return changes
     except Exception as e:
@@ -177,7 +213,31 @@ def get_latest_news_yq(symbols):
     return news_map
 
 def get_dividend_calendar_yq(symbols):
-    return {}
+    if not symbols: return {}
+    divs = {}
+    try:
+        t = get_yq_ticker(symbols)
+        detail = t.get_modules('summaryDetail')
+        for sym in symbols:
+            try:
+                data = detail.get(sym, {})
+                if not isinstance(data, dict): continue
+                
+                rate = data.get('dividendRate')
+                y = data.get('dividendYield')
+                ex = data.get('exDividendDate')
+                
+                if rate and rate > 0:
+                    divs[sym] = {
+                        'Rate': float(rate),
+                        'Yield': float(y) * 100 if y else 0.0,
+                        'Last_Ex': ex if ex else 'N/A',
+                        'Frequency': 'Unknown', # YF doesnt explicitly provide freq in summaryDetail easily as a string
+                        'Months': [] # Hard to get from modules without history
+                    }
+            except: pass
+    except Exception: pass
+    return divs
 
 def get_fundamental_data_yq(symbols):
     fundamentals = {}

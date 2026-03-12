@@ -90,6 +90,8 @@ def fetch_av_data(function, symbol, **kwargs):
             params["symbol"] = av_symbol
             
         try:
+            # Respect Alpha Vantage 1-call-per-second burst limit
+            time.sleep(1.2)
             resp = requests.get(BASE_URL, params=params, timeout=15)
             data = resp.json()
             
