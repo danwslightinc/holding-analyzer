@@ -58,75 +58,138 @@ from yfinance_weekly import get_prices_yq
 import os
 
 def get_current_prices(symbols):
-    # If running in email context, prefer Yahoo Finance to save AV quota
-    if os.environ.get("USE_YFINANCE_FOR_EMAIL") == "true":
-        print("Using Yahoo Finance to fetch current prices (Email Mode)...")
-        prices = get_prices_yq(symbols)
-        # Fall back to AV if YF completely fails (returns 0s)
-        if not any(prices.values()):
-            print("YF failed, falling back to Alpha Vantage.")
-            return get_current_prices_av(symbols)
-        return prices
-    return get_current_prices_av(symbols)
-
-from yfinance_weekly import get_weekly_changes_yq
-
-def get_weekly_changes(symbols):
-    # For email reporting, we want to try Yahoo Finance first to save AV quota
-    if os.environ.get("USE_YFINANCE_FOR_EMAIL") == "true":
-        print("Fetching weekly changes using yfinance to save quota...")
-        prices = get_weekly_changes_yq(symbols)
-        if not any(prices.values()):
-            return get_daily_changes_av(symbols)
-        return prices
-    return get_daily_changes_av(symbols)
-
-def get_daily_changes(symbols):
-    return get_daily_changes_av(symbols)
-
-@cache_result(fx_cache)
-def get_usd_to_cad_rate():
-    try:
-        prices = get_current_prices(['CAD=X'])
-        rate = prices.get('CAD=X', 0.0)
-        if rate and rate > 1.0:
-            return float(rate)
-        return 1.40
-    except Exception:
-        return 1.40
-
-from yfinance_weekly import get_indices_changes_yq
-def get_market_indices_change():
-    if os.environ.get("USE_YFINANCE_FOR_EMAIL") == "true":
-        print("Fetching market indices using yfinance...")
-        return get_indices_changes_yq()
-    return {'🇺🇸 S&P 500': 0.0, '🇺🇸 NASDAQ': 0.0, '🇨🇦 TSX': 0.0}
+    # Prefer Yahoo Finance to save AV quota (25 req/day limit is very strict)
+    print("Fetching current prices using Yahoo Finance...")
+    prices = get_prices_yq(symbols)
+    
+    # Identify symbols that YF failed to get (returned 0.0)
+    failed_symbols = [s for s, p in prices.items() if p == 0.0]
+    if failed_symbols:
+        print(f"YF failed for {len(failed_symbols)} symbols, falling back to Alpha Vantage for these: {failed_symbols}")
+        av_prices = get_current_prices_av(failed_symbols)
+        prices.update(av_prices)
+    
+    return prices
 
 from yfinance_weekly import (
+    get_prices_yq,
+    get_weekly_changes_yq,
+    get_daily_changes_yq,
+    get_indices_changes_yq,
     get_technical_data_yq,
     get_latest_news_yq,
     get_dividend_calendar_yq,
     get_fundamental_data_yq,
     get_portfolio_history_yq
 )
+import os
+
+def get_weekly_changes(symbols):
+    # Prefer Yahoo Finance
+    print("Fetching weekly changes using yfinance to save quota...")
+    changes = get_weekly_changes_yq(symbols)
+    if not any(v != 0.0 for v in changes.values()):
+        return get_daily_changes_av(symbols)
+    return changes
+
+def get_daily_changes(symbols):
+    # Daily changes for dashboard - try YF first
+    print("Fetching daily changes using yfinance...")
+    changes = get_daily_changes_yq(symbols)
+    
+    # Identify failures
+    failed = [s for s in symbols if s not in changes or changes[s] == 0.0]
+    if failed:
+        print(f"YF failed for daily changes of {len(failed)} symbols, falling back to AV.")
+        av_changes = get_daily_changes_av(failed)
+        changes.update(av_changes)
+        
+    return changes
+
+@cache_result(fx_cache)
+def get_usd_to_cad_rate():
+    try:
+        # Use YF for exchange rate as it's very reliable and saves 1 AV call
+        prices = get_prices_yq(['CAD=X'])
+        rate = prices.get('CAD=X', 0.0)
+        if rate and rate > 1.0:
+            return float(rate)
+        # Fallback to AV
+        av_prices = get_current_prices_av(['CAD=X'])
+        rate = av_prices.get('CAD=X', 0.0)
+        if rate and rate > 1.0:
+            return float(rate)
+        return 1.40
+    except Exception:
+        return 1.40
+
+def get_market_indices_change():
+    print("Fetching market indices using yfinance...")
+    return get_indices_changes_yq()
 
 def get_technical_data(symbols):
-    if os.environ.get("USE_YFINANCE_FOR_EMAIL") == "true": return get_technical_data_yq(symbols)
-    return get_technical_data_av(symbols)
+    print("Fetching technical data using yfinance...")
+    data = get_technical_data_yq(symbols)
+    # Technical data is optional-ish, if YF fails we can try AV for a few
+    return data
 
 def get_latest_news(symbols):
-    if os.environ.get("USE_YFINANCE_FOR_EMAIL") == "true": return get_latest_news_yq(symbols)
-    return get_latest_news_av(symbols)
+    print("Fetching latest news using yfinance...")
+    return get_latest_news_yq(symbols)
 
 def get_dividend_calendar(symbols):
-    if os.environ.get("USE_YFINANCE_FOR_EMAIL") == "true": return get_dividend_calendar_yq(symbols)
-    return get_dividend_calendar_av(symbols)
+    print("Fetching dividend calendar using yfinance...")
+    data = get_dividend_calendar_yq(symbols)
+    # Fallback to AV if empty (AV provides OVERVIEW for US stocks)
+    missing = [s for s in symbols if s not in data]
+    if missing:
+        print(f"Dividends missing for {len(missing)} symbols, trying Alpha Vantage fallback.")
+        av_data = get_dividend_calendar_av(missing)
+        data.update(av_data)
+    return data
+
+CUSTOM_SECTOR_MAPPINGS = {
+    'VOO': 'US Broad Market', 'XQQ.TO': 'US Technology', 'XEI.TO': 'Canadian Dividends',
+    'XIU.TO': 'Canadian Broad Market', 'XEF.TO': 'International Developed', 'XEC.TO': 'Emerging Markets',
+    'SLV': 'Commodities', 'GLD': 'Commodities', 'BTC-USD': 'Crypto', 'ETH-USD': 'Crypto',
+    'CAD=X': 'Currency', 'CASH.TO': 'Cash & Equivalents', 'NVDA': 'Technology',
+    'MSFT': 'Technology', 'CRM': 'Technology', 'COST': 'Consumer Defensive',
+    'V': 'Financial Services', 'UNH': 'Healthcare', 'TD.TO': 'Financial Services',
+    'CM.TO': 'Financial Services', 'AC.TO': 'Industrials', 'WCP.TO': 'Energy', 'VDY.TO': 'Canadian Dividends',
+    'AVUV': 'US Small Cap Value', 'JPST': 'Short-Term Fixed Income',
+    'QQQ': 'US Technology', 'XQQ': 'US Technology', 'SMH': 'US Semiconductors'
+}
 
 def get_fundamental_data(symbols):
-    if os.environ.get("USE_YFINANCE_FOR_EMAIL") == "true": return get_fundamental_data_yq(symbols)
-    return get_fundamental_data_av(symbols)
+    print("Fetching fundamental data...")
+    results = {}
+    remaining_symbols = []
+    
+    # Check custom mappings first (saves API calls)
+    for sym in symbols:
+        if sym in CUSTOM_SECTOR_MAPPINGS:
+            results[sym] = {'Sector': CUSTOM_SECTOR_MAPPINGS[sym]}
+        else:
+            remaining_symbols.append(sym)
+            
+    if not remaining_symbols:
+        return results
+        
+    # Try YF for the rest
+    print(f"Fetching fundamental data using yfinance for {len(remaining_symbols)} symbols...")
+    yf_data = get_fundamental_data_yq(remaining_symbols)
+    results.update(yf_data)
+    
+    # Check for missing sectors in YF results
+    missing = [s for s in remaining_symbols if results.get(s, {}).get('Sector') == 'Unknown']
+    if missing:
+        print(f"Fundamentals missing for {len(missing)} symbols, trying Alpha Vantage fallback.")
+        av_data = get_fundamental_data_av(missing)
+        results.update(av_data)
+        
+    return results
 
 def get_portfolio_history(holdings_df):
-    if os.environ.get("USE_YFINANCE_FOR_EMAIL") == "true": return get_portfolio_history_yq(holdings_df)
-    return get_portfolio_history_av(holdings_df)
+    print("Fetching portfolio history using yfinance (much faster/unlimited)...")
+    return get_portfolio_history_yq(holdings_df)
 

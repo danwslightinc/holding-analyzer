@@ -1,20 +1,22 @@
-from backend.alpha_vantage import fetch_av_data
+from yfinance_weekly import get_yq_ticker
 from datetime import datetime, timedelta
 import pandas as pd
 import time
+import numpy as np
 
 _performance_cache = {
     'data': None,
     'timestamp': 0,
-    'ttl': 86400  # AV approach caches for 24 hours globally
+    'ttl': 86400  # Cache for 24 hours
 }
 
 def get_ticker_performance(symbols, timeframes=['1d', '1w', '1m', '3m', '6m', 'YTD', '1y']):
     current_time = time.time()
     if _performance_cache['data'] is not None and (current_time - _performance_cache['timestamp']) < _performance_cache['ttl']:
-        return _performance_cache['data']
+        # Filter for requested symbols if cache has more
+        return {s: _performance_cache['data'][s] for s in symbols if s in _performance_cache['data']}
         
-    print(f"Fetching Alpha Vantage performance data for {len(symbols)} symbols...")
+    print(f"Fetching Yahoo Finance performance data for {len(symbols)} symbols...")
     results = {}
     
     now = datetime.now()
@@ -23,64 +25,67 @@ def get_ticker_performance(symbols, timeframes=['1d', '1w', '1m', '3m', '6m', 'Y
         'YTD': (now - datetime(now.year, 1, 1)).days
     }
     
-    for symbol in symbols:
-        results[symbol] = {}
-        ts_data = fetch_av_data("TIME_SERIES_DAILY", symbol, outputsize="full")
+    try:
+        t = get_yq_ticker(symbols)
+        # Fetch 2 years to be safe for 1y calculations
+        hist = t.history(period="2y")
         
-        try:
-            time_series = ts_data.get("Time Series (Daily)", {})
-            if not time_series:
-                continue
-                
-            dates = sorted(list(time_series.keys()))
-            hist = pd.Series([float(time_series[d]['4. close']) for d in dates], index=pd.to_datetime(dates)).sort_index()
-            # Force to UTC for timezone checks
-            hist.index = pd.to_datetime(hist.index, utc=True)
-            
-            if hist.empty:
-                continue
-                
-            current_price = hist.iloc[-1]
-            
-            for tf in timeframes:
-                if tf == '1d' and len(hist) > 1:
-                    start_price = hist.iloc[-2]
-                    change_value = current_price - start_price
-                    change_pct = (change_value / start_price) * 100 if start_price > 0 else 0
-                    results[symbol][tf] = {
-                        'change_pct': round(change_pct, 2),
-                        'change_value': round(change_value, 2),
-                        'current_price': round(float(current_price), 2),
-                        'start_price': round(float(start_price), 2)
-                    }
-                    continue
-
-                days = timeframe_map.get(tf, 30)
-                target_date = now - timedelta(days=days)
-                target_ts = pd.Timestamp(target_date).tz_localize('UTC')
-                
-                hist_filtered = hist[hist.index >= target_ts]
-                
-                if not hist_filtered.empty:
-                    start_price = hist_filtered.iloc[0]
-                    change_value = current_price - start_price
-                    change_pct = (change_value / start_price) * 100 if start_price > 0 else 0
-                    
-                    results[symbol][tf] = {
-                        'change_pct': round(change_pct, 2),
-                        'change_value': round(change_value, 2),
-                        'current_price': round(float(current_price), 2),
-                        'start_price': round(float(start_price), 2)
-                    }
+        for symbol in symbols:
+            results[symbol] = {}
+            try:
+                if isinstance(hist.index, pd.MultiIndex):
+                    if symbol in hist.index.levels[0]:
+                        sym_hist = hist.xs(symbol)
+                    else: continue
                 else:
-                    results[symbol][tf] = {
-                        'change_pct': 0, 'change_value': 0,
-                        'current_price': round(float(current_price), 2),
-                        'start_price': round(float(current_price), 2)
-                    }
-        except Exception as e:
-            print(f"Error processing AV performance for {symbol}: {e}")
-            pass
+                    sym_hist = hist
+                
+                if sym_hist.empty or 'close' not in sym_hist.columns:
+                    continue
+                    
+                sym_hist = sym_hist['close'].dropna().sort_index()
+                sym_hist.index = pd.to_datetime(sym_hist.index, utc=True)
+                
+                current_price = float(sym_hist.iloc[-1])
+                
+                for tf in timeframes:
+                    if tf == '1d' and len(sym_hist) > 1:
+                        start_price = float(sym_hist.iloc[-2])
+                        change_value = current_price - start_price
+                        change_pct = (change_value / start_price) * 100 if start_price > 0 else 0
+                        results[symbol][tf] = {
+                            'change_pct': round(change_pct, 2),
+                            'change_value': round(change_value, 2),
+                            'current_price': round(current_price, 2),
+                            'start_price': round(start_price, 2)
+                        }
+                        continue
+
+                    days = timeframe_map.get(tf, 30)
+                    target_date = now - timedelta(days=days)
+                    target_ts = pd.Timestamp(target_date, tz='UTC')
+                    
+                    # Find closest date
+                    hist_filtered = sym_hist[sym_hist.index >= target_ts]
+                    
+                    if not hist_filtered.empty:
+                        start_price = float(hist_filtered.iloc[0])
+                        change_value = current_price - start_price
+                        change_pct = (change_value / start_price) * 100 if start_price > 0 else 0
+                        
+                        results[symbol][tf] = {
+                            'change_pct': round(change_pct, 2),
+                            'change_value': round(change_value, 2),
+                            'current_price': round(current_price, 2),
+                            'start_price': round(start_price, 2)
+                        }
+                    else:
+                        results[symbol][tf] = {'change_pct': 0, 'change_value': 0, 'current_price': round(current_price, 2), 'start_price': round(current_price, 2)}
+            except Exception as e:
+                print(f"Error processing YF performance for {symbol}: {e}")
+                
+    except Exception as e:
+        print(f"Failed to fetch YF performance: {e}")
             
     _performance_cache['data'] = results
     _performance_cache['timestamp'] = time.time()
