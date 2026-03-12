@@ -41,7 +41,14 @@ app.add_middleware(
 TARGET_CAGR = float(os.getenv("TARGET_CAGR", 0.08))
 
 def sanitize_val(val):
-    if val is None or pd.isna(val):
+    # Handle cases where val might accidentally be a Series or array
+    if isinstance(val, (pd.Series, np.ndarray)):
+        try:
+            val = val.iloc[0] if hasattr(val, 'iloc') else val[0] if len(val) > 0 else None
+        except:
+            return None
+
+    if val is None or (not isinstance(val, (list, dict)) and pd.isna(val)):
         return None
     if isinstance(val, (datetime, pd.Timestamp)):
         return val.strftime('%Y/%m/%d')
