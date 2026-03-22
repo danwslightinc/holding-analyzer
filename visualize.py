@@ -11,6 +11,11 @@ ETF_SECTOR_WEIGHTS = {
         'Consumer Cyclical': 0.10, 'Communication Services': 0.09, 'Industrials': 0.08, 
         'Consumer Defensive': 0.06, 'Energy': 0.04, 'Real Estate': 0.02, 'Basic Materials': 0.02, 'Utilities': 0.03
     },
+    'VFV.TO': {
+        'Technology': 0.31, 'Financial Services': 0.13, 'Healthcare': 0.12, 
+        'Consumer Cyclical': 0.10, 'Communication Services': 0.09, 'Industrials': 0.08, 
+        'Consumer Defensive': 0.06, 'Energy': 0.04, 'Real Estate': 0.02, 'Basic Materials': 0.02, 'Utilities': 0.03
+    },
     'XQQ.TO': {
         'Technology': 0.51, 'Communication Services': 0.16, 'Consumer Cyclical': 0.13, 
         'Healthcare': 0.06, 'Consumer Defensive': 0.04, 'Industrials': 0.04, 'Utilities': 0.01,
@@ -47,6 +52,7 @@ ETF_SECTOR_WEIGHTS = {
 
 ETF_REGION_WEIGHTS = {
     'VOO': {'US': 1.0},
+    'VFV.TO': {'US': 1.0},
     'QQQ': {'US': 1.0},
     'MSFT': {'US': 1.0}, 'NVDA': {'US': 1.0}, 'V': {'US': 1.0}, 'UNH': {'US': 1.0},
     'SAVA': {'US': 1.0}, 'SLV': {'Commodities': 1.0},

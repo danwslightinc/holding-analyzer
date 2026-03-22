@@ -170,6 +170,7 @@ def clean_symbol(symbol, broker=None, description=""):
         symbol = str(symbol)
     
     s = symbol.strip().upper()
+    if s == "NAN" or not s: return ""
     
     # Handle common non-symbol identifiers
     if s in ["CASH", "DIVIDEND", "DIV", "INTEREST", "INT", "DRIP", "REI"]:

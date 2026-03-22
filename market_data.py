@@ -18,6 +18,11 @@ ETF_SECTOR_WEIGHTS = {
         'Consumer Cyclical': 0.10, 'Communication Services': 0.09, 'Industrials': 0.08, 
         'Consumer Defensive': 0.06, 'Energy': 0.04, 'Real Estate': 0.02, 'Basic Materials': 0.02, 'Utilities': 0.03
     },
+    'VFV.TO': {
+        'Technology': 0.31, 'Financial Services': 0.13, 'Healthcare': 0.12, 
+        'Consumer Cyclical': 0.10, 'Communication Services': 0.09, 'Industrials': 0.08, 
+        'Consumer Defensive': 0.06, 'Energy': 0.04, 'Real Estate': 0.02, 'Basic Materials': 0.02, 'Utilities': 0.03
+    },
     'XQQ.TO': {
         'Technology': 0.51, 'Communication Services': 0.16, 'Consumer Cyclical': 0.13, 
         'Healthcare': 0.06, 'Consumer Defensive': 0.04, 'Industrials': 0.04, 'Utilities': 0.01,
@@ -173,7 +178,7 @@ def get_dividend_calendar(symbols):
     return data
 
 CUSTOM_SECTOR_MAPPINGS = {
-    'VOO': 'US Broad Market', 'XQQ.TO': 'US Technology', 'XEI.TO': 'Canadian Dividends',
+    'VOO': 'US Broad Market', 'VFV.TO': 'US Broad Market', 'XQQ.TO': 'US Technology', 'XEI.TO': 'Canadian Dividends',
     'XIU.TO': 'Canadian Broad Market', 'XEF.TO': 'International Developed', 'XEC.TO': 'Emerging Markets',
     'SLV': 'Commodities', 'GLD': 'Commodities', 'BTC-USD': 'Crypto', 'ETH-USD': 'Crypto',
     'CAD=X': 'Currency', 'CASH.TO': 'Cash & Equivalents', 'NVDA': 'Technology',

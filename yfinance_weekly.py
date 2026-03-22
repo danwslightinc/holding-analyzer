@@ -104,7 +104,8 @@ def get_weekly_changes_yq(symbols):
     if not symbols: return {}
     try:
         t = get_yq_ticker(symbols)
-        hist = t.history(period="5d")
+        # Increase period to 7d to ensure we get enough trading days even if today is NaN or it's a Monday
+        hist = t.history(period="7d")
         if hist.empty: return {}
         
         is_multi = isinstance(hist.index, pd.MultiIndex)
@@ -120,9 +121,12 @@ def get_weekly_changes_yq(symbols):
                 else:
                     sym_hist = hist.copy()
                 
-                # Sort by date to ensure iloc[0] and iloc[-1] are correct
+                # Sort by date and DROP NaNs to avoid +nan%
                 if 'date' in sym_hist.columns:
                     sym_hist = sym_hist.set_index('date').sort_index()
+                
+                if 'close' in sym_hist.columns:
+                    sym_hist = sym_hist.dropna(subset=['close'])
 
                 if len(sym_hist) >= 2:
                     s_val = sym_hist['close'].iloc[0]
@@ -132,7 +136,10 @@ def get_weekly_changes_yq(symbols):
                     start = float(s_val.iloc[0]) if hasattr(s_val, 'iloc') and isinstance(s_val, pd.Series) else float(s_val)
                     end = float(e_val.iloc[0]) if hasattr(e_val, 'iloc') and isinstance(e_val, pd.Series) else float(e_val)
                     
-                    changes[sym] = (end - start) / start
+                    if start != 0:
+                        changes[sym] = (end - start) / start
+                    else:
+                        changes[sym] = 0.0
                 else:
                     changes[sym] = 0.0
             except:
@@ -145,7 +152,8 @@ def get_indices_changes_yq():
     indices = {'^GSPC': '🇺🇸 S&P 500', '^IXIC': '🇺🇸 NASDAQ', '^GSPTSE': '🇨🇦 TSX'}
     try:
         t = get_yq_ticker(list(indices.keys()))
-        hist = t.history(period="5d")
+        # Increase period to 7d
+        hist = t.history(period="7d")
         if hist.empty: return {name: 0.0 for name in indices.values()}
         
         is_multi = isinstance(hist.index, pd.MultiIndex)
@@ -163,6 +171,9 @@ def get_indices_changes_yq():
                 
                 if 'date' in sym_hist.columns:
                     sym_hist = sym_hist.set_index('date').sort_index()
+                
+                if 'close' in sym_hist.columns:
+                    sym_hist = sym_hist.dropna(subset=['close'])
 
                 if len(sym_hist) >= 2:
                     s_val = sym_hist['close'].iloc[0]
@@ -172,7 +183,10 @@ def get_indices_changes_yq():
                     start = float(s_val.iloc[0]) if hasattr(s_val, 'iloc') and isinstance(s_val, pd.Series) else float(s_val)
                     end = float(e_val.iloc[0]) if hasattr(e_val, 'iloc') and isinstance(e_val, pd.Series) else float(e_val)
                     
-                    changes[name] = (end - start) / start
+                    if start != 0:
+                        changes[name] = (end - start) / start
+                    else:
+                        changes[name] = 0.0
                 else:
                     changes[name] = 0.0
             except:
@@ -251,31 +265,88 @@ def get_latest_news_yq(symbols):
     return news_map
 
 def get_dividend_calendar_yq(symbols):
+    """
+    Fetches dividend information (Rate, Yield, Freq, Months) using yfinance history.
+    This is more robust for ETFs and international stocks than summaryDetail.
+    """
     if not symbols: return {}
     divs = {}
+    
     try:
-        t = get_yq_ticker(symbols)
-        detail = t.get_modules('summaryDetail')
-        for sym in symbols:
-            try:
-                data = detail.get(sym, {})
-                if not isinstance(data, dict): continue
-                
-                rate = data.get('dividendRate')
-                y = data.get('dividendYield')
-                ex = data.get('exDividendDate')
-                
-                if rate and rate > 0:
-                    divs[sym] = {
-                        'Rate': float(rate),
-                        'Yield': float(y) if y else 0.0,
-                        'Last_Ex': ex if ex else 'N/A',
-                        'Frequency': 'Unknown', # YF doesnt explicitly provide freq in summaryDetail easily as a string
-                        'Months': [] # Hard to get from modules without history
-                    }
-            except: pass
-    except Exception: pass
-    return divs
+        print(f"Fetching dividend history for {len(symbols)} symbols...")
+        # Actions=True gets the Dividends column
+        data = yf.download(symbols, period='1y', actions=True, progress=False, threads=True)
+        
+        # Handle single vs multi-symbol response
+        if len(symbols) == 1:
+            if not data.empty and 'Dividends' in data.columns:
+                div_col = data['Dividends']
+                sym = symbols[0]
+                _process_div_series(sym, div_col, divs)
+        else:
+            if not data.empty and 'Dividends' in data.columns:
+                div_df = data['Dividends']
+                for sym in symbols:
+                    if sym in div_df.columns:
+                        _process_div_series(sym, div_df[sym], divs)
+                        
+        # Any missing? Try individual Tickers (sometimes safer for specific symbols)
+        missing = [s for s in symbols if s not in divs]
+        if missing:
+            for sym in missing:
+                try:
+                    t = yf.Ticker(sym)
+                    h = t.dividends
+                    if not h.empty:
+                        # Filter to last year
+                        h_last_year = h[h.index > (pd.Timestamp.now(tz=h.index.tz) - pd.Timedelta(days=366))]
+                        _process_div_series(sym, h_last_year, divs)
+                except: pass
+
+        # Final enrichment: If we found something, try to get trailing yield from summaryDetail
+        # (Rate calculation: latest dividend * frequency or sum of last year)
+        # We prefer forward rate if available, but for now sum is a good proxy
+        
+        return divs
+        
+    except Exception as e:
+        print(f"Dividend fetch error: {e}")
+        return {}
+
+def _process_div_series(sym, series, results_dict):
+    """ Helper to extract frequency and months from dividend series """
+    valid = series[series > 0].dropna()
+    
+    if valid.empty:
+        results_dict[sym] = {
+            'Rate': 0.0,
+            'Yield': 0.0,
+            'Last_Ex': 'N/A',
+            'Frequency': 'None',
+            'Months': []
+        }
+        return
+    
+    # Frequency and Payout Months
+    months = sorted(list(set(valid.index.month.tolist())))
+    freq_count = len(valid)
+    
+    # Heuristic for frequency label
+    if freq_count >= 11: freq = 'Monthly'
+    elif 3 <= freq_count <= 5: freq = 'Quarterly'
+    elif freq_count >= 1: freq = 'Annual'
+    else: freq = 'Unknown'
+    
+    # Average per-payment Rate (ensures annual total is Rate * Frequency)
+    rate = float(valid.mean()) if not valid.empty else 0.0
+    
+    results_dict[sym] = {
+        'Rate': rate,
+        'Yield': 0.0, # Will be calculated by UI or fetched later if really needed
+        'Last_Ex': valid.index[-1].strftime('%Y-%m-%d') if not valid.empty else 'N/A',
+        'Frequency': freq,
+        'Months': months
+    }
 
 def get_fundamental_data_yq(symbols):
     fundamentals = {}

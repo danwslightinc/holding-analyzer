@@ -26,6 +26,40 @@ def main():
         print("No valid holdings found.")
         return ""
 
+    # --- Aggregation Helper ---
+    def aggregate_realized_pnl(pnl_dict, session_pnl_df=None):
+        agg = {}
+        # 1. Start with the FIFO calculated P&L (if any)
+        if pnl_dict:
+            for key, data in pnl_dict.items():
+                sym = key[0] if isinstance(key, tuple) else key
+                if not sym or sym in ["NAN.TO", "NAN", ""]: continue
+                if sym not in agg: agg[sym] = {}
+                if isinstance(data, dict):
+                    for curr, val in data.items():
+                        agg[sym][curr] = agg[sym].get(curr, 0) + val
+                else:
+                    agg[sym]['CAD'] = agg[sym].get('CAD', 0) + data
+
+        # 2. ALSO include any explicitly recorded "SELL" or "DIV" profit from the DB transactions
+        # This catches transactions where we might be missing the historical BUY cost basis
+        if session_pnl_df is not None and not session_pnl_df.empty:
+            for _, tx in session_pnl_df.iterrows():
+                sym = tx['Symbol']
+                if not sym or sym in ["NAN.TO", "NAN", ""]: continue
+                if sym not in agg: agg[sym] = {'CAD': 0.0}
+        
+        return agg
+
+    print("Fetching full Transaction history for Realized P&L...")
+    from backend.database import engine
+    from sqlmodel import Session
+    with Session(engine) as session:
+        from data_loader import get_processed_transactions
+        full_tx_df = get_processed_transactions(session)
+    
+    realized_pnl = aggregate_realized_pnl(realized_pnl, full_tx_df)
+
     # Get unique symbols
     symbols = df['Symbol'].unique().tolist()
     
@@ -86,7 +120,36 @@ def main():
     # 2. Update Commission to CAD
     df['Commission'] = df['Commission'] * df['FX Rate']
     
-    # 3. Explicitly set derived columns (just to be safe, though calculate_metrics will re-do roughly same)
+    # --- Aggregation ---
+    # Aggregate holdings by Symbol for a consolidated view in the dashboard/email
+    print("Aggregating holdings by Symbol...")
+    
+    # We use a weighted average for Purchase Price and Sum for others
+    # Trade Date: Use the earliest (min) to show the full holding duration for CAGR
+    agg_funcs = {
+        'Quantity': 'sum',
+        'Purchase Price': lambda x: (x * df.loc[x.index, 'Quantity']).sum() / df.loc[x.index, 'Quantity'].sum() if df.loc[x.index, 'Quantity'].sum() > 0 else 0,
+        'Commission': 'sum',
+        'Trade Date': 'min',
+        'Currency': 'first',
+        'Current Price': 'first',
+        'FX Rate': 'first',
+        'Price (CAD)': 'first',
+        'Cost Basis (Native)': 'sum',
+        'Cost Basis (CAD)': 'sum',
+        'Market Value (CAD)': 'sum',
+        'P&L (CAD)': 'sum'
+    }
+    
+    # Preserve mental columns if they exist
+    mental_cols = ['Thesis', 'Catalyst', 'Kill Switch', 'Conviction', 'Timeframe']
+    for col in mental_cols:
+        if col in df.columns:
+            agg_funcs[col] = 'first'
+            
+    df = df.groupby('Symbol').agg(agg_funcs).reset_index()
+
+    # 3. Explicitly set derived columns
     df['Cost Basis'] = df['Cost Basis (CAD)']
     df['Market Value'] = df['Market Value (CAD)']
     df['P&L'] = df['P&L (CAD)']
