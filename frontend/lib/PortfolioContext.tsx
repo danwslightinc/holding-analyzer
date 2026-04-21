@@ -57,6 +57,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
             setHistory(h);
             setSymbolAccounts(a);
             setError(null);
+            console.log("DEBUG: Portfolio data loaded successfully", { p, d, t, h, a });
         } catch (err) {
             console.error("Context fetch error:", err);
             setError(err);

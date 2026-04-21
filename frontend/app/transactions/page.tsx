@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import {
     Plus, Trash2, Search, X, History, TrendingUp, ArrowRight,
-    Filter, DollarSign, Calendar, Briefcase, CreditCard
+    Filter, DollarSign, Calendar, Briefcase, CreditCard, Edit2
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { API_BASE_URL } from "@/lib/api";
@@ -44,11 +44,12 @@ export default function TransactionsPage() {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
+    const [editId, setEditId] = useState<number | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [filterType, setFilterType] = useState<string>("All");
 
-    const [form, setForm] = useState({
+    const initialForm = {
         Symbol: "",
         Purchase_Price: "",
         Quantity: "",
@@ -58,7 +59,9 @@ export default function TransactionsPage() {
         Broker: "RBC",
         Account_Type: "TFSA",
         Comment: ""
-    });
+    };
+
+    const [form, setForm] = useState(initialForm);
 
     const fetchTransactions = async () => {
         try {
@@ -93,12 +96,32 @@ export default function TransactionsPage() {
         });
     }, [transactions, searchQuery, filterType]);
 
-    const handleAdd = async (e: React.FormEvent) => {
+    const handleEdit = (tx: Transaction) => {
+        setEditId(tx.id);
+        setForm({
+            Symbol: tx.Symbol,
+            Purchase_Price: String(tx["Purchase Price"]),
+            Quantity: String(tx.Quantity),
+            Commission: String(tx.Commission || 0),
+            Trade_Date: tx["Trade Date"],
+            Transaction_Type: (tx["Transaction Type"] || "BUY").toUpperCase(),
+            Broker: tx.Broker,
+            Account_Type: tx["Account Type"],
+            Comment: tx.Comment || ""
+        });
+        setShowForm(true);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const handleFormSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setSubmitting(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/transactions`, {
-                method: "POST",
+            const url = editId ? `${API_BASE_URL}/api/transactions/${editId}` : `${API_BASE_URL}/api/transactions`;
+            const method = editId ? "PUT" : "POST";
+            
+            const res = await fetch(url, {
+                method: method,
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     ...form,
@@ -109,22 +132,13 @@ export default function TransactionsPage() {
             });
             if (res.ok) {
                 setShowForm(false);
-                setForm({
-                    Symbol: "",
-                    Purchase_Price: "",
-                    Quantity: "",
-                    Commission: "0",
-                    Trade_Date: new Date().toISOString().split('T')[0].replace(/-/g, '/'),
-                    Transaction_Type: "BUY",
-                    Broker: "RBC",
-                    Account_Type: "TFSA",
-                    Comment: ""
-                });
+                setEditId(null);
+                setForm(initialForm);
                 fetchTransactions();
                 refresh(true); // Trigger global context refresh
             }
         } catch (err) {
-            console.error("Failed to add", err);
+            console.error("Failed to submit", err);
         } finally {
             setSubmitting(false);
         }
@@ -175,7 +189,11 @@ export default function TransactionsPage() {
                 <motion.button
                     whileHover={{ scale: 1.02, y: -1 }}
                     whileTap={{ scale: 0.98 }}
-                    onClick={() => setShowForm(!showForm)}
+                    onClick={() => {
+                        if (showForm) setEditId(null);
+                        setShowForm(!showForm);
+                        if (!showForm) setForm(initialForm);
+                    }}
                     className={`inline-flex items-center gap-2 px-6 py-3 rounded-2xl text-xs font-bold uppercase tracking-[0.2em] transition-all border shadow-lg ${showForm
                         ? "bg-rose-500/10 border-rose-500/30 text-rose-400 hover:bg-rose-500/20 shadow-rose-500/5 rotate-0"
                         : "bg-gradient-to-r from-blue-600 to-indigo-600 border-white/10 text-white hover:from-blue-500 hover:to-indigo-500 shadow-blue-500/20 hover:shadow-blue-500/40"
@@ -204,13 +222,15 @@ export default function TransactionsPage() {
                                 <div>
                                     <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
                                         <History className="w-6 h-6 text-blue-500" />
-                                        Manual Trade Entry
+                                        {editId ? "Modify Existing Record" : "Manual Trade Entry"}
                                     </h2>
-                                    <p className="text-sm text-gray-500">Document a new security execution for your portfolio history.</p>
+                                    <p className="text-sm text-gray-500">
+                                        {editId ? "Updating ledger entry for historical accuracy." : "Document a new security execution for your portfolio history."}
+                                    </p>
                                 </div>
                             </div>
 
-                            <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                            <form onSubmit={handleFormSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                                 <div className="space-y-1.5 lg:col-span-1">
                                     <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-4">Asset Symbol</label>
                                     <input
@@ -393,7 +413,7 @@ export default function TransactionsPage() {
                                 <th className="px-6 py-4 text-right">Unit Price</th>
                                 <th className="px-6 py-4 text-right">Volume</th>
                                 <th className="px-6 py-4 text-right">Total (CAD)</th>
-                                <th className="px-6 py-4 text-center">Delete</th>
+                                <th className="px-6 py-4 text-center">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
@@ -444,15 +464,25 @@ export default function TransactionsPage() {
                                         <td className="px-6 py-5 text-right font-bold text-foreground tabular-nums">
                                             ${(tx.Amount ?? (Number(tx["Purchase Price"] || 0) * Number(tx.Quantity || 0) + (isSell ? -Number(tx.Commission || 0) : Number(tx.Commission || 0)))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                         </td>
-                                        <td className="px-6 py-5 text-center">
-                                            <motion.button
-                                                whileHover={{ scale: 1.1, rotate: 5 }}
-                                                whileTap={{ scale: 0.9 }}
-                                                onClick={() => handleDelete(tx.id)}
-                                                className="p-2.5 text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all border border-transparent hover:border-rose-500/20 shadow-sm hover:shadow-rose-500/10"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </motion.button>
+                                        <td className="px-6 py-5">
+                                            <div className="flex items-center justify-center gap-2">
+                                                <motion.button
+                                                    whileHover={{ scale: 1.1 }}
+                                                    whileTap={{ scale: 0.9 }}
+                                                    onClick={() => handleEdit(tx)}
+                                                    className="p-2.5 text-zinc-500 hover:text-blue-500 hover:bg-blue-500/10 rounded-xl transition-all border border-transparent hover:border-blue-500/20 shadow-sm hover:shadow-blue-500/10"
+                                                >
+                                                    <Edit2 className="w-4 h-4" />
+                                                </motion.button>
+                                                <motion.button
+                                                    whileHover={{ scale: 1.1, rotate: 5 }}
+                                                    whileTap={{ scale: 0.9 }}
+                                                    onClick={() => handleDelete(tx.id)}
+                                                    className="p-2.5 text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all border border-transparent hover:border-rose-500/20 shadow-sm hover:shadow-rose-500/10"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </motion.button>
+                                            </div>
                                         </td>
                                     </motion.tr>
                                 );

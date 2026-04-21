@@ -1,4 +1,5 @@
 venv/
+.venv_new/
 __pycache__/
 *.pyc
 .DS_Store
@@ -17,3 +18,6 @@ dashboard_preview.png
 portfolio_allocation.png
 cagr_performance.png
 sector_distribution.png
+
+portfolio.csv.backup
+portfolio.db

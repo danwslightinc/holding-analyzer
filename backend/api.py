@@ -98,6 +98,7 @@ def get_portfolio():
     try:
         # Switch to database source
         df, _ = load_portfolio_from_db()
+        print(f"DEBUG: df columns: {df.columns.tolist()}")
         if df.empty:
             return {"summary": {}, "holdings": []}
         
@@ -149,8 +150,12 @@ def get_portfolio():
         df['Sector'] = sectors
         df['Country'] = countries
         
-        # Currency
-        df['Currency'] = df['Symbol'].apply(lambda s: 'CAD' if s.endswith('.TO') else 'USD')
+        # Currency detection (TSX .TO symbols are usually CAD except for -U versions)
+        def detect_currency(sym):
+            if sym.endswith('-U.TO') or sym.endswith('-U'): return 'USD'
+            return 'CAD' if sym.endswith('.TO') else 'USD'
+            
+        df['Currency'] = df['Symbol'].apply(detect_currency)
         
         # FX rate column
         df['FX Rate'] = df['Currency'].apply(lambda c: 1.0 if c == 'CAD' else usd_cad)
@@ -222,8 +227,21 @@ def get_portfolio():
         weighted_cagr = (df['CAGR'] * df['Market_Value_CAD']).sum() / total_mv_cad if total_mv_cad > 0 else 0
         
         # Calculate exposures in CAD
-        sector_exp = df.groupby('Sector')['Market_Value_CAD'].sum().to_dict()
-        country_exp = df.groupby('Country')['Market_Value_CAD'].sum().to_dict()
+        try:
+            sector_exp = df.groupby('Sector')['Market_Value_CAD'].sum().to_dict()
+        except: sector_exp = {}
+        
+        try:
+            country_exp = df.groupby('Country')['Market_Value_CAD'].sum().to_dict()
+        except: country_exp = {}
+        
+        try:
+            account_exp = df.groupby('Account_Type')['Market_Value_CAD'].sum().to_dict()
+        except: account_exp = {}
+        
+        try:
+            broker_exp = df.groupby('Broker')['Market_Value_CAD'].sum().to_dict()
+        except: broker_exp = {}
         
         return {
             "summary": {
@@ -235,7 +253,9 @@ def get_portfolio():
             },
             "holdings": holdings_list,
             "sector_exposure": {k: sanitize_val(v) for k, v in sector_exp.items()},
-            "country_exposure": {k: sanitize_val(v) for k, v in country_exp.items()}
+            "country_exposure": {k: sanitize_val(v) for k, v in country_exp.items()},
+            "account_exposure": {k: sanitize_val(v) for k, v in account_exp.items()},
+            "broker_exposure": {k: sanitize_val(v) for k, v in broker_exp.items()}
         }
     except Exception as e:
         import traceback
@@ -330,10 +350,13 @@ def get_dividends():
 def get_performance_history():
     try:
         df, _ = load_portfolio_from_db()
-        if df.empty: return []
+        if df.empty: 
+            print("DEBUG: performance df is empty")
+            return []
         
         history = get_portfolio_history(df)
         if history.empty:
+             print("DEBUG: history df is empty")
              return []
         
         # Convert date to string
@@ -341,6 +364,8 @@ def get_performance_history():
         
         return history.to_dict(orient="records")
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/ticker-performance")
@@ -349,11 +374,17 @@ def get_ticker_perf():
     try:
         df, _ = load_portfolio_from_db()
         if df.empty:
+            print("DEBUG: ticker-perf df is empty")
             return {}
         
         symbols = df['Symbol'].unique().tolist()
         performance = get_ticker_performance(symbols)
         
+        # Ensure it's a dict
+        if not isinstance(performance, dict):
+            print(f"DEBUG: performance is not a dict: {type(performance)}")
+            return {}
+            
         return performance
     except Exception as e:
         import traceback
@@ -369,6 +400,17 @@ class Transaction(BaseModel):
     Transaction_Type: str = "Buy" # Buy, Sell, DRIP
     Broker: str = "Manual"
     Account_Type: str = "Manual"
+    Comment: Optional[str] = ""
+
+class TransactionUpdate(BaseModel):
+    Symbol: Optional[str] = None
+    Purchase_Price: Optional[float] = None
+    Quantity: Optional[float] = None
+    Commission: Optional[float] = None
+    Trade_Date: Optional[str] = None
+    Transaction_Type: Optional[str] = None
+    Broker: Optional[str] = None
+    Account_Type: Optional[str] = None
     Comment: Optional[str] = ""
 
 # Symbols excluded from realized PnL (pure FX instruments)
@@ -636,6 +678,87 @@ def add_transaction(tx: Transaction):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.put("/api/transactions/{id}")
+def update_transaction(id: int, tx: TransactionUpdate):
+    """Update an existing transaction and adjust Holding quantity"""
+    try:
+        with Session(engine) as session:
+            db_tx = session.get(DBTransaction, id)
+            if not db_tx:
+                raise HTTPException(status_code=404, detail="Transaction not found")
+            
+            # 1. Revert OLD Holding quantity
+            if db_tx.holding_id:
+                h_old = session.get(Holding, db_tx.holding_id)
+                if h_old:
+                    action_old = str(db_tx.type).upper()
+                    qty_old = float(db_tx.quantity or 0.0)
+                    if action_old in ['BUY', 'DRIP', 'TRANSFER IN', 'TRANSF IN'] or 'ADD' in action_old:
+                        h_old.quantity = (h_old.quantity or 0.0) - qty_old
+                    elif action_old in ['SELL'] or 'REDUCE' in action_old:
+                        h_old.quantity = (h_old.quantity or 0.0) + qty_old
+                    session.add(h_old)
+
+            # 2. Update Transaction fields
+            if tx.Symbol is not None: db_tx.symbol = tx.Symbol
+            if tx.Purchase_Price is not None: db_tx.price = tx.Purchase_Price
+            if tx.Quantity is not None: db_tx.quantity = tx.Quantity
+            if tx.Commission is not None: db_tx.commission = tx.Commission
+            if tx.Trade_Date is not None: db_tx.date = pd.to_datetime(tx.Trade_Date)
+            if tx.Transaction_Type is not None: db_tx.type = tx.Transaction_Type.upper()
+            if tx.Broker is not None: db_tx.broker = tx.Broker
+            if tx.Account_Type is not None: db_tx.account_type = tx.Account_Type
+            if tx.Comment is not None: db_tx.description = tx.Comment
+            
+            # Recalculate amount
+            qty = float(db_tx.quantity or 0.0)
+            price = float(db_tx.price or 0.0)
+            comm = float(db_tx.commission or 0.0)
+            if db_tx.type == 'SELL':
+                db_tx.amount = (price * qty) - comm
+            else:
+                db_tx.amount = (price * qty) + comm
+            
+            # 3. Apply NEW Holding quantity
+            # Find or create holding for new symbol/broker/account
+            h_new_q = select(Holding).where(
+                Holding.symbol == db_tx.symbol,
+                Holding.broker == (db_tx.broker or "Manual"),
+                Holding.account_type == (db_tx.account_type or "Unknown")
+            )
+            h_new = session.exec(h_new_q).first()
+            if not h_new:
+                h_new = Holding(
+                    symbol=db_tx.symbol,
+                    broker=db_tx.broker or "Manual",
+                    account_type=db_tx.account_type or "Unknown",
+                    quantity=0.0
+                )
+                session.add(h_new)
+                session.commit()
+                session.refresh(h_new)
+            
+            db_tx.holding_id = h_new.id
+            action_new = str(db_tx.type).upper()
+            qty_new = float(db_tx.quantity or 0.0)
+            if action_new in ['BUY', 'DRIP', 'TRANSFER IN', 'TRANSF IN'] or 'ADD' in action_new:
+                h_new.quantity = (h_new.quantity or 0.0) + qty_new
+            elif action_new in ['SELL'] or 'REDUCE' in action_new:
+                h_new.quantity = (h_new.quantity or 0.0) - qty_new
+            
+            h_new.trade_date = db_tx.date
+            
+            session.add(db_tx)
+            session.add(h_new)
+            session.commit()
+
+            clear_all_caches()
+            return {"status": "success"}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.delete("/api/transactions/{id}")
 def delete_transaction(id: int):
     """Delete a transaction from Database and revert Holding quantity"""
@@ -729,6 +852,121 @@ def force_sync():
     """Clear all caches to force fresh data fetches"""
     clear_all_caches()
     return {"status": "success", "message": "All caches cleared"}
+
+@app.post("/api/ai/analyze")
+def analyze_with_ai(payload: dict = Body(...)):
+    """Analyze the portfolio using Google Gemini (if key exists) or local Ollama"""
+    try:
+        import json
+        import os
+        
+        # 1. Get portfolio data for context
+        df, _ = load_portfolio_from_db()
+        if df.empty:
+            return {"analysis": "Portfolio is empty. Add some transactions first."}
+        
+        # 2. Get current prices and fundamental metrics
+        symbols = df['Symbol'].unique().tolist()
+        prices = get_current_prices(symbols)
+        fundamentals = get_fundamental_data(symbols)
+        
+        # 3. Format context for LLM
+        holdings_context = []
+        for _, row in df.iterrows():
+            sym = row['Symbol']
+            qty = row['Quantity']
+            price = prices.get(sym, 0.0)
+            fund = fundamentals.get(sym, {})
+            
+            holdings_context.append({
+                "symbol": sym,
+                "quantity": qty,
+                "current_price": price,
+                "sector": fund.get('Sector', 'Unknown'),
+                "industry": fund.get('Industry', 'Unknown'),
+                "recommendation": fund.get('Recommendation', 'Unknown')
+            })
+        
+        prompt = f"""
+        Objective: Summarize the following list of stock holdings. Identify the most prominent sectors, concentration levels, and any noticeable trends in analyst recommendations.
+        
+        Input Data:
+        {json.dumps(holdings_context, indent=2)}
+        
+        Specific Task: {payload.get('query', 'Provide a summary of the holdings.')}
+        
+        Instructions:
+        - Provide 3-4 bullet points.
+        - Be factual and objective based solely on the input data.
+        - Use Markdown formatting.
+        - Avoid phrases like 'I recommend' or 'You should'.
+        """
+
+        # 4. Check for Google Gemini API Key
+        gemini_key = os.getenv("GOOGLE_API_KEY")
+        if gemini_key:
+            try:
+                import urllib.request
+                # Use specified REST API format and model
+                url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent"
+                
+                payload = {
+                    "contents": [{
+                        "parts": [{"text": prompt}]
+                    }]
+                }
+                
+                req = urllib.request.Request(
+                    url,
+                    data=json.dumps(payload).encode('utf-8'),
+                    headers={
+                        'Content-Type': 'application/json',
+                        'X-goog-api-key': gemini_key
+                    },
+                    method='POST'
+                )
+                
+                with urllib.request.urlopen(req, timeout=30) as response:
+                    res_data = json.loads(response.read().decode())
+                    if 'candidates' in res_data and len(res_data['candidates']) > 0:
+                        gem_text = res_data['candidates'][0]['content']['parts'][0]['text']
+                        return {"analysis": gem_text, "model": "gemini-flash-latest (REST)"}
+                    else:
+                        print(f"Gemini unexpected response structure: {res_data}")
+            except Exception as gem_e:
+                print(f"Gemini REST failed: {gem_e}")
+                if hasattr(gem_e, 'read'):
+                    print(f"Error details: {gem_e.read().decode()}")
+                # Fall through to Ollama
+        
+        # 5. Fallback to local Ollama
+        try:
+            import urllib.request
+            ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
+            ollama_model = os.getenv("OLLAMA_MODEL", "functiongemma:latest")
+            
+            data = {
+                "model": ollama_model,
+                "prompt": prompt,
+                "stream": False
+            }
+            
+            req = urllib.request.Request(
+                ollama_url, 
+                data=json.dumps(data).encode('utf-8'),
+                headers={'Content-Type': 'application/json'}
+            )
+            
+            with urllib.request.urlopen(req, timeout=30) as response:
+                res_data = json.loads(response.read().decode())
+                return {"analysis": res_data.get("response", "No response from LLM."), "model": f"ollama:{ollama_model}"}
+        except Exception as ollama_e:
+            return {"analysis": f"AI Analysis failed. (Gemini key missing, and Ollama error: {str(ollama_e)})"}
+            
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"analysis": f"Critical AI system error: {str(e)}"}
 
 @app.get("/api/realized-pnl")
 def get_realized_pnl():

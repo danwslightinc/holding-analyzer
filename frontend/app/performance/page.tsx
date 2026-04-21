@@ -25,20 +25,21 @@ const BENCHMARKS = [
 ];
 
 const getHeatmapStyle = (perf: number | undefined) => {
-    // 0 or N/A is dark gray
-    if (perf === undefined || isNaN(perf) || perf === 0) return { bg: '#3f3f46', text: '#ffffff' };
+    // 0 or N/A is gray
+    if (perf === undefined || isNaN(perf) || perf === 0) return { bg: 'var(--muted2)', text: 'var(--text)' };
 
-    // Up stocks (Finviz style greens)
+    // Standard Heatmap colors (Finviz style)
+    // Positive
     if (perf >= 2) return { bg: '#15803d', text: '#ffffff' }; // green-700
     if (perf >= 1) return { bg: '#22c55e', text: '#ffffff' }; // green-500
     if (perf > 0) return { bg: '#4ade80', text: '#022c22' };  // green-400
 
-    // Down stocks (Finviz style reds)
+    // Negative
     if (perf <= -2) return { bg: '#b91c1c', text: '#ffffff' }; // red-700
     if (perf <= -1) return { bg: '#ef4444', text: '#ffffff' }; // red-500
     if (perf < 0) return { bg: '#f87171', text: '#450a0a' };   // red-400
 
-    return { bg: '#3f3f46', text: '#ffffff' };
+    return { bg: 'var(--muted2)', text: 'var(--text)' };
 };
 
 const CustomizedTreemapContent = (props: any) => {

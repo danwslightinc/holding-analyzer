@@ -84,6 +84,7 @@ def main():
     # BTC-USD is usually returned in USD by yahoo.
     
     def get_currency(sym):
+        if sym.endswith('-U.TO') or sym.endswith('-U'): return 'USD'
         return 'CAD' if sym.endswith('.TO') else 'USD'
         
     df['Currency'] = df['Symbol'].apply(get_currency)

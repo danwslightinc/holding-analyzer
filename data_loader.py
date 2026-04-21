@@ -279,16 +279,26 @@ def _sync_from_legacy_files(session, csv_path, thesis_path):
                 thesis_data = json.load(f)
             for symbol, data in thesis_data.items():
                 if not symbol: continue
-                it = InvestmentThesis(
-                    symbol=symbol,
-                    thesis=data.get("Thesis"),
-                    conviction=data.get("Conviction"),
-                    timeframe=data.get("Timeframe"),
-                    kill_switch=data.get("Kill Switch")
-                )
-                session.add(it)
+                # Check if symbol already exists
+                existing = session.exec(select(InvestmentThesis).where(InvestmentThesis.symbol == symbol)).first()
+                if existing:
+                    existing.thesis = data.get("Thesis")
+                    existing.conviction = data.get("Conviction")
+                    existing.timeframe = data.get("Timeframe")
+                    existing.kill_switch = data.get("Kill Switch")
+                    session.add(existing)
+                else:
+                    it = InvestmentThesis(
+                        symbol=symbol,
+                        thesis=data.get("Thesis"),
+                        conviction=data.get("Conviction"),
+                        timeframe=data.get("Timeframe"),
+                        kill_switch=data.get("Kill Switch")
+                    )
+                    session.add(it)
             session.commit()
         except Exception as e:
+            session.rollback()
             print(f"Error syncing thesis.json: {e}")
 
     if os.path.exists(csv_path):
@@ -296,86 +306,98 @@ def _sync_from_legacy_files(session, csv_path, thesis_path):
             df = pd.read_csv(csv_path)
             if df.empty: return
             
-            # Map holdings and transactions from CSV
             from transaction_parser import clean_symbol
             df['Symbol'] = df.apply(lambda r: clean_symbol(r['Symbol'], broker=r.get('Broker')), axis=1)
-            groups = df.groupby(['Symbol', 'Comment'], dropna=False)
-            for (symbol, comment), rows in groups:
-                if pd.isna(symbol): continue
-                symbol = str(symbol).strip()
-                comment_str = str(comment).strip() if pd.notna(comment) else ""
+            
+            # Sort by date to process in order
+            if 'Trade Date' in df.columns:
+                df['Parsed_Date'] = df['Trade Date'].apply(parse_date)
+                df = df.sort_values('Parsed_Date')
+            
+            for _, row in df.iterrows():
+                symbol = str(row['Symbol']).strip()
+                if not symbol or pd.isna(symbol): continue
                 
-                h = Holding(symbol=symbol)
-                # Parse manual quantity and cost
-                vqr = rows.dropna(subset=['Quantity'])
-                if not vqr.empty:
-                    vqr['Quantity'] = pd.to_numeric(vqr['Quantity'], errors='coerce')
-                    vqr = vqr.dropna(subset=['Quantity'])
-                    if not vqr.empty:
-                        h.quantity = float(vqr['Quantity'].sum())
-                        pqr = vqr.dropna(subset=['Purchase Price'])
-                        pqr['Purchase Price'] = pd.to_numeric(pqr['Purchase Price'], errors='coerce')
-                        pqr = pqr.dropna(subset=['Purchase Price'])
-                        if not pqr.empty and pqr['Quantity'].sum() > 0:
-                            total_cost = (pqr['Purchase Price'] * pqr['Quantity']).sum()
-                            h.purchase_price = float(total_cost / pqr['Quantity'].sum())
-                        
-                        if 'Commission' in vqr:
-                            comm_col = pd.to_numeric(vqr['Commission'], errors='coerce').dropna()
-                            h.commission = float(comm_col.sum()) if not comm_col.empty else 0.0
-
-                if comment_str:
-                    h.comment = comment_str
-                    parts = comment_str.split()
+                comment = str(row.get('Comment', '')).strip() if pd.notna(row.get('Comment')) else ""
+                broker, account_type = "Manual", "Manual"
+                if comment:
+                    parts = comment.split()
                     if len(parts) >= 2:
-                        h.broker, h.account_type = parts[0], parts[1]
+                        broker, account_type = parts[0], parts[1]
                 
-                if 'Trade Date' in rows:
-                    vd = rows['Trade Date'].dropna()
-                    if not vd.empty:
-                        parsed = vd.apply(parse_date).dropna()
-                        if not parsed.empty: h.trade_date = parsed.max()
+                # Find or create holding
+                h_q = select(Holding).where(
+                    Holding.symbol == symbol,
+                    Holding.broker == broker,
+                    Holding.account_type == account_type
+                )
+                h = session.exec(h_q).first()
+                if not h:
+                    h = Holding(symbol=symbol, broker=broker, account_type=account_type, quantity=0.0)
+                    session.add(h)
+                    session.commit()
+                    session.refresh(h)
                 
-                session.add(h)
-                session.commit() # Need holding ID for transactions
-                session.refresh(h)
+                # Process transaction
+                raw_type = row.get('Transaction Type')
+                tx_type = str(raw_type).strip().upper() if pd.notna(raw_type) and str(raw_type).strip() else 'BUY'
+                
+                qty = float(row.get('Quantity', 0.0))
+                if pd.isna(qty): qty = 0.0
+                
+                price = float(row.get('Purchase Price', 0.0))
+                if pd.isna(price): price = 0.0
+                
+                comm = float(row.get('Commission', 0.0))
+                if pd.isna(comm): comm = 0.0
+                
+                if tx_type == 'SELL':
+                    h.quantity -= qty
+                    amt = (qty * price) - comm
+                else:
+                    h.quantity += qty
+                    amt = (qty * price) + comm
+                
+                if pd.isna(amt): amt = 0.0
+                
+                # Update holding avg price (simplistic weighted avg for BUYs)
+                if tx_type != 'SELL' and h.quantity > 0:
+                    # This is an approximation for legacy sync
+                    old_qty = h.quantity - qty
+                    if old_qty > 0:
+                        h.purchase_price = ((h.purchase_price * old_qty) + (price * qty)) / h.quantity
+                    else:
+                        h.purchase_price = price
+                
+                h.trade_date = row.get('Parsed_Date') if 'Parsed_Date' in df.columns else h.trade_date
+                if pd.isna(h.trade_date): h.trade_date = None
+                
+                t_date = row.get('Parsed_Date') if 'Parsed_Date' in df.columns else pd.Timestamp.now()
+                if pd.isna(t_date): t_date = pd.Timestamp.now()
 
-                # Add individual transactions for FIFO tracking
-                for _, row in rows.iterrows():
-                    qty_val = row.get('Quantity')
-                    if pd.isna(qty_val): continue
-                    
-                    try:
-                        t_date = row.get('Trade Date')
-                        if pd.notna(t_date) and str(t_date).replace('.0', '').isdigit():
-                            d_val = pd.to_datetime(str(int(float(t_date))), format='%Y%m%d')
-                        else:
-                            d_val = pd.to_datetime(t_date, errors='coerce')
-                    except: d_val = pd.Timestamp.now()
-                    
-                    # Handle nan and empty strings properly for transaction types
-                    raw_type = row.get('Transaction Type')
-                    tx_type = str(raw_type).strip().upper() if pd.notna(raw_type) and str(raw_type).strip() else 'BUY'
-                    
-                    tx = Transaction(
-                        holding_id=h.id,
-                        symbol=symbol,
-                        date=d_val if pd.notna(d_val) else pd.Timestamp.now(),
-                        type=tx_type,
-                        quantity=float(qty_val),
-                        price=float(row.get('Purchase Price', 0.0)) or 0.0,
-                        commission=float(row.get('Commission', 0.0)) or 0.0,
-                        amount=(float(qty_val) * float(row.get('Purchase Price', 0.0) or 0)) + float(row.get('Commission', 0.0) or 0),
-                        currency='CAD' if symbol.endswith('.TO') else 'USD',
-                        description=comment_str,
-                        broker=h.broker,
-                        account_type=h.account_type,
-                        source='Manual'
-                    )
-                    session.add(tx)
+                tx = Transaction(
+                    holding_id=h.id,
+                    symbol=symbol,
+                    date=t_date,
+                    type=tx_type,
+                    quantity=qty,
+                    price=price,
+                    commission=comm,
+                    amount=amt,
+                    currency='CAD' if symbol.endswith('.TO') else 'USD',
+                    description=comment or f"Legacy {tx_type}",
+                    broker=broker,
+                    account_type=account_type,
+                    source='Manual'
+                )
+                session.add(h)
+                session.add(tx)
+            
             session.commit()
             print("Legacy sync complete.")
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             print(f"Error syncing portfolio.csv: {e}")
             session.rollback()
 

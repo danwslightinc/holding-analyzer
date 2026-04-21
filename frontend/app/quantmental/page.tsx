@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { ExternalLink, TrendingUp, TrendingDown, Minus, Edit2, Save, X } from "lucide-react";
+import { ExternalLink, TrendingUp, TrendingDown, Minus, Edit2, Save, X, Sparkles, BrainCircuit, RefreshCw } from "lucide-react";
 import { API_BASE_URL } from "@/lib/api";
 import { usePortfolio } from "@/lib/PortfolioContext";
 
@@ -30,6 +30,29 @@ export default function QuantmentalPage() {
 
     const [editingSymbol, setEditingSymbol] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
+    const [analyzing, setAnalyzing] = useState(false);
+    const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
+    const [aiModel, setAiModel] = useState<string | null>(null);
+
+    const runAiAnalysis = async () => {
+        setAnalyzing(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/ai/analyze`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query: "Summarize the composition and trends in this portfolio data." })
+            });
+            const data = await res.json();
+            setAiAnalysis(data.analysis);
+            setAiModel(data.model || "Local Engine");
+        } catch (err) {
+            console.error("AI analysis failed", err);
+            setAiAnalysis("Failed to connect to AI engine. Ensure Ollama is running or GOOGLE_API_KEY is set in .env");
+            setAiModel("Error");
+        } finally {
+            setAnalyzing(false);
+        }
+    };
     const [editForm, setEditForm] = useState({
         Thesis: "",
         "Kill Switch": "",
@@ -67,7 +90,12 @@ export default function QuantmentalPage() {
     };
 
     const data = useMemo(() => {
-        if (!portData) return [];
+        if (!portData || !portData.holdings) {
+            console.log("DEBUG: portData or holdings missing", portData);
+            return [];
+        }
+
+        console.log(`DEBUG: Processing ${portData.holdings.length} holdings for Quant-mental`);
 
         // Group by Symbol to avoid duplicates
         const grouped = portData.holdings.reduce((acc: any, h: any) => {
@@ -75,14 +103,13 @@ export default function QuantmentalPage() {
             if (!acc[sym]) {
                 acc[sym] = { ...h };
             } else {
-                // If needed, we could sum quantities here, but for Quant-mental
-                // we mostly care about symbol-level metrics and the thesis.
+                // Sum quantities for aggregated symbol view
                 acc[sym].Quantity = (acc[sym].Quantity || 0) + (h.Quantity || 0);
             }
             return acc;
         }, {});
 
-        return Object.values(grouped).map((h: any) => ({
+        const result = Object.values(grouped).map((h: any) => ({
             Symbol: h.Symbol,
             Thesis: h.Thesis || "",
             Catalyst: h.Catalyst || "",
@@ -90,15 +117,18 @@ export default function QuantmentalPage() {
             "Kill Switch": h["Kill Switch"] || "",
             Conviction: h.Conviction || "",
             RSI: typeof h.RSI === 'number' ? Math.round(h.RSI) : (h.RSI || 0),
-            "Tech Scorecard": h["Tech Scorecard"] || "N/A",
-            "Next Earnings": h["Next Earnings"] || "N/A",
-            "Ex-Div": h["Ex-Div"] || "N/A",
+            "Tech Scorecard": h["Tech Scorecard"] || "--",
+            "Next Earnings": h["Next Earnings"] || "--",
+            "Ex-Div": h["Ex-Div"] || "--",
             Yield: h.Yield || "0.00%",
             Timeframe: h.Timeframe || "",
-            "PEG Ratio": h["PEG Ratio"] || "N/A",
-            Growth: h.Growth || "N/A",
-            Rec: h.Rec || "N/A"
+            "PEG Ratio": h["PEG Ratio"] || "--",
+            Growth: h.Growth || "--",
+            Rec: h.Rec || "--"
         }));
+        
+        console.log(`DEBUG: Found ${result.length} unique symbols for Quant-mental`);
+        return result;
     }, [portData]);
 
     const sortedData = useMemo(() => {
@@ -160,15 +190,19 @@ export default function QuantmentalPage() {
     if (data.length === 0) {
         return (
             <div className="p-10 text-center">
-                <div className="glass-panel p-8 rounded-2xl max-w-2xl mx-auto">
-                    <h2 className="text-2xl font-bold mb-4">Quant-mental Analysis</h2>
-                    <p className="text-gray-400 mb-4">
-                        The Quant-mental feature combines quantitative metrics with your investment thesis for each holding.
+                <div className="glass-panel p-12 rounded-3xl max-w-2xl mx-auto border border-blue-500/20 bg-blue-500/5">
+                    <BrainCircuit className="w-16 h-16 text-blue-400 mx-auto mb-6 opacity-50" />
+                    <h2 className="text-2xl font-bold mb-4 text-foreground">No Holdings Detected</h2>
+                    <p className="text-gray-400 mb-8 leading-relaxed">
+                        The Quant-mental dashboard requires active positions to analyze. 
+                        Record some trades in the <strong>Transactions</strong> tab to see technical scores, investment theses, and fundamental metrics here.
                     </p>
-                    <p className="text-sm text-gray-500">
-                        Backend API needs to be updated to include thesis, catalyst, and fundamental data from thesis.json.
-                        Reference: portfolio_dashboard.html shows the expected format.
-                    </p>
+                    <button 
+                        onClick={() => refresh(true)}
+                        className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20"
+                    >
+                        Force Data Refresh
+                    </button>
                 </div>
             </div>
         );
@@ -183,7 +217,36 @@ export default function QuantmentalPage() {
                     </h1>
                     <p className="text-gray-400 mt-2">Combining quantitative metrics with investment thesis</p>
                 </div>
+                
+                <button
+                    onClick={runAiAnalysis}
+                    disabled={analyzing}
+                    className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-purple-500/20 disabled:opacity-50"
+                >
+                    {analyzing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                    {analyzing ? "AI is Thinking..." : "Generate AI Insights"}
+                </button>
             </div>
+
+            {/* AI Insights Panel */}
+            {aiAnalysis && (
+                <div className="glass-panel p-6 rounded-2xl border border-purple-500/30 bg-purple-500/5 animate-in fade-in slide-in-from-top-4 duration-500">
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2 text-purple-400 font-bold uppercase tracking-widest text-xs">
+                            <BrainCircuit className="w-4 h-4" />
+                            Intelligence Report
+                        </div>
+                        {aiModel && (
+                            <span className="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full border border-purple-500/30 font-mono">
+                                ENGINE: {aiModel.toUpperCase()}
+                            </span>
+                        )}
+                    </div>
+                    <div className="text-gray-900 dark:text-gray-200 prose prose-invert max-w-none whitespace-pre-wrap leading-relaxed text-sm">
+                        {aiAnalysis}
+                    </div>
+                </div>
+            )}
 
             {/* Main Table */}
             <div className="glass-panel rounded-2xl overflow-hidden">

@@ -56,22 +56,35 @@ const TICKERS = RAW_HOLDINGS.map(h => h.ticker);
 // HELPERS
 // ─────────────────────────────────────────────────────────────────
 const ACCOUNT_COLORS = { RRSP: "#00D4FF", TFSA: "#00FF88", Open: "#FFD700" };
-const ACCOUNT_BG = { RRSP: "#001a2a", TFSA: "#001a10", Open: "#1a1400" };
-const BROKER_COLORS = { CIBC: "#DD0000", RBC: "#0055AA", TD: "#00AA55" };
-const TAX_COLORS = { OPTIMAL: "#00FF88", GOOD: "#66ffaa", NEUTRAL: "#FFD700", ACCEPTABLE: "#FF9944", SUBOPTIMAL: "#FF3366" };
+const ACCOUNT_BG = { RRSP: "#1e293b", TFSA: "#14532d", Open: "#713f12" }; // slate-800, green-900, yellow-900
+const BROKER_COLORS = { CIBC: "#DD0000", RBC: "#0ea5e9", TD: "#10b981" };
+const TAX_COLORS = { OPTIMAL: "#4ade80", GOOD: "#86efac", NEUTRAL: "#fbbf24", ACCEPTABLE: "#fb923c", SUBOPTIMAL: "#fb7185" };
 const TAX_MAP = { AVUV: "OPTIMAL", COST: "GOOD", GLD: "NEUTRAL", MSFT: "GOOD", NVDA: "GOOD", SLV: "NEUTRAL", "VDY.TO": "ACCEPTABLE", "VFV.TO": "GOOD", VOO: "SUBOPTIMAL", "WCP.TO": "GOOD", "XEC.TO": "NEUTRAL", "XEF.TO": "SUBOPTIMAL", "XEI.TO": "GOOD", "XIU.TO": "GOOD" };
 
-function heatColor(pct) {
-  if (pct === null) return { bg: "#1a1a2e", text: "#666", border: "#2a2a44" };
-  if (pct >= 8) return { bg: "#003d1a", text: "#00ff88", border: "#00aa44" };
-  if (pct >= 5) return { bg: "#00291a", text: "#00cc66", border: "#007733" };
-  if (pct >= 0) return { bg: "#001a12", text: "#44cc88", border: "#115533" };
-  if (pct >= -2) return { bg: "#1a0808", text: "#ff8877", border: "#663322" };
-  if (pct >= -5) return { bg: "#2a0808", text: "#ff5544", border: "#882222" };
-  return { bg: "#3a0606", text: "#ff2211", border: "#aa1111" };
+function heatColor(pct, isLight = false) {
+  if (pct === null) return isLight ? { bg: "#f0f0f4", text: "#94a3b8", border: "#e2e8f0" } : { bg: "#1e293b", text: "#64748b", border: "#334155" };
+  
+  if (isLight) {
+    if (pct >= 8) return { bg: "#dcfce7", text: "#166534", border: "#86efac" }; // green-100/800/300
+    if (pct >= 5) return { bg: "#f0fdf4", text: "#15803d", border: "#bbf7d0" }; // green-50/700/200
+    if (pct >= 0) return { bg: "#f0fdf4", text: "#16a34a", border: "#dcfce7" }; // green-50/600/100
+    if (pct >= -2) return { bg: "#fef2f2", text: "#dc2626", border: "#fee2e2" }; // red-50/600/100
+    if (pct >= -5) return { bg: "#fee2e2", text: "#b91c1c", border: "#fecaca" }; // red-100/700/200
+    return { bg: "#fecaca", text: "#991b1b", border: "#fca5a5" }; // red-200/800/300
+  }
+
+  if (pct >= 8) return { bg: "#064e3b", text: "#4ade80", border: "#059669" }; // green-900/400/600
+  if (pct >= 5) return { bg: "#065f46", text: "#86efac", border: "#047857" }; // green-800/300/700
+  if (pct >= 0) return { bg: "#0f766e", text: "#bbf7d0", border: "#0d9488" }; // teal-700/200/600
+  if (pct >= -2) return { bg: "#7f1d1d", text: "#fca5a5", border: "#991b1b" }; // red-900/300/800
+  if (pct >= -5) return { bg: "#991b1b", text: "#fecaca", border: "#b91c1c" }; // red-800/200/700
+  return { bg: "#b91c1c", text: "#fee2e2", border: "#dc2626" }; // red-700/100/600
 }
 
-const fmt = (n, dec = 0) => n.toLocaleString("en-CA", { minimumFractionDigits: dec, maximumFractionDigits: dec });
+const fmt = (n, dec = 0) => {
+  if (n === null || n === undefined || isNaN(n)) return "0";
+  return n.toLocaleString("en-CA", { minimumFractionDigits: dec, maximumFractionDigits: dec });
+};
 const fmtCAD = n => `$${fmt(n)}`;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -136,6 +149,16 @@ export default function Dashboard() {
   const [acctFilter, setAcctFilter] = useState("ALL");
   const [brokerFilter, setBrokerFilter] = useState("ALL");
   const [sortBy, setSortBy] = useState("value");
+  const [sortDir, setSortDir] = useState("desc"); // "asc" or "desc"
+
+  const toggleSort = (field) => {
+    if (sortBy === field) {
+      setSortDir(sortDir === "desc" ? "asc" : "desc");
+    } else {
+      setSortBy(field);
+      setSortDir("desc");
+    }
+  };
   const [hoveredTicker, setHoveredTicker] = useState(null);
   const [clock, setClock] = useState(new Date());
   const [theme, setTheme] = useState("dark");
@@ -234,12 +257,12 @@ export default function Dashboard() {
         currency: h.Currency || "CAD",
         qty: h.Quantity,
         avgCost: h['Purchase Price'] || 0,
-        type: meta.type,
+        type: h.Sector || meta.type,
         color: meta.color,
         dividendYield: yieldPct,
         beta: meta.beta,
         expectedCAGR: meta.expectedCAGR,
-        geography: meta.geography,
+        geography: h.Country ? { [h.Country]: 100 } : meta.geography,
 
         currPrice: cp, prevClose, dayChgPct,
         mktValueCAD: mkt,
@@ -247,7 +270,7 @@ export default function Dashboard() {
         glPct: gl,
         glAmtLocal: (cp - (h['Purchase Price'] || 0)) * h.Quantity,
         annualDivCAD: mkt * (yieldPct / 100),
-        heatColor: heatColor(gl),
+        heatColor: heatColor(gl, isLight),
         taxRating: TAX_MAP[h.Symbol] || "NEUTRAL",
         fetchStatus: "ok",
         latestDay: new Date().toLocaleDateString("en-CA"),
@@ -287,13 +310,13 @@ export default function Dashboard() {
   const acctBreak = useMemo(() => {
     const a = { RRSP: 0, TFSA: 0, Open: 0 };
     withWeights.forEach(h => { a[h.account] += h.mktValueCAD; });
-    return Object.entries(a).map(([n, v]) => ({ name: n, value: v, pct: (v / totalCAD) * 100, color: ACCOUNT_COLORS[n] }));
+    return Object.entries(a).map(([n, v]) => ({ name: n, value: v, pct: totalCAD > 0 ? (v / totalCAD) * 100 : 0, color: ACCOUNT_COLORS[n] }));
   }, [withWeights, totalCAD]);
 
   const brokerBreak = useMemo(() => {
     const b = {};
     withWeights.forEach(h => { b[h.broker] = (b[h.broker] || 0) + h.mktValueCAD; });
-    return Object.entries(b).map(([n, v]) => ({ name: n, value: v, pct: (v / totalCAD) * 100, color: BROKER_COLORS[n] || "#888" }));
+    return Object.entries(b).map(([n, v]) => ({ name: n, value: v, pct: totalCAD > 0 ? (v / totalCAD) * 100 : 0, color: BROKER_COLORS[n] || "#888" }));
   }, [withWeights, totalCAD]);
 
   const geoData = useMemo(() => {
@@ -331,8 +354,32 @@ export default function Dashboard() {
     let h = [...withWeights];
     if (acctFilter !== "ALL") h = h.filter(x => x.account === acctFilter);
     if (brokerFilter !== "ALL") h = h.filter(x => x.broker === brokerFilter);
-    return h.sort((a, b) => sortBy === "value" ? b.mktValueCAD - a.mktValueCAD : sortBy === "gl" ? b.glAmtLocal - a.glAmtLocal : b.weight - a.weight);
-  }, [withWeights, acctFilter, brokerFilter, sortBy]);
+    
+    return h.sort((a, b) => {
+      let valA, valB;
+      
+      switch (sortBy) {
+        case "value": valA = a.mktValueCAD; valB = b.mktValueCAD; break;
+        case "weight": valA = a.weight; valB = b.weight; break;
+        case "gl": valA = a.glAmtLocal; valB = b.glAmtLocal; break;
+        case "ticker": valA = a.ticker; valB = b.ticker; break;
+        case "name": valA = a.name; valB = b.name; break;
+        case "account": valA = a.account; valB = b.account; break;
+        case "broker": valA = a.broker; valB = b.broker; break;
+        case "qty": valA = a.qty; valB = b.qty; break;
+        case "avgCost": valA = a.avgCost; valB = b.avgCost; break;
+        case "price": valA = a.currPrice; valB = b.currPrice; break;
+        case "day": valA = a.dayChgPct; valB = b.dayChgPct; break;
+        case "glPct": valA = a.glPct; valB = b.glPct; break;
+        case "date": valA = a.latestDay; valB = b.latestDay; break;
+        default: valA = a.mktValueCAD; valB = b.mktValueCAD;
+      }
+      
+      if (valA < valB) return sortDir === "desc" ? 1 : -1;
+      if (valA > valB) return sortDir === "desc" ? -1 : 1;
+      return 0;
+    });
+  }, [withWeights, acctFilter, brokerFilter, sortBy, sortDir]);
 
   const clockStr = clock.toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
   const dateStr = clock.toLocaleDateString("en-CA", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
@@ -345,7 +392,20 @@ export default function Dashboard() {
     return <div style={{ background: "#06061a", minHeight: "100vh", color: "#00D4FF", display: "flex", justifyContent: "center", alignItems: "center", fontFamily: "'Bebas Neue',sans-serif", fontSize: 24, letterSpacing: 4 }}>LOADING PORTFOLIO DATA...</div>;
   }
   if (error) {
-    return <div style={{ background: "#06061a", minHeight: "100vh", color: "#FF4455", display: "flex", justifyContent: "center", alignItems: "center", fontFamily: "'Bebas Neue',sans-serif", fontSize: 24 }}>ERROR LOADING DATA</div>;
+    return (
+      <div style={{ background: "#06061a", minHeight: "100vh", color: "#FF4455", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", fontFamily: "'Bebas Neue',sans-serif", fontSize: 24 }}>
+        <div>ERROR LOADING DATA</div>
+        <div style={{ fontSize: 14, fontFamily: "monospace", marginTop: 20, color: "#888", maxWidth: "80%", textAlign: "center" }}>
+          {error?.message || String(error)}
+        </div>
+        <button 
+          onClick={() => refresh(true)}
+          style={{ marginTop: 30, background: "#FF4455", color: "white", border: "none", padding: "10px 20px", borderRadius: 8, cursor: "pointer", fontFamily: "sans-serif", fontSize: 14, fontWeight: "bold" }}
+        >
+          RETRY SYNC
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -355,9 +415,8 @@ export default function Dashboard() {
         *{box-sizing:border-box;margin:0;padding:0}
 
         /* ── THEME VARIABLES ── */
-        .terminal{--bg:#06061a;--bg2:#0a0a22;--card:linear-gradient(135deg,#0d0d26,#10102a);--card-border:#1e1e48;--card-hover:#2a2a60;--text:#e0e0ff;--muted:#556;--muted2:#334;--row-border:#0f0f22;--row-hover:#0d0d24;--accent:#00D4FF;--green:#00FF88;--red:#FF4455;--gold:#FFD700;--tab-bg:#1a1a44;--header-bg:linear-gradient(180deg,#0a0a22,#06061a);--header-border:#181840;--scroll-track:#0a0a1a;--scroll-thumb:#334;--input-bg:#0a0a20;--input-border:#2244aa;color:var(--text);background:var(--bg)}
-        .terminal.light{--bg:#f0f0f4;--bg2:#e8e8f0;--card:linear-gradient(135deg,#ffffff,#f5f5fa);--card-border:#d0d0e0;--card-hover:#b0b0cc;--text:#1a1a2e;--muted:#777;--muted2:#999;--row-border:#e0e0ea;--row-hover:#eaeaf2;--accent:#0066cc;--green:#008844;--red:#cc2233;--gold:#aa7700;--tab-bg:#dde;--header-bg:linear-gradient(180deg,#e8e8f0,#f0f0f4);--header-border:#d0d0e0;--scroll-track:#eee;--scroll-thumb:#bbb;--input-bg:#fff;--input-border:#aac}
-
+        .terminal{--bg:#0f172a;--bg2:#1e293b;--card:linear-gradient(135deg,#1e293b,#0f172a);--card-border:#334155;--card-hover:#475569;--text:#f1f5f9;--muted:#94a3b8;--muted2:#64748b;--row-border:#1e293b;--row-hover:#1e293b;--accent:#38bdf8;--green:#4ade80;--red:#fb7185;--gold:#fbbf24;--tab-bg:#1e293b;--header-bg:linear-gradient(180deg,#1e293b,#0f172a);--header-border:#334155;--scroll-track:#0f172a;--scroll-thumb:#334155;--input-bg:#0f172a;--input-border:#38bdf8;color:var(--text);background:var(--bg)}
+        .terminal.light{--bg:#f8fafc;--bg2:#f1f5f9;--card:linear-gradient(135deg,#ffffff,#f1f5f9);--card-border:#e2e8f0;--card-hover:#cbd5e1;--text:#0f172a;--muted:#64748b;--muted2:#94a3b8;--row-border:#e2e8f0;--row-hover:#f1f5f9;--accent:#0ea5e9;--green:#22c55e;--red:#ef4444;--gold:#d97706;--tab-bg:#e2e8f0;--header-bg:linear-gradient(180deg,#f1f5f9,#f8fafc);--header-border:#e2e8f0;--scroll-track:#f8fafc;--scroll-thumb:#cbd5e1;--input-bg:#fff;--input-border:#0ea5e9}
         ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:var(--scroll-track)}::-webkit-scrollbar-thumb{background:var(--scroll-thumb);border-radius:2px}
         .card{background:var(--card);border:1px solid var(--card-border);border-radius:12px;padding:16px;transition:border-color .2s}
         .card:hover{border-color:var(--card-hover)}
@@ -560,14 +619,14 @@ export default function Dashboard() {
           {acctBreak.map(a => (
             <div key={a.name} onClick={() => { setTab("holdings"); setAcctFilter(a.name); }} style={{ padding: "6px 14px", background: ACCOUNT_BG[a.name], border: `1px solid ${a.color}44`, borderRadius: 8, cursor: "pointer" }}>
               <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 24, color: a.color, lineHeight: 1 }}>{fmtCAD(a.value)}</div>
-              <div style={{ fontSize: 13, color: a.color + "88", letterSpacing: 1 }}>{a.name} · {a.pct.toFixed(1)}%</div>
+              <div style={{ fontSize: 13, color: a.color + "88", letterSpacing: 1 }}>{a.name} · {(a.pct || 0).toFixed(1)}%</div>
             </div>
           ))}
           <div style={{ width: 1, background: "var(--card-border)", margin: "0 4px" }} />
           {brokerBreak.map(b => (
             <div key={b.name} onClick={() => { setTab("holdings"); setBrokerFilter(b.name); }} style={{ padding: "6px 14px", background: (BROKER_COLORS[b.name] || "#333") + "11", border: `1px solid ${BROKER_COLORS[b.name] || "#555"}33`, borderRadius: 8, cursor: "pointer" }}>
               <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 24, color: BROKER_COLORS[b.name] || "#999", lineHeight: 1 }}>{fmtCAD(b.value)}</div>
-              <div style={{ fontSize: 13, color: (BROKER_COLORS[b.name] || "#888") + "88", letterSpacing: 1 }}>{b.name} · {b.pct.toFixed(1)}%</div>
+              <div style={{ fontSize: 13, color: (BROKER_COLORS[b.name] || "#888") + "88", letterSpacing: 1 }}>{b.name} · {(b.pct || 0).toFixed(1)}%</div>
             </div>
           ))}
         </div>
@@ -575,13 +634,14 @@ export default function Dashboard() {
         {/* METRICS BAR */}
         <div className="stat-grid" style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 14, marginBottom: 20 }}>
           {[
-            { label: "TOTAL VALUE (CAD)", value: fmtCAD(totalCAD), color: "#00D4FF" },
-            { label: "UNREALIZED G/L", value: `${totalGLpct >= 0 ? "+" : ""}${totalGLpct.toFixed(2)}%`, color: totalGLpct >= 0 ? "#00FF88" : "#FF4455" },
-            { label: "WEIGHTED CAGR", value: `${metrics.wCAGR.toFixed(2)}%`, color: "#44AAFF" },
-            { label: "ANNUAL DIVIDEND", value: fmtCAD(metrics.annualDiv), color: "#FFD700" },
+            { label: "TOTAL VALUE (CAD)", value: fmtCAD(totalCAD), color: "var(--accent)" },
+            { label: "TOTAL VALUE (USD)", value: "$" + fmt(totalCAD / usdcad, 0), color: "var(--muted)" },
+            { label: "UNREALIZED G/L", value: `${totalGLpct >= 0 ? "+" : ""}${totalGLpct.toFixed(2)}%`, color: totalGLpct >= 0 ? "var(--green)" : "var(--red)" },
+            { label: "WEIGHTED CAGR", value: `${metrics.wCAGR.toFixed(2)}%`, color: "var(--accent)" },
+            { label: "ANNUAL DIVIDEND", value: fmtCAD(metrics.annualDiv), color: "var(--gold)" },
             { label: "PORTFOLIO BETA", value: metrics.wBeta.toFixed(2), color: "#FF6B35" },
             { label: "20YR PROJECTION", value: fmtCAD(metrics.val20yr / 1000) + "K", color: "#CC44FF" },
-            { label: "VS 8% TARGET", value: `${cagrGap >= 0 ? "+" : ""}${cagrGap.toFixed(2)}%`, color: cagrGap >= 0 ? "#00FF88" : "#FF4455" },
+            { label: "VS 8% TARGET", value: `${cagrGap >= 0 ? "+" : ""}${cagrGap.toFixed(2)}%`, color: cagrGap >= 0 ? "var(--green)" : "var(--red)" },
           ].map((m, i) => (
             <div key={i} style={{ padding: "8px 10px", borderTop: `2px solid ${m.color}22` }}>
               <div style={{ fontSize: 13, letterSpacing: 2, color: "var(--muted2)", marginBottom: 2 }}>{m.label}</div>
@@ -614,17 +674,20 @@ export default function Dashboard() {
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
               <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
-                <span style={{ fontSize: 11, letterSpacing: 2, color: "#334", marginRight: 2 }}>SCALE:</span>
+                <span style={{ fontSize: 11, letterSpacing: 2, color: "var(--muted)", marginRight: 2 }}>SCALE:</span>
                 {[
-                  { bg: "#003d1a", border: "#00aa44", text: "#00ff88", label: "≥+8%" },
-                  { bg: "#00291a", border: "#007733", text: "#00cc66", label: "+5–8%" },
-                  { bg: "#001a12", border: "#115533", text: "#44cc88", label: "0–+5%" },
-                  { bg: "#1a0808", border: "#663322", text: "#ff8877", label: "0–−2%" },
-                  { bg: "#2a0808", border: "#882222", text: "#ff5544", label: "−2–−5%" },
-                  { bg: "#3a0606", border: "#aa1111", text: "#ff2211", label: "<−5%" },
-                ].map((c, i) => (
-                  <div key={i} style={{ padding: "3px 8px", background: c.bg, border: `1px solid ${c.border}`, borderRadius: 4, fontSize: 12, color: c.text }}>{c.label}</div>
-                ))}
+                  { val: 10, label: "≥+8%" },
+                  { val: 6, label: "+5–8%" },
+                  { val: 2, label: "0–+5%" },
+                  { val: -1, label: "0–−2%" },
+                  { val: -3, label: "−2–−5%" },
+                  { val: -6, label: "<−5%" },
+                ].map((item, i) => {
+                  const c = heatColor(item.val, isLight);
+                  return (
+                    <div key={i} style={{ padding: "3px 8px", background: c.bg, border: `1px solid ${c.border}`, borderRadius: 4, fontSize: 12, color: c.text }}>{item.label}</div>
+                  );
+                })}
               </div>
               <div style={{ display: "flex", gap: 5 }}>
                 {[["value", "SIZE"], ["gl", "TOTAL G/L"], ["day", "TODAY"], ["ticker", "A–Z"]].map(([k, l]) => (
@@ -707,21 +770,22 @@ export default function Dashboard() {
             {/* Band summary */}
             <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 6 }}>
               {[
-                { bg: "#003d1a", border: "#00aa44", text: "#00ff88", label: "DEEP GREEN ≥+8%", fn: h => h.glPct !== null && h.glPct >= 8 },
-                { bg: "#00291a", border: "#007733", text: "#00cc66", label: "GREEN +5–+8%", fn: h => h.glPct !== null && h.glPct >= 5 && h.glPct < 8 },
-                { bg: "#001a12", border: "#115533", text: "#44cc88", label: "LIGHT GREEN 0–+5%", fn: h => h.glPct !== null && h.glPct >= 0 && h.glPct < 5 },
-                { bg: "#1a0808", border: "#663322", text: "#ff8877", label: "LIGHT RED 0–−2%", fn: h => h.glPct !== null && h.glPct < 0 && h.glPct >= -2 },
-                { bg: "#2a0808", border: "#882222", text: "#ff5544", label: "RED −2–−5%", fn: h => h.glPct !== null && h.glPct < -2 && h.glPct >= -5 },
-                { bg: "#3a0606", border: "#aa1111", text: "#ff2211", label: "DARK RED <−5%", fn: h => h.glPct !== null && h.glPct < -5 },
+                { bg: "#003d1a", border: "#00aa44", text: "#00ff88", label: "≥+8%", fn: h => h.glPct !== null && h.glPct >= 8 },
+                { bg: "#00291a", border: "#007733", text: "#00cc66", label: "+5–+8%", fn: h => h.glPct !== null && h.glPct >= 5 && h.glPct < 8 },
+                { bg: "#001a12", border: "#115533", text: "#44cc88", label: "0–+5%", fn: h => h.glPct !== null && h.glPct >= 0 && h.glPct < 5 },
+                { bg: "#1a0808", border: "#663322", text: "#ff8877", label: "0–−2%", fn: h => h.glPct !== null && h.glPct < 0 && h.glPct >= -2 },
+                { bg: "#2a0808", border: "#882222", text: "#ff5544", label: "−2–−5%", fn: h => h.glPct !== null && h.glPct < -2 && h.glPct >= -5 },
+                { bg: "#3a0606", border: "#aa1111", text: "#ff2211", label: "<−5%", fn: h => h.glPct !== null && h.glPct < -5 },
               ].map((band, i) => {
+                const c = heatColor(i >= 3 ? (i === 3 ? -1 : i === 4 ? -3 : -6) : (i === 0 ? 10 : i === 1 ? 6 : 2), isLight);
                 const tickers = withWeights.filter(band.fn);
                 return (
-                  <div key={i} style={{ background: band.bg, border: `1px solid ${band.border}`, borderRadius: 8, padding: "9px 11px" }}>
-                    <div style={{ fontSize: 13, color: band.text + "77", letterSpacing: 1, marginBottom: 6 }}>{band.label}</div>
-                    {tickers.length === 0 ? <div style={{ fontSize: 12, color: band.text + "33" }}>—</div> : tickers.map((h, j) => (
+                  <div key={i} style={{ background: c.bg, border: `1px solid ${c.border}`, borderRadius: 8, padding: "9px 11px" }}>
+                    <div style={{ fontSize: 13, color: c.text + "77", letterSpacing: 1, marginBottom: 6 }}>{band.label}</div>
+                    {tickers.length === 0 ? <div style={{ fontSize: 12, color: c.text + "33" }}>—</div> : tickers.map((h, j) => (
                       <div key={`band-${i}-${j}-${h.ticker}-${h.account}-${h.broker}`} style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                        <span style={{ fontSize: 13, color: band.text, fontWeight: 500 }}>{h.ticker}</span>
-                        <span style={{ fontSize: 12, color: band.text + "99" }}>{h.glPct >= 0 ? "+" : ""}{h.glPct.toFixed(1)}%</span>
+                        <span style={{ fontSize: 13, color: c.text, fontWeight: 500 }}>{h.ticker}</span>
+                        <span style={{ fontSize: 12, color: c.text + "99" }}>{h.glPct >= 0 ? "+" : ""}{h.glPct.toFixed(1)}%</span>
                       </div>
                     ))}
                     <div style={{ marginTop: 5, paddingTop: 5, borderTop: `1px solid ${band.border}`, fontSize: 13, color: band.text + "55" }}>
@@ -821,14 +885,45 @@ export default function Dashboard() {
                 ))}
                 <div style={{ width: 1, background: "#222", margin: "0 2px" }} />
                 {[["value", "VALUE"], ["weight", "WEIGHT"], ["gl", "G/L"]].map(([k, l]) => (
-                  <button key={k} className="pill" onClick={() => setSortBy(k)} style={{ background: sortBy === k ? "#1a1a44" : "transparent", border: `1px solid ${sortBy === k ? "#00D4FF" : "#222"}`, color: sortBy === k ? "#00D4FF" : "#445", fontFamily: "inherit" }}>{l}</button>
+                  <button key={k} className="pill" onClick={() => toggleSort(k)} style={{ background: sortBy === k ? "#1a1a44" : "transparent", border: `1px solid ${sortBy === k ? "#00D4FF" : "#222"}`, color: sortBy === k ? "#00D4FF" : "#445", fontFamily: "inherit" }}>
+                    {l} {sortBy === k && (sortDir === "asc" ? "▲" : "▼")}
+                  </button>
                 ))}
               </div>
             </div>
             <div style={{ border: "1px solid var(--card-border)", borderRadius: 10, overflow: "auto" }}>
               <div className="hrow" style={{ background: "var(--bg2)", borderBottom: "1px solid var(--row-border)" }}>
-                {["TICKER", "NAME", "ACCT", "BROKER", "QTY", "AVG COST", "LAST PRICE", "DAY CHG", "MKT VAL (CAD)", "TOTAL G/L", "AS OF"].map((h, i) => (
-                  <div key={i} style={{ fontSize: 13, letterSpacing: 2, color: "var(--muted2)" }}>{h}</div>
+                {[
+                  { label: "TICKER", key: "ticker" },
+                  { label: "NAME", key: "name" },
+                  { label: "ACCT", key: "account" },
+                  { label: "BROKER", key: "broker" },
+                  { label: "QTY", key: "qty" },
+                  { label: "AVG COST", key: "avgCost" },
+                  { label: "LAST PRICE", key: "price" },
+                  { label: "DAY CHG", key: "day" },
+                  { label: "MKT VAL (CAD)", key: "value" },
+                  { label: "TOTAL G/L", key: "glPct" },
+                  { label: "AS OF", key: "date" }
+                ].map((h, i) => (
+                  <div 
+                    key={i} 
+                    onClick={() => toggleSort(h.key)}
+                    style={{ 
+                      fontSize: 13, 
+                      letterSpacing: 2, 
+                      color: sortBy === h.key ? "var(--accent)" : "var(--muted2)",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4
+                    }}
+                  >
+                    {h.label}
+                    {sortBy === h.key && (
+                      <span style={{ fontSize: 10 }}>{sortDir === "asc" ? "▲" : "▼"}</span>
+                    )}
+                  </div>
                 ))}
               </div>
               {filtered.map((h, i) => {
