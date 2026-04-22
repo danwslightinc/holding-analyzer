@@ -52,11 +52,19 @@ def main():
         return agg
 
     print("Fetching full Transaction history for Realized P&L...")
-    from backend.database import engine
+    from backend.database import engine, create_db_and_tables
     from sqlmodel import Session
-    with Session(engine) as session:
-        from data_loader import get_processed_transactions
-        full_tx_df = get_processed_transactions(session)
+    
+    # Ensure tables exist (prevents no such table error in CI)
+    create_db_and_tables()
+    
+    full_tx_df = pd.DataFrame()
+    try:
+        with Session(engine) as session:
+            from data_loader import get_processed_transactions
+            full_tx_df = get_processed_transactions(session)
+    except Exception as db_e:
+        print(f"Warning: Could not fetch from database ({db_e}). Continuing with CSV-based history only.")
     
     realized_pnl = aggregate_realized_pnl(realized_pnl, full_tx_df)
 

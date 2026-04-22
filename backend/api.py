@@ -86,6 +86,10 @@ def health_check():
         "status": "ok",
         "alpha_vantage_calls": get_av_call_count(),
         "database_connected": engine is not None,
+        "file_status": {
+            "portfolio_csv": os.path.exists("portfolio.csv"),
+            "portfolio_resp_csv": os.path.exists("portfolio_resp.csv")
+        },
         "env_check": {
             "DATABASE_URL": bool(os.getenv("DATABASE_URL")),
             "ALPHA_VANTAGE_API_KEY_ENV": bool(os.getenv("ALPHA_VANTAGE_API_KEY")),
@@ -94,10 +98,10 @@ def health_check():
     }
 
 @app.get("/api/portfolio")
-def get_portfolio():
+def get_portfolio(category: Optional[str] = None):
     try:
         # Switch to database source
-        df, _ = load_portfolio_from_db()
+        df, _ = load_portfolio_from_db(category=category)
         print(f"DEBUG: df columns: {df.columns.tolist()}")
         if df.empty:
             return {"summary": {}, "holdings": []}
@@ -243,13 +247,45 @@ def get_portfolio():
             broker_exp = df.groupby('Broker')['Market_Value_CAD'].sum().to_dict()
         except: broker_exp = {}
         
+        # Calculate summary per portfolio category
+        category_summaries = {}
+        for cat in df['Portfolio_Category'].unique():
+            cat_df = df[df['Portfolio_Category'] == cat]
+            cat_mv = cat_df['Market_Value_CAD'].sum()
+            cat_cost = cat_df['Cost_Basis_CAD'].sum()
+            
+            # Calculate USD equivalent for the category
+            cat_mv_usd = 0
+            for _, h in cat_df.iterrows():
+                if h['Currency'] == 'USD':
+                    cat_mv_usd += h['Market Value']
+                else:
+                    cat_mv_usd += h['Market Value'] / usd_cad
+            
+            category_summaries[cat] = {
+                "total_value": sanitize_val(cat_mv),
+                "total_value_usd": sanitize_val(cat_mv_usd),
+                "total_cost": sanitize_val(cat_cost),
+                "total_pnl": sanitize_val(cat_mv - cat_cost),
+            }
+        
+        # Calculate total USD value
+        total_mv_usd = 0
+        for _, h in df.iterrows():
+            if h['Currency'] == 'USD':
+                total_mv_usd += h['Market Value']
+            else:
+                total_mv_usd += h['Market Value'] / usd_cad
+
         return {
             "summary": {
                 "total_value": sanitize_val(total_mv_cad),
+                "total_value_usd": sanitize_val(total_mv_usd),
                 "total_cost": sanitize_val(df['Cost_Basis_CAD'].sum()),
                 "total_pnl": sanitize_val(df['PnL_CAD'].sum()),
                 "weighted_cagr": sanitize_val(weighted_cagr),
-                "usd_cad_rate": sanitize_val(usd_cad)
+                "usd_cad_rate": sanitize_val(usd_cad),
+                "categories": category_summaries
             },
             "holdings": holdings_list,
             "sector_exposure": {k: sanitize_val(v) for k, v in sector_exp.items()},
@@ -263,9 +299,9 @@ def get_portfolio():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/dividends")
-def get_dividends():
+def get_dividends(category: Optional[str] = None):
     try:
-        df, _ = load_portfolio_from_db()
+        df, _ = load_portfolio_from_db(category=category)
         if df.empty: return {}
         
         # Get Market Data
@@ -428,11 +464,16 @@ _TYPE_NORMALIZE = {
 # _recalculate_realized_pnl_for_symbol removed in favor of dynamic calculation
 
 @app.get("/api/transactions")
-def get_transactions():
+def get_transactions(category: Optional[str] = None):
     """Fetch all transactions from DB formatted for frontend"""
     try:
         with Session(engine) as session:
-            txs = session.exec(select(DBTransaction).order_by(DBTransaction.date.desc())).all()
+            query = select(DBTransaction).order_by(DBTransaction.date.desc())
+            if category and category.upper() != 'ALL':
+                query = query.where(DBTransaction.portfolio_category == category)
+            
+            # session.exec(query) was not working for filtering in some environments
+            txs = session.exec(query).all()
             
             # Map DB fields to the format the frontend expects (Uppercase keys)
             return [
@@ -447,7 +488,8 @@ def get_transactions():
                     "Broker": tx.broker or "Manual",
                     "Account Type": tx.account_type or "Unknown",
                     "Comment": tx.description or "",
-                    "Amount": sanitize_val(tx.amount)
+                    "Amount": sanitize_val(tx.amount),
+                    "Portfolio Category": tx.portfolio_category
                 }
                 for tx in txs
             ]
@@ -455,7 +497,7 @@ def get_transactions():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/closed-trades")
-def get_closed_trades():
+def get_closed_trades(category: Optional[str] = None):
     """Fetch individually matched closed trades from full broker CSV history (FIFO basis)"""
     try:
         # Fetch entirely from database transactions instead of CSV
@@ -464,6 +506,9 @@ def get_closed_trades():
             
         if df_tx.empty:
             return []
+
+        if category and category.upper() != 'ALL':
+            df_tx = df_tx[df_tx['Portfolio_Category'].str.upper() == category.upper()]
             
         # Ensure chronological order
         df_tx = df_tx.sort_values(by=['Date'])
@@ -513,7 +558,13 @@ def get_closed_trades():
                         try: cost = float(bv_str)
                         except: pass
 
-                lots[key].append({'qty': qty, 'cost': cost, 'date': date, 'currency': curr})
+                lots[key].append({
+                    'qty': qty, 
+                    'cost': cost, 
+                    'date': date, 
+                    'currency': curr,
+                    'category': str(tx.get('Portfolio_Category', 'Retirement'))
+                })
                 
             elif action == 'SELL':
                 if key not in lots or len(lots[key]) == 0:
@@ -582,6 +633,7 @@ def get_closed_trades():
                     if not is_merger_surrender:
                         closed_trades.append({
                             'symbol': str(sym),
+                            'portfolio_category': str(tx.get('Portfolio_Category', 'Retirement')),
                             'buyDate': first_buy_date.strftime('%Y/%m/%d') if pd.notna(first_buy_date) else 'Unknown',
                             'sellDate': date.strftime('%Y/%m/%d') if pd.notna(date) else 'Unknown',
                             'quantity': safe_float(trade_qty),
@@ -599,6 +651,57 @@ def get_closed_trades():
         
         # Sort descending by sellDate
         closed_trades.sort(key=lambda x: x['sellDate'], reverse=True)
+
+        # ---- NEW: Add Open Positions to Analysis ----
+        # Remaining lots are open positions
+        all_symbols = [key[0] for key in lots.keys()]
+        current_prices = get_current_prices(all_symbols)
+        
+        for key, lot_list in lots.items():
+            sym, broker, account = key
+            for lot in lot_list:
+                if lot['qty'] > 1e-4:
+                    cp = current_prices.get(sym, 0.0)
+                    if cp <= 0: continue
+                    
+                    trade_qty = lot['qty']
+                    trade_cost = lot['cost']
+                    proceeds = trade_qty * cp
+                    pnl = proceeds - trade_cost
+                    return_pct = (pnl / trade_cost * 100) if trade_cost > 0 else 0
+                    
+                    days = max(1, (datetime.utcnow() - lot['date']).days)
+                    
+                    ann_ret = 0.0
+                    if days > 0 and trade_cost > 0:
+                        raw_ret = pnl / trade_cost
+                        if raw_ret > -1:
+                            if days < 30: ann_ret = return_pct
+                            else: ann_ret = ((1 + raw_ret) ** (365/days) - 1) * 100
+                        else: ann_ret = -100
+
+                    # Find portfolio category for this holding
+                    # We might need to look back at the df_tx or just default
+                    # In a real scenario, we'd have the category in the lot
+                    
+                    closed_trades.append({
+                        'symbol': str(sym),
+                        'portfolio_category': lot['category'], 
+                        'buyDate': lot['date'].strftime('%Y/%m/%d') if pd.notna(lot['date']) else 'Unknown',
+                        'sellDate': 'OPEN',
+                        'quantity': float(trade_qty),
+                        'costBasis': float(trade_cost),
+                        'proceeds': float(proceeds),
+                        'pnl': float(pnl),
+                        'returnPct': float(return_pct),
+                        'holdingDays': int(days),
+                        'annualizedReturn': float(ann_ret),
+                        'isWin': bool(pnl >= 0),
+                        'currency': lot['currency'],
+                        'broker': str(broker),
+                        'account_type': str(account)
+                    })
+
         return closed_trades
     except Exception as e:
         import traceback
@@ -834,9 +937,13 @@ def update_holding(symbol: str, data: dict = Body(...)):
             if 'Kill Switch' in data: it.kill_switch = data['Kill Switch']
             session.add(it)
             
-            # 2. Update Holding comment if provided (rare now, but keeping for compatibility)
+            # 2. Update Holding comment if provided
             if 'Comment' in data:
-                h = session.exec(select(Holding).where(Holding.symbol == symbol)).first()
+                h_q = select(Holding).where(Holding.symbol == symbol)
+                if 'Portfolio_Category' in data:
+                    h_q = h_q.where(Holding.portfolio_category == data['Portfolio_Category'])
+                
+                h = session.exec(h_q).first()
                 if h:
                     h.comment = data['Comment']
                     session.add(h)
@@ -969,10 +1076,10 @@ def analyze_with_ai(payload: dict = Body(...)):
         return {"analysis": f"Critical AI system error: {str(e)}"}
 
 @app.get("/api/realized-pnl")
-def get_realized_pnl():
+def get_realized_pnl(category: Optional[str] = None):
     """Return all realized P&L rows aggregated dynamically from trades"""
     try:
-        trades = get_closed_trades()
+        trades = get_closed_trades(category)
         if isinstance(trades, dict) and "error" in trades:
             raise HTTPException(status_code=500, detail=trades["error"])
             

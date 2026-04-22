@@ -1,7 +1,7 @@
 "use client";
 
 import { usePortfolio } from "@/lib/PortfolioContext";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { API_BASE_URL } from "@/lib/api";
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -18,6 +18,7 @@ interface RealizedRow {
     broker: string;
     account_type: string;
     source: string;
+    portfolio_category: string;
 }
 
 type SortDir = "asc" | "desc";
@@ -40,6 +41,7 @@ const ACCOUNT_COLORS: Record<string, { bg: string; text: string; border: string 
     TFSA: { bg: "rgba(20,184,166,0.15)", text: "#2dd4bf", border: "rgba(20,184,166,0.40)" }, // teal  — tax-free growth
     RRSP: { bg: "rgba(139,92,246,0.15)", text: "#a78bfa", border: "rgba(139,92,246,0.40)" }, // purple — retirement
     Open: { bg: "rgba(249,115,22,0.15)", text: "#fb923c", border: "rgba(249,115,22,0.40)" }, // orange — taxable/open
+    RESP: { bg: "rgba(59,130,246,0.15)", text: "#60a5fa", border: "rgba(59,130,246,0.40)" },
     Manual: { bg: "rgba(255,255,255,0.08)", text: "#a1a1aa", border: "rgba(255,255,255,0.15)" },
 };
 const DEFAULT_ACCOUNT_COLOR = { bg: "rgba(255,255,255,0.08)", text: "#a1a1aa", border: "rgba(255,255,255,0.15)" };
@@ -79,10 +81,8 @@ function sortRows<T>(rows: T[], cfg: SortCfg, getValue: (row: T, key: string) =>
     });
 }
 
-export default function PnLPage() {
-    const { data, loading, symbolAccounts, error } = usePortfolio();
-    const [realized, setRealized] = useState<RealizedRow[]>([]);
-    const [realizedLoading, setRealizedLoading] = useState(true);
+export default function PnLPage({ portfolioFilter = "ALL" }: { portfolioFilter?: string }) {
+    const { data, allRealized, loading, symbolAccounts, error } = usePortfolio();
     const [selectedBroker, setSelectedBroker] = useState<string>('All');
     const [selectedAccountType, setSelectedAccountType] = useState<string>('All');
 
@@ -98,15 +98,6 @@ export default function PnLPage() {
         prev.key === k ? { key: k, dir: prev.dir === "desc" ? "asc" : "desc" } : { key: k, dir: "desc" }
     ), []);
 
-    useEffect(() => {
-        setRealizedLoading(true);
-        fetch(`${API_BASE_URL}/api/realized-pnl`)
-            .then(r => r.json())
-            .then(d => setRealized(d))
-            .catch(() => { })
-            .finally(() => setRealizedLoading(false));
-    }, []);
-
     if (loading) return (
         <div className="p-10 text-center animate-pulse text-zinc-400 text-lg">Loading P&L data...</div>
     );
@@ -119,9 +110,10 @@ export default function PnLPage() {
     const accountTypes = ['All', ...Array.from(new Set((data.holdings as any[]).map((h: any) => h.Account_Type).filter(Boolean)))];
 
     const filteredHoldings = (data.holdings as any[]).filter((h: any) => {
+        const cMatch = portfolioFilter === 'ALL' || h.Portfolio_Category === portfolioFilter;
         const bMatch = selectedBroker === 'All' || h.Broker === selectedBroker;
         const aMatch = selectedAccountType === 'All' || h.Account_Type === selectedAccountType;
-        return bMatch && aMatch;
+        return cMatch && bMatch && aMatch;
     });
 
     const groupedMap: Record<string, any> = {};
@@ -184,11 +176,13 @@ export default function PnLPage() {
     const totalPct = totalCostBasis > 0 ? (totalUnrealizedPnL / totalCostBasis) * 100 : 0;
     const chartData = [...rawRows].sort((a: any, b: any) => b.pnl - a.pnl).map((r: any) => ({ name: r.symbol, pnl: parseFloat(r.pnl.toFixed(0)) }));
 
-    // ---- Realized rows ----
-    const filteredRealized = realized.filter((r: any) => {
+    // ---- Realized rows (locally filtered from global state) ----
+    const realizedList = allRealized || [];
+    const filteredRealized = realizedList.filter((r: any) => {
+        const cMatch = portfolioFilter === 'ALL' || r.portfolio_category === portfolioFilter;
         const bMatch = selectedBroker === 'All' || r.broker === selectedBroker;
         const aMatch = selectedAccountType === 'All' || r.account_type === selectedAccountType;
-        return bMatch && aMatch;
+        return cMatch && bMatch && aMatch;
     });
 
     const realizedSorted = sortRows(filteredRealized, rSort, (r, k) => {
@@ -362,7 +356,7 @@ export default function PnLPage() {
                                         <td className={`p-4 text-right font-semibold ${isWin ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>{fmt(r.pnl)}</td>
                                         <td className={`p-4 text-right font-semibold ${isWin ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
                                             <span className="flex items-center justify-end gap-1">
-                                                {isWin ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
+                                                {isWin ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                                                 {r.pnlPct.toFixed(2)}%
                                             </span>
                                         </td>
@@ -408,8 +402,8 @@ export default function PnLPage() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
-                            {realizedLoading ? (
-                                <tr><td className="p-6 text-zinc-500 animate-pulse" colSpan={7}>Loading realized data...</td></tr>
+                            {realizedSorted.length === 0 ? (
+                                <tr><td className="p-6 text-zinc-500" colSpan={7}>No realized trades found for this filter.</td></tr>
                             ) : realizedSorted.map((r: any, i: number) => {
                                 const isWin = r.pnl_amount >= 0;
                                 const inCad = r.currency === "USD" ? r.pnl_amount * usdCad : r.pnl_amount;
@@ -448,7 +442,7 @@ export default function PnLPage() {
                                         <td className={`p-4 text-right font-semibold ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
                                             {r.pnl_pct !== null
                                                 ? <span className="flex items-center justify-end gap-1">
-                                                    {isWin ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
+                                                    {isWin ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                                                     {r.pnl_pct >= 0 ? "+" : ""}{r.pnl_pct.toFixed(2)}%
                                                 </span>
                                                 : "—"}

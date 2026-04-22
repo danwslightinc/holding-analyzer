@@ -33,20 +33,14 @@ interface ClosedTrade {
     isWin: boolean;
 }
 
-export default function TradeAnalysisPage() {
-    const { data: portData } = usePortfolio();
-    const [closedTrades, setClosedTrades] = useState<ClosedTrade[]>([]);
-    const [loading, setLoading] = useState(true);
+export default function TradeAnalysisPage({ portfolioFilter = "ALL" }: { portfolioFilter?: string }) {
+    const { data: portData, allClosedTrades, loading } = usePortfolio();
 
-    useEffect(() => {
-        fetch(`${API_BASE_URL}/api/closed-trades`)
-            .then(res => res.json())
-            .then(data => {
-                setClosedTrades(data || []);
-            })
-            .catch(console.error)
-            .finally(() => setLoading(false));
-    }, []);
+    const closedTrades = useMemo(() => {
+        const baseTrades = allClosedTrades || [];
+        if (portfolioFilter === "ALL") return baseTrades;
+        return baseTrades.filter((t: any) => t.portfolio_category === portfolioFilter);
+    }, [allClosedTrades, portfolioFilter]);
 
     if (loading) {
         return <div className="p-10 text-center animate-pulse text-zinc-400">Loading Trade History...</div>;
@@ -122,52 +116,54 @@ export default function TradeAnalysisPage() {
             </div>
 
             {/* Trade Analysis Chart */}
-            <div className="glass-panel rounded-2xl p-6 mt-8">
+            <div className="glass-panel rounded-2xl p-6 mt-8" style={{ minHeight: '450px' }}>
                 <h2 className="text-lg font-bold flex items-center gap-2 mb-1"><BarChart3 size={18} className="text-purple-400" /> Return % vs Holding Period</h2>
                 <p className="text-xs text-zinc-500 mb-6">Scatter plot mirroring Portseido's Trade Analysis visual. Bubble size represents relative trade sizing.</p>
-                <ResponsiveContainer width="100%" height={350}>
-                    <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 10 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" horizontal={true} vertical={false} />
-                        <XAxis type="number" dataKey="x" name="Holding Days" tick={{ fill: "#9ca3af", fontSize: 11 }} label={{ value: 'Holding Time (Days)', position: 'bottom', offset: 0, fill: '#9ca3af', fontSize: 11 }} />
-                        <YAxis type="number" dataKey="y" name="Return %" tick={{ fill: "#9ca3af", fontSize: 11 }} tickFormatter={(v) => `${v}%`} label={{ value: 'Return (%)', angle: -90, position: 'insideLeft', fill: '#9ca3af', fontSize: 11 }} />
-                        <ZAxis type="number" dataKey="z" range={[60, 600]} name="Trade Size" />
-                        <RechartsTooltip
-                            cursor={{ strokeDasharray: '3 3', stroke: 'rgba(255,255,255,0.2)' }}
-                            content={({ active, payload }) => {
-                                if (active && payload && payload.length) {
-                                    const data = payload[0].payload;
-                                    return (
-                                        <div className="bg-[#1a1a2e] border border-white/10 rounded-xl p-3 shadow-xl">
-                                            <p className="font-bold text-white mb-2">{data.name}</p>
-                                            <div className="flex justify-between gap-4 text-sm mt-1">
-                                                <span className="text-zinc-400">Return:</span>
-                                                <span className={data.y >= 0 ? "text-emerald-400 font-medium" : "text-rose-400 font-medium"}>{data.y > 0 ? '+' : ''}{data.y.toFixed(2)}%</span>
+                <div style={{ width: '100%', height: '350px' }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                        <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 10 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" horizontal={true} vertical={false} />
+                            <XAxis type="number" dataKey="x" name="Holding Days" tick={{ fill: "#9ca3af", fontSize: 11 }} label={{ value: 'Holding Time (Days)', position: 'bottom', offset: 0, fill: '#9ca3af', fontSize: 11 }} />
+                            <YAxis type="number" dataKey="y" name="Return %" tick={{ fill: "#9ca3af", fontSize: 11 }} tickFormatter={(v) => `${v}%`} label={{ value: 'Return (%)', angle: -90, position: 'insideLeft', fill: '#9ca3af', fontSize: 11 }} />
+                            <ZAxis type="number" dataKey="z" range={[60, 600]} name="Trade Size" />
+                            <RechartsTooltip
+                                cursor={{ strokeDasharray: '3 3', stroke: 'rgba(255,255,255,0.2)' }}
+                                content={({ active, payload }) => {
+                                    if (active && payload && payload.length) {
+                                        const data = payload[0].payload;
+                                        return (
+                                            <div className="bg-[#1a1a2e] border border-white/10 rounded-xl p-3 shadow-xl">
+                                                <p className="font-bold text-white mb-2">{data.name}</p>
+                                                <div className="flex justify-between gap-4 text-sm mt-1">
+                                                    <span className="text-zinc-400">Return:</span>
+                                                    <span className={data.y >= 0 ? "text-emerald-400 font-medium" : "text-rose-400 font-medium"}>{data.y > 0 ? '+' : ''}{data.y.toFixed(2)}%</span>
+                                                </div>
+                                                <div className="flex justify-between gap-4 text-sm mt-1">
+                                                    <span className="text-zinc-400">Holding Days:</span>
+                                                    <span className="text-zinc-200 font-medium">{data.x}</span>
+                                                </div>
                                             </div>
-                                            <div className="flex justify-between gap-4 text-sm mt-1">
-                                                <span className="text-zinc-400">Holding Days:</span>
-                                                <span className="text-zinc-200 font-medium">{data.x}</span>
-                                            </div>
-                                        </div>
-                                    );
-                                }
-                                return null;
-                            }}
-                        />
-                        <ReferenceLine y={0} stroke="rgba(255,255,255,0.2)" strokeWidth={1} />
-                        <Scatter data={scatterData} opacity={0.8} stroke="rgba(0,0,0,0.3)" strokeWidth={1}>
-                            {scatterData.map((entry) => (
-                                <Cell key={entry.id} fill={entry.fill} />
-                            ))}
-                        </Scatter>
-                    </ScatterChart>
-                </ResponsiveContainer>
+                                        );
+                                    }
+                                    return null;
+                                }}
+                            />
+                            <ReferenceLine y={0} stroke="rgba(255,255,255,0.2)" strokeWidth={1} />
+                            <Scatter data={scatterData} opacity={0.8} stroke="rgba(0,0,0,0.3)" strokeWidth={1}>
+                                {scatterData.map((entry) => (
+                                    <Cell key={entry.id} fill={entry.fill} />
+                                ))}
+                            </Scatter>
+                        </ScatterChart>
+                    </ResponsiveContainer>
+                </div>
             </div>
 
-            {/* Individual Closed Trades Table */}
+            {/* Individual Trade/Lot Log */}
             <div className="glass-panel rounded-2xl overflow-hidden mt-8">
                 <div className="p-6 border-b border-white/10">
-                    <h2 className="text-lg font-bold flex items-center gap-2"><ShieldCheck size={18} className="text-blue-500" /> Individual Trade Log</h2>
-                    <p className="text-xs text-zinc-500 mt-1">Calculated automatically via FIFO logic matching buys and sells.</p>
+                    <h2 className="text-lg font-bold flex items-center gap-2"><ShieldCheck size={18} className="text-blue-500" /> Security Execution & Performance</h2>
+                    <p className="text-xs text-zinc-500 mt-1">Calculated via FIFO logic. Open positions compare purchase price vs. current market price.</p>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
@@ -179,13 +175,13 @@ export default function TradeAnalysisPage() {
                                 <th className="p-4 font-semibold text-right">Return %</th>
                                 <th className="p-4 font-semibold text-right">Gain / Loss</th>
                                 <th className="p-4 font-semibold text-right">Buy Date</th>
-                                <th className="p-4 font-semibold text-right">Sell Date</th>
+                                <th className="p-4 font-semibold text-right">Status / Sell Date</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
                             {closedTrades.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="p-8 text-center text-zinc-500">No closed trades found matching buys and sells in your history.</td>
+                                    <td colSpan={7} className="p-8 text-center text-zinc-500">No execution records found in your history.</td>
                                 </tr>
                             ) : closedTrades.map((t, idx) => (
                                 <tr key={idx} className="hover:bg-white/5 transition-colors">
@@ -201,7 +197,13 @@ export default function TradeAnalysisPage() {
                                         {t.pnl >= 0 ? '+' : ''}${Math.abs(t.pnl).toLocaleString("en-CA", { maximumFractionDigits: 2 })}
                                     </td>
                                     <td className="p-4 text-right text-zinc-400 text-xs">{t.buyDate}</td>
-                                    <td className="p-4 text-right text-zinc-400 text-xs">{t.sellDate}</td>
+                                    <td className="p-4 text-right text-xs">
+                                        {t.sellDate === 'OPEN' ? (
+                                            <span className="text-teal-400 font-bold px-2 py-0.5 rounded bg-teal-400/10 border border-teal-400/20">OPEN</span>
+                                        ) : (
+                                            <span className="text-zinc-500">{t.sellDate}</span>
+                                        )}
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>

@@ -9,8 +9,14 @@ interface PortfolioContextType {
     tickerPerf: any;
     history: any;
     symbolAccounts: any;
+    allTransactions: any;
+    allRealized: any;
+    allClosedTrades: any;
+    fileStatus: { portfolio_csv: boolean; portfolio_resp_csv: boolean };
     loading: boolean;
     error: any;
+    category: string;
+    setCategory: (cat: string) => void;
     refresh: (forceRefresh?: boolean) => Promise<void>;
 }
 
@@ -22,8 +28,13 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     const [tickerPerf, setTickerPerf] = useState<any>(null);
     const [history, setHistory] = useState<any>(null);
     const [symbolAccounts, setSymbolAccounts] = useState<any>(null);
+    const [allTransactions, setAllTransactions] = useState<any>(null);
+    const [allRealized, setAllRealized] = useState<any>(null);
+    const [allClosedTrades, setAllClosedTrades] = useState<any>(null);
+    const [fileStatus, setFileStatus] = useState<any>({ portfolio_csv: true, portfolio_resp_csv: true });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<any>(null);
+    const [category, setCategory] = useState("ALL");
 
     const fetchData = useCallback(async (forceRefresh = false) => {
         try {
@@ -33,22 +44,31 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
                 await fetch(`${API_BASE_URL}/api/sync`, { method: "POST" });
             }
 
-            const [portRes, divRes, perfRes, histRes, accRes] = await Promise.all([
+            // Fetch ALL data once
+            const [portRes, divRes, perfRes, histRes, accRes, txRes, realRes, closedRes, healthRes] = await Promise.all([
                 fetch(`${API_BASE_URL}/api/portfolio`),
                 fetch(`${API_BASE_URL}/api/dividends`),
                 fetch(`${API_BASE_URL}/api/ticker-performance`),
                 fetch(`${API_BASE_URL}/api/performance`),
-                fetch(`${API_BASE_URL}/api/symbol-accounts`)
+                fetch(`${API_BASE_URL}/api/symbol-accounts`),
+                fetch(`${API_BASE_URL}/api/transactions`),
+                fetch(`${API_BASE_URL}/api/realized-pnl`),
+                fetch(`${API_BASE_URL}/api/closed-trades`),
+                fetch(`${API_BASE_URL}/api/health`)
             ]);
 
             if (!portRes.ok) throw new Error("Failed to fetch portfolio");
 
-            const [p, d, t, h, a] = await Promise.all([
+            const [p, d, t, h, a, tx, r, c, health] = await Promise.all([
                 portRes.json(),
                 divRes.json(),
                 perfRes.json(),
                 histRes.json(),
-                accRes.json()
+                accRes.json(),
+                txRes.json(),
+                realRes.json(),
+                closedRes.json(),
+                healthRes.json()
             ]);
 
             setData(p);
@@ -56,8 +76,12 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
             setTickerPerf(t);
             setHistory(h);
             setSymbolAccounts(a);
+            setAllTransactions(tx);
+            setAllRealized(r);
+            setAllClosedTrades(c);
+            setFileStatus(health.file_status || { portfolio_csv: true, portfolio_resp_csv: true });
             setError(null);
-            console.log("DEBUG: Portfolio data loaded successfully", { p, d, t, h, a });
+            console.log("DEBUG: All Portfolio data pre-loaded successfully");
         } catch (err) {
             console.error("Context fetch error:", err);
             setError(err);
@@ -70,8 +94,14 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         fetchData(false);
     }, [fetchData]);
 
+    const refresh = (forceRefresh = false) => fetchData(forceRefresh);
+
     return (
-        <PortfolioContext.Provider value={{ data, dividends, tickerPerf, history, symbolAccounts, loading, error, refresh: fetchData }}>
+        <PortfolioContext.Provider value={{ 
+            data, dividends, tickerPerf, history, symbolAccounts, 
+            allTransactions, allRealized, allClosedTrades, fileStatus,
+            loading, error, category, setCategory, refresh 
+        }}>
             {children}
         </PortfolioContext.Provider>
     );

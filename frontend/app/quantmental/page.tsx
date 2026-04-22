@@ -23,7 +23,7 @@ interface QuantmentalData {
     Rec: string;
 }
 
-export default function QuantmentalPage() {
+export default function QuantmentalPage({ portfolioFilter = "ALL" }: { portfolioFilter?: string }) {
     const { data: portData, loading, error, refresh } = usePortfolio();
     const [sortField, setSortField] = useState<string>("");
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
@@ -40,7 +40,10 @@ export default function QuantmentalPage() {
             const res = await fetch(`${API_BASE_URL}/api/ai/analyze`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ query: "Summarize the composition and trends in this portfolio data." })
+                body: JSON.stringify({ 
+                    query: "Summarize the composition and trends in this portfolio data.",
+                    category: portfolioFilter
+                })
             });
             const data = await res.json();
             setAiAnalysis(data.analysis);
@@ -95,10 +98,14 @@ export default function QuantmentalPage() {
             return [];
         }
 
-        console.log(`DEBUG: Processing ${portData.holdings.length} holdings for Quant-mental`);
+        const filtered = portData.holdings.filter((h: any) => 
+            portfolioFilter === "ALL" || h.Portfolio_Category === portfolioFilter
+        );
+
+        console.log(`DEBUG: Processing ${filtered.length} holdings for Quant-mental`);
 
         // Group by Symbol to avoid duplicates
-        const grouped = portData.holdings.reduce((acc: any, h: any) => {
+        const grouped = filtered.reduce((acc: any, h: any) => {
             const sym = h.Symbol;
             if (!acc[sym]) {
                 acc[sym] = { ...h };

@@ -5,6 +5,7 @@ from sqlmodel import SQLModel, Field, Relationship
 class Holding(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     symbol: str = Field(index=True)
+    portfolio_category: str = Field(default="Retirement", index=True)
     comment: Optional[str] = None
     broker: Optional[str] = None
     account_type: Optional[str] = None
@@ -39,6 +40,7 @@ class InvestmentThesis(SQLModel, table=True):
 class Transaction(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     holding_id: Optional[int] = Field(default=None, foreign_key="holding.id")
+    portfolio_category: str = Field(default="Retirement", index=True)
     
     symbol: str = Field(index=True)
     date: datetime

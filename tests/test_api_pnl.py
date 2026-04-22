@@ -11,9 +11,12 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from backend.api import get_closed_trades
 
+@patch('backend.api.get_current_prices')
 @patch('backend.api.get_processed_transactions')
 @patch('backend.api.Session')
-def test_get_closed_trades_account_segregation(mock_session, mock_get_tx):
+def test_get_closed_trades_account_segregation(mock_session, mock_get_tx, mock_prices):
+    # Mock prices
+    mock_prices.return_value = {'TEST': 30.0}
     # Create a dummy dataframe representing a scenario where:
     # 1. We buy 100 shares in Account A for $10
     # 2. We buy 100 shares in Account B for $20
@@ -24,31 +27,30 @@ def test_get_closed_trades_account_segregation(mock_session, mock_get_tx):
         {
             'Symbol': 'TEST', 'Broker': 'Bank1', 'Account_Type': 'TFSA',
             'Action': 'BUY', 'Date': pd.to_datetime('2023-01-01'), 'Currency': 'CAD',
-            'Quantity': 100, 'Price': 10, 'Commission': 0, 'Amount': -1000
+            'Quantity': 100, 'Price': 10, 'Commission': 0, 'Amount': -1000,
+            'Portfolio_Category': 'Retirement'
         },
         {
             'Symbol': 'TEST', 'Broker': 'Bank2', 'Account_Type': 'RRSP',
             'Action': 'BUY', 'Date': pd.to_datetime('2023-02-01'), 'Currency': 'CAD',
-            'Quantity': 100, 'Price': 20, 'Commission': 0, 'Amount': -2000
+            'Quantity': 100, 'Price': 20, 'Commission': 0, 'Amount': -2000,
+            'Portfolio_Category': 'Retirement'
         },
         {
             'Symbol': 'TEST', 'Broker': 'Bank2', 'Account_Type': 'RRSP',
             'Action': 'SELL', 'Date': pd.to_datetime('2023-03-01'), 'Currency': 'CAD',
-            'Quantity': 50, 'Price': 25, 'Commission': 0, 'Amount': 1250
+            'Quantity': 50, 'Price': 25, 'Commission': 0, 'Amount': 1250,
+            'Portfolio_Category': 'Retirement'
         }
     ])
     
     mock_get_tx.return_value = df_data
     
-    trades = get_closed_trades()
+    all_trades = get_closed_trades()
+    trades = [t for t in all_trades if t['sellDate'] != 'OPEN']
     
     assert len(trades) == 1
     trade = trades[0]
-    
-    # We sold 50 shares from RRSP (Bank2). The cost basis per share was $20.
-    # Total cost basis = 50 * $20 = $1000.
-    # Total proceeds = 50 * $25 = $1250.
-    # PnL = $250.
     
     assert trade['symbol'] == 'TEST'
     assert trade['broker'] == 'Bank2'
@@ -58,36 +60,44 @@ def test_get_closed_trades_account_segregation(mock_session, mock_get_tx):
     assert trade['proceeds'] == 1250.0
     assert trade['pnl'] == 250.0
 
+@patch('backend.api.get_current_prices')
 @patch('backend.api.get_processed_transactions')
 @patch('backend.api.Session')
-def test_get_closed_trades_symbol_exclusion(mock_session, mock_get_tx):
+def test_get_closed_trades_symbol_exclusion(mock_session, mock_get_tx, mock_prices):
+    # Mock prices
+    mock_prices.return_value = {'AAPL': 200.0, 'RBF526': 20.0}
     # Test that symbols like RBF526 and DLR do not calculate PnL
     df_data = pd.DataFrame([
         {
             'Symbol': 'RBF526', 'Broker': 'Bank1', 'Account_Type': 'TFSA',
             'Action': 'BUY', 'Date': pd.to_datetime('2023-01-01'), 'Currency': 'CAD',
-            'Quantity': 100, 'Price': 10, 'Commission': 0, 'Amount': -1000
+            'Quantity': 100, 'Price': 10, 'Commission': 0, 'Amount': -1000,
+            'Portfolio_Category': 'Retirement'
         },
         {
             'Symbol': 'RBF526', 'Broker': 'Bank1', 'Account_Type': 'TFSA',
             'Action': 'SELL', 'Date': pd.to_datetime('2023-02-01'), 'Currency': 'CAD',
-            'Quantity': 100, 'Price': 15, 'Commission': 0, 'Amount': 1500
+            'Quantity': 100, 'Price': 15, 'Commission': 0, 'Amount': 1500,
+            'Portfolio_Category': 'Retirement'
         },
         {
             'Symbol': 'AAPL', 'Broker': 'Bank1', 'Account_Type': 'TFSA',
             'Action': 'BUY', 'Date': pd.to_datetime('2023-01-01'), 'Currency': 'USD',
-            'Quantity': 10, 'Price': 100, 'Commission': 0, 'Amount': -1000
+            'Quantity': 10, 'Price': 100, 'Commission': 0, 'Amount': -1000,
+            'Portfolio_Category': 'Retirement'
         },
         {
             'Symbol': 'AAPL', 'Broker': 'Bank1', 'Account_Type': 'TFSA',
             'Action': 'SELL', 'Date': pd.to_datetime('2023-02-01'), 'Currency': 'USD',
-            'Quantity': 10, 'Price': 150, 'Commission': 0, 'Amount': 1500
+            'Quantity': 10, 'Price': 150, 'Commission': 0, 'Amount': 1500,
+            'Portfolio_Category': 'Retirement'
         }
     ])
     
     mock_get_tx.return_value = df_data
     
-    trades = get_closed_trades()
+    all_trades = get_closed_trades()
+    trades = [t for t in all_trades if t['sellDate'] != 'OPEN']
     
     # RBF526 should be completely skipped. Only AAPL should show up.
     assert len(trades) == 1

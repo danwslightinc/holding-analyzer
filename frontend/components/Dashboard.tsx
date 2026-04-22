@@ -142,7 +142,7 @@ const META_MAP = {
 };
 
 export default function Dashboard() {
-  const { data: portData, dividends: divRaw, tickerPerf, loading, error, refresh } = usePortfolio();
+  const { data: portData, dividends: divRaw, tickerPerf, loading, error, refresh, category: portfolioFilter, setCategory: setPortfolioFilter, fileStatus } = usePortfolio();
 
   const [tab, setTab] = useState("overview");
   const [heatSort, setHeatSort] = useState("value");
@@ -229,11 +229,19 @@ export default function Dashboard() {
     const divLookup = {};
     if (divRaw && divRaw.holdings) {
       divRaw.holdings.forEach(d => {
-        divLookup[d.symbol] = d.dividend_yield * 100;
+        // Store the annual payout per share to be more accurate across multiple accounts
+        const payoutPerShare = d.quantity > 0 ? (d.annual_payout_cad / d.quantity) : 0;
+        divLookup[d.symbol] = payoutPerShare;
       });
     }
 
-    return portData.holdings.map(h => {
+    const baseHoldings = portData.holdings.filter(h => {
+      if (portfolioFilter === "ALL") return true;
+      // Backend field is Portfolio_Category (capitalized by data_loader)
+      return (h.Portfolio_Category || "Retirement") === portfolioFilter;
+    });
+
+    return baseHoldings.map(h => {
       const meta = META_MAP[h.Symbol] || { type: "Unknown", color: "#888", expectedCAGR: 8.0, beta: 1.0, geography: { "Global": 100 }, div: 0 };
       const cp = h['Current Price'] || 0;
       const prevClose = cp; // Backend doesn't give prev cost easily unless using perf
@@ -246,7 +254,15 @@ export default function Dashboard() {
       }
       const gl = h['Purchase Price'] > 0 ? ((cp / h['Purchase Price']) - 1) * 100 : null;
 
-      const yieldPct = divLookup[h.Symbol] || meta.div;
+      // Calculate yield based on the pre-calculated annual payout per share
+      const payoutPerShare = divLookup[h.Symbol];
+      let yieldPct = meta.div;
+      let annualDivCAD = mkt * (meta.div / 100);
+
+      if (payoutPerShare !== undefined) {
+          annualDivCAD = payoutPerShare * h.Quantity;
+          yieldPct = mkt > 0 ? (annualDivCAD / mkt) * 100 : 0;
+      }
 
       return {
         ...h,
@@ -269,7 +285,7 @@ export default function Dashboard() {
         costCAD: mkt - (h.PnL_CAD || h.PnL || 0),
         glPct: gl,
         glAmtLocal: (cp - (h['Purchase Price'] || 0)) * h.Quantity,
-        annualDivCAD: mkt * (yieldPct / 100),
+        annualDivCAD: annualDivCAD,
         heatColor: heatColor(gl, isLight),
         taxRating: TAX_MAP[h.Symbol] || "NEUTRAL",
         fetchStatus: "ok",
@@ -278,7 +294,7 @@ export default function Dashboard() {
         high: null, low: null,
       };
     });
-  }, [portData, tickerPerf, divRaw]);
+  }, [portData, tickerPerf, divRaw, portfolioFilter, usdcad, isLight]);
 
 
   const totalCAD = useMemo(() => holdings.reduce((s, h) => s + h.mktValueCAD, 0), [holdings]);
@@ -613,6 +629,49 @@ export default function Dashboard() {
 
 
 
+
+        {/* PORTFOLIO SELECTION STRIP */}
+        <div style={{ display: "flex", gap: 10, marginBottom: 15 }}>
+          {["ALL", "Retirement", "RESP"].filter(cat => {
+            if (cat === "ALL") return true;
+            // User requirement: If any of portfolio.csv and portfolio_resp.csv is missing, drop the cards (only keep ALL)
+            if (!fileStatus.portfolio_csv || !fileStatus.portfolio_resp_csv) return false;
+            return true;
+          }).map(cat => {
+            const catSummary = portData?.summary?.categories?.[cat] || (cat === "ALL" ? portData?.summary : null);
+            const isActive = portfolioFilter === cat;
+            
+            // Calculate totals if "ALL" isn't provided by backend for summary.categories
+            let val = catSummary?.total_value || 0;
+            let valUSD = catSummary?.total_value_usd || 0;
+            if (cat === "ALL") {
+              val = portData?.summary?.total_value || 0;
+              valUSD = portData?.summary?.total_value_usd || 0;
+            }
+            
+            return (
+              <div 
+                key={cat} 
+                onClick={() => setPortfolioFilter(cat)}
+                style={{ 
+                  flex: 1, 
+                  padding: "12px 20px", 
+                  background: isActive ? "var(--bg2)" : "transparent", 
+                  border: `1px solid ${isActive ? "var(--accent)" : "var(--card-border)"}`,
+                  borderRadius: 12,
+                  cursor: "pointer",
+                  transition: "all 0.2s"
+                }}
+              >
+                <div style={{ fontSize: 10, fontWeight: "bold", color: isActive ? "var(--accent)" : "var(--muted2)", textTransform: "uppercase", letterSpacing: 2, marginBottom: 4 }}>{cat} PORTFOLIO</div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                  <div style={{ fontSize: 20, fontFamily: "'Bebas Neue',sans-serif", color: isActive ? "var(--text)" : "var(--muted)", letterSpacing: 1 }}>{fmtCAD(val)}</div>
+                  <div style={{ fontSize: 13, color: "var(--muted2)", letterSpacing: 1 }}>USD: ${fmt(valUSD, 0)}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
 
         {/* ACCOUNT + BROKER STRIP */}
         <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
@@ -1047,11 +1106,16 @@ export default function Dashboard() {
             <div className="card">
               <div style={{ fontSize: 11, letterSpacing: 3, color: "#335", marginBottom: 12 }}>REGIONAL ANALYSIS</div>
               {[
-                { region: "United States", pct: geoData.find(g => g.name === "United States")?.value || 0, risk: "MODERATE", color: "#00D4FF", note: "VOO, VFV.TO, AVUV, MSFT, NVDA, COST. Dominant exposure. S&P ~21x P/E. AVUV in RRSP (treaty-exempt)." },
-                { region: "Canada", pct: geoData.find(g => g.name === "Canada")?.value || 0, risk: "LOW", color: "#CC44FF", note: "VDY.TO (Open), XIU.TO, XEI.TO, WCP.TO (TFSA). DTC on Open dividends. TFSA positions fully sheltered." },
-                { region: "Europe", pct: geoData.find(g => g.name === "Europe")?.value || 0, risk: "MODERATE", color: "#00FF88", note: "XEF.TO (TFSA). WHT drag unrecoverable, RRSP full. ECB cuts supportive. Cheap ~13x P/E." },
-                { region: "Emerging Mkts", pct: geoData.filter(g => ["China", "India", "Taiwan", "South Korea", "Brazil", "Other EM"].includes(g.name)).reduce((s, g) => s + g.value, 0), risk: "HIGH", color: "#FF3366", note: "XEC.TO. India demographics + manufacturing shift. China geopolitical risk. EM WHT embedded at fund level." },
-                { region: "Commodities", pct: geoData.find(g => g.name === "Global")?.value || 0, risk: "LOW", color: "#FFAA00", note: "GLD + SLV in Open. Real asset hedge. SLV +85% unrealized gain — monitor exit timing." },
+                { region: "United States", pct: geoData.find(g => g.name === "United States")?.value || 0, risk: "MODERATE", color: "#00D4FF", 
+                  symbols: withWeights.filter(h => h.geography["United States"]).map(h => h.ticker) },
+                { region: "Canada", pct: geoData.find(g => g.name === "Canada")?.value || 0, risk: "LOW", color: "#CC44FF",
+                  symbols: withWeights.filter(h => h.geography["Canada"]).map(h => h.ticker) },
+                { region: "Europe", pct: geoData.find(g => g.name === "Europe")?.value || 0, risk: "MODERATE", color: "#00FF88",
+                  symbols: withWeights.filter(h => h.geography["Europe"]).map(h => h.ticker) },
+                { region: "Emerging Mkts", pct: geoData.filter(g => ["China", "India", "Taiwan", "South Korea", "Brazil", "Other EM"].includes(g.name)).reduce((s, g) => s + g.value, 0), risk: "HIGH", color: "#FF3366",
+                  symbols: withWeights.filter(h => ["China", "India", "Taiwan", "South Korea", "Brazil", "Other EM"].some(c => h.geography[c])).map(h => h.ticker) },
+                { region: "Commodities", pct: geoData.find(g => g.name === "Global")?.value || 0, risk: "LOW", color: "#FFAA00",
+                  symbols: withWeights.filter(h => h.geography["Global"]).map(h => h.ticker) },
               ].map(r => (
                 <div key={r.region} style={{ padding: "10px 0", borderBottom: "1px solid #0f0f22" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
@@ -1061,7 +1125,9 @@ export default function Dashboard() {
                       <span style={{ padding: "1px 6px", borderRadius: 3, fontSize: 11, background: r.risk === "HIGH" ? "#FF336622" : r.risk === "MODERATE" ? "#FFD70022" : "#00FF8822", color: r.risk === "HIGH" ? "#FF3366" : r.risk === "MODERATE" ? "#FFD700" : "#00FF88" }}>{r.risk}</span>
                     </div>
                   </div>
-                  <div style={{ fontSize: 12, color: "#667", lineHeight: 1.5 }}>{r.note}</div>
+                  <div style={{ fontSize: 12, color: "#667", lineHeight: 1.5 }}>
+                    {r.symbols.length > 0 ? Array.from(new Set(r.symbols)).join(", ") : "No exposure in this portfolio."}
+                  </div>
                 </div>
               ))}
             </div>
@@ -1171,10 +1237,10 @@ export default function Dashboard() {
         )}
 
         {/* ════ PAGE TABS (embedded from routes) */}
-        {tab === "pnl" && <div className="dash-embed"><PnLPage /></div>}
-        {tab === "trades" && <div className="dash-embed"><TradeAnalysisPage /></div>}
-        {tab === "quantmental" && <div className="dash-embed"><QuantmentalPage /></div>}
-        {tab === "transactions" && <div className="dash-embed"><TransactionsPage /></div>}
+        {tab === "pnl" && <div className="dash-embed"><PnLPage portfolioFilter={portfolioFilter} /></div>}
+        {tab === "trades" && <div className="dash-embed"><TradeAnalysisPage portfolioFilter={portfolioFilter} /></div>}
+        {tab === "quantmental" && <div className="dash-embed"><QuantmentalPage portfolioFilter={portfolioFilter} /></div>}
+        {tab === "transactions" && <div className="dash-embed"><TransactionsPage portfolioFilter={portfolioFilter} /></div>}
       </div>
 
       <div style={{ borderTop: "1px solid var(--row-border)", padding: "10px 26px", display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--muted2)", letterSpacing: 1 }}>

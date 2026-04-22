@@ -31,9 +31,11 @@ jobs:
     - name: Create Data Files from Secrets
       env:
         PORTFOLIO_CSV: ${{ secrets.PORTFOLIO_CSV }}
+        PORTFOLIO_RESP_CSV: ${{ secrets.PORTFOLIO_RESP_CSV }}
         THESIS_JSON: ${{ secrets.THESIS_JSON }}
       run: |
         echo "$PORTFOLIO_CSV" > portfolio.csv
+        echo "$PORTFOLIO_RESP_CSV" > portfolio_resp.csv
         echo "$THESIS_JSON" > thesis.json
     
     - name: Run Analysis and Send Email

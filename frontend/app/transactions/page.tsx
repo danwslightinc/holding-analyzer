@@ -21,6 +21,7 @@ interface Transaction {
     "Account Type": string;
     Comment: string;
     Amount: number;
+    "Portfolio Category": string;
 }
 
 /** Official bank brand colors for consistency across app */
@@ -39,10 +40,8 @@ const ACCOUNT_COLORS: Record<string, { bg: string; text: string; border: string 
     Open: { bg: "rgba(249,115,22,0.15)", text: "#fb923c", border: "rgba(249,115,22,0.40)" },
 };
 
-export default function TransactionsPage() {
-    const { refresh } = usePortfolio();
-    const [transactions, setTransactions] = useState<Transaction[]>([]);
-    const [loading, setLoading] = useState(true);
+export default function TransactionsPage({ portfolioFilter = "ALL" }: { portfolioFilter?: string }) {
+    const { allTransactions, loading, refresh } = usePortfolio();
     const [showForm, setShowForm] = useState(false);
     const [editId, setEditId] = useState<number | null>(null);
     const [submitting, setSubmitting] = useState(false);
@@ -58,43 +57,32 @@ export default function TransactionsPage() {
         Transaction_Type: "BUY",
         Broker: "RBC",
         Account_Type: "TFSA",
+        Portfolio_Category: portfolioFilter === "ALL" ? "Retirement" : portfolioFilter,
         Comment: ""
     };
 
     const [form, setForm] = useState(initialForm);
 
-    const fetchTransactions = async () => {
-        try {
-            const res = await fetch(`${API_BASE_URL}/api/transactions`);
-            if (!res.ok) {
-                console.warn("Server Error: Transactions could not be fetched", res.status);
-                return;
-            }
-            const data = await res.json();
-            if (Array.isArray(data)) {
-                setTransactions(data);
-            } else {
-                console.error("Invalid response format: data is not an array", data);
-            }
-        } catch (err) {
-            console.error("Failed to fetch", err);
-        } finally {
-            setLoading(false);
-        }
-    };
-
     useEffect(() => {
-        fetchTransactions();
-    }, []);
+        // Update form default category when filter changes
+        if (!editId) {
+            setForm(prev => ({
+                ...prev,
+                Portfolio_Category: portfolioFilter === "ALL" ? "Retirement" : portfolioFilter
+            }));
+        }
+    }, [portfolioFilter, editId]);
 
     const filteredTransactions = useMemo(() => {
-        return transactions.filter(tx => {
+        const txs = allTransactions || [];
+        return txs.filter((tx: any) => {
+            const cMatch = portfolioFilter === "ALL" || tx["Portfolio Category"] === portfolioFilter;
             const matchesSearch = (tx.Symbol || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
                 (tx.Broker || "").toLowerCase().includes(searchQuery.toLowerCase());
             const matchesFilter = filterType === "All" || (tx["Transaction Type"] || "").toUpperCase() === filterType.toUpperCase();
-            return matchesSearch && matchesFilter;
+            return cMatch && matchesSearch && matchesFilter;
         });
-    }, [transactions, searchQuery, filterType]);
+    }, [allTransactions, portfolioFilter, searchQuery, filterType]);
 
     const handleEdit = (tx: Transaction) => {
         setEditId(tx.id);
@@ -107,6 +95,7 @@ export default function TransactionsPage() {
             Transaction_Type: (tx["Transaction Type"] || "BUY").toUpperCase(),
             Broker: tx.Broker,
             Account_Type: tx["Account Type"],
+            Portfolio_Category: tx["Portfolio Category"] || "Retirement",
             Comment: tx.Comment || ""
         });
         setShowForm(true);
@@ -134,8 +123,7 @@ export default function TransactionsPage() {
                 setShowForm(false);
                 setEditId(null);
                 setForm(initialForm);
-                fetchTransactions();
-                refresh(true); // Trigger global context refresh
+                refresh(true); // Trigger global context refresh which re-fetches all
             }
         } catch (err) {
             console.error("Failed to submit", err);
@@ -149,7 +137,6 @@ export default function TransactionsPage() {
         try {
             const res = await fetch(`${API_BASE_URL}/api/transactions/${id}`, { method: "DELETE" });
             if (res.ok) {
-                fetchTransactions();
                 refresh(true); // Trigger global context refresh
             }
         } catch (err) {
@@ -204,7 +191,7 @@ export default function TransactionsPage() {
                 </motion.button>
             </div>
 
-            {/* Inline Form: Appears "Right under Add button" */}
+            {/* Inline Form */}
             <AnimatePresence>
                 {showForm && (
                     <motion.div
@@ -303,6 +290,7 @@ export default function TransactionsPage() {
                                         <option value="RRSP">RRSP</option>
                                         <option value="FHSA">FHSA</option>
                                         <option value="Open">Margin / Open</option>
+                                        <option value="RESP">RESP</option>
                                     </select>
                                 </div>
 
@@ -374,6 +362,7 @@ export default function TransactionsPage() {
                     <input
                         type="text"
                         placeholder="Search by ticker, broker, or notes..."
+                        className="api-input pl-12"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
@@ -417,9 +406,9 @@ export default function TransactionsPage() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
-                            {filteredTransactions.map((tx) => {
-                                const bStyle = BROKER_COLORS[tx.Broker] ?? BROKER_COLORS.Manual;
-                                const aStyle = ACCOUNT_COLORS[tx["Account Type"]] ?? BROKER_COLORS.Manual;
+                            {filteredTransactions.map((tx: any) => {
+                                const bStyle = BROKER_COLORS[tx.Broker] || BROKER_COLORS.Manual;
+                                const aStyle = ACCOUNT_COLORS[tx["Account Type"]] || BROKER_COLORS.Manual;
                                 const txType = (tx["Transaction Type"] || "").toUpperCase();
                                 const isSell = txType === 'SELL';
 
