@@ -967,10 +967,12 @@ def analyze_with_ai(payload: dict = Body(...)):
         import json
         import os
         
-        # 1. Get portfolio data for context
-        df, _ = load_portfolio_from_db()
+        category = payload.get('category', 'ALL')
+        
+        # 1. Get portfolio data for context (respecting category filter)
+        df, _ = load_portfolio_from_db(category=category)
         if df.empty:
-            return {"analysis": "Portfolio is empty. Add some transactions first."}
+            return {"analysis": f"Portfolio ({category}) is empty. Add some transactions first."}
         
         # 2. Get current prices and fundamental metrics
         symbols = df['Symbol'].unique().tolist()
