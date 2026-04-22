@@ -101,15 +101,9 @@ const CustomTooltip = ({ active, payload }: any) => {
                 <p className="font-bold text-gray-900 dark:text-white text-lg mb-2">{data.name}</p>
                 <div className="flex flex-col gap-2">
                     <div className="flex justify-between gap-4">
-                        <span className="text-sm text-gray-500 dark:text-zinc-400">Market Value</span>
+                        <span className="text-sm text-gray-500 dark:text-zinc-400">Value</span>
                         <span className="text-sm font-mono text-gray-900 dark:text-zinc-200">
-                            ${data.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                        <span className="text-sm text-gray-500 dark:text-zinc-400">Day Change</span>
-                        <span className={`text-sm font-bold ${data.dayChange > 0 ? 'text-emerald-500 dark:text-emerald-400' : data.dayChange < 0 ? 'text-rose-500 dark:text-rose-400' : 'text-gray-500 dark:text-zinc-400'}`}>
-                            {data.dayChange !== undefined && !isNaN(data.dayChange) ? `${data.dayChange > 0 ? '+' : ''}${data.dayChange.toFixed(2)}%` : 'N/A'}
+                            ${data.value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </span>
                     </div>
                 </div>

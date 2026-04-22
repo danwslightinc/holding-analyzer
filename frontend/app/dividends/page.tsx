@@ -100,8 +100,15 @@ export default function DividendsPage() {
                                 tickFormatter={(val: number) => `$${val}`}
                             />
                             <Tooltip
-                                cursor={{ fill: 'rgba(255,255,255,0.05)' }}
-                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+                                cursor={{ fill: 'var(--row-hover)' }}
+                                contentStyle={{ 
+                                    background: 'var(--card)', 
+                                    border: '1px solid var(--card-border)', 
+                                    borderRadius: '8px', 
+                                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' 
+                                }}
+                                itemStyle={{ color: 'var(--text)' }}
+                                labelStyle={{ color: 'var(--text)', fontWeight: 'bold' }}
                                 formatter={(val: any) => [`$${val.toFixed(2)}`, 'Income']}
                             />
                             <Bar dataKey="total" radius={[6, 6, 0, 0]} maxBarSize={60} onClick={(data: any) => handleBarClick(data.month)}>

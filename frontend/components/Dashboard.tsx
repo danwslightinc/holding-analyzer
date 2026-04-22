@@ -512,7 +512,8 @@ export default function Dashboard() {
         .dash-embed .recharts-cartesian-grid line{stroke:var(--card-border) !important}
         .dash-embed .recharts-text{fill:var(--muted) !important;font-family:'DM Mono',monospace !important;font-size:12px !important}
         .dash-embed .recharts-tooltip-wrapper .bg-white\/95,.dash-embed .recharts-tooltip-wrapper .dark\:bg-zinc-900,.dash-embed .recharts-tooltip-wrapper > div > div{background:var(--card) !important;border:1px solid var(--card-border) !important;color:var(--text) !important}
-        .dash-embed .recharts-tooltip-wrapper span,.dash-embed .recharts-tooltip-wrapper p{color:var(--text) !important}
+        .dash-embed .recharts-tooltip-wrapper span,.dash-embed .recharts-tooltip-wrapper p,.dash-embed .recharts-tooltip-wrapper .recharts-tooltip-item-list,.dash-embed .recharts-tooltip-wrapper .recharts-tooltip-item,.dash-embed .recharts-tooltip-label{color:var(--text) !important}
+        .dash-embed .recharts-tooltip-cursor{stroke:var(--card-border) !important;fill:var(--row-hover) !important;opacity:0.2 !important}
         .dash-embed [class*="from-"][class*="to-"]{background:var(--card) !important}
         .dash-embed .bg-blue-600,.dash-embed .bg-emerald-600,.dash-embed .bg-rose-600,.dash-embed .bg-emerald-500,.dash-embed .bg-rose-500{opacity:0.85}
         .dash-embed [class*="shadow-"]{box-shadow:none !important}

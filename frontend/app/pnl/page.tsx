@@ -281,7 +281,8 @@ export default function PnLPage({ portfolioFilter = "ALL" }: { portfolioFilter?:
                             <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
                             <Tooltip
                                 formatter={(v: number | undefined) => [`$${(v ?? 0).toLocaleString("en-CA")} CAD`, "Unrealized PnL"]}
-                                contentStyle={{ background: "var(--card)", border: "1px solid var(--card-border)", borderRadius: "12px", color: "var(--text)" }}
+                                contentStyle={{ background: "var(--card)", border: "1px solid var(--card-border)", borderRadius: "12px" }}
+                                itemStyle={{ color: "var(--text)" }}
                             />
                             <ReferenceLine y={0} stroke="var(--muted2)" strokeWidth={1} />
                             <Bar dataKey="pnl" radius={[4, 4, 0, 0]}>

@@ -132,15 +132,15 @@ export default function TradeAnalysisPage({ portfolioFilter = "ALL" }: { portfol
                                     if (active && payload && payload.length) {
                                         const data = payload[0].payload;
                                         return (
-                                            <div className="bg-[#1a1a2e] border border-white/10 rounded-xl p-3 shadow-xl">
-                                                <p className="font-bold text-white mb-2">{data.name}</p>
+                                            <div className="bg-white dark:bg-[#1a1a2e] border border-zinc-200 dark:border-white/10 rounded-xl p-3 shadow-xl backdrop-blur-md">
+                                                <p className="font-bold text-gray-900 dark:text-white mb-2">{data.name}</p>
                                                 <div className="flex justify-between gap-4 text-sm mt-1">
-                                                    <span className="text-zinc-400">Return:</span>
-                                                    <span className={data.y >= 0 ? "text-emerald-400 font-medium" : "text-rose-400 font-medium"}>{data.y > 0 ? '+' : ''}{data.y.toFixed(2)}%</span>
+                                                    <span className="text-zinc-500 dark:text-zinc-400">Return:</span>
+                                                    <span className={data.y >= 0 ? "text-emerald-500 dark:text-emerald-400 font-medium" : "text-rose-500 dark:text-rose-400 font-medium"}>{data.y > 0 ? '+' : ''}{data.y.toFixed(2)}%</span>
                                                 </div>
                                                 <div className="flex justify-between gap-4 text-sm mt-1">
-                                                    <span className="text-zinc-400">Holding Days:</span>
-                                                    <span className="text-zinc-200 font-medium">{data.x}</span>
+                                                    <span className="text-zinc-500 dark:text-zinc-400">Holding Days:</span>
+                                                    <span className="text-gray-900 dark:text-zinc-200 font-medium">{data.x}</span>
                                                 </div>
                                             </div>
                                         );
