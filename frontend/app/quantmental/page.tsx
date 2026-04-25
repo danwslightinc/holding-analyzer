@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { ExternalLink, TrendingUp, TrendingDown, Minus, Edit2, Save, X, Sparkles, BrainCircuit, RefreshCw } from "lucide-react";
+import { ExternalLink, TrendingUp, TrendingDown, Minus, Edit2, Save, X, Sparkles, BrainCircuit, RefreshCw, Search, Wand2 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/api";
 import { usePortfolio } from "@/lib/PortfolioContext";
 
@@ -34,6 +34,10 @@ export default function QuantmentalPage({ portfolioFilter = "ALL" }: { portfolio
     const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
     const [aiModel, setAiModel] = useState<string | null>(null);
 
+    const [researchingSymbol, setResearchingSymbol] = useState<string | null>(null);
+    const [researchData, setResearchData] = useState<string | null>(null);
+    const [isResearchLoading, setIsResearchLoading] = useState(false);
+
     const runAiAnalysis = async () => {
         setAnalyzing(true);
         try {
@@ -54,6 +58,43 @@ export default function QuantmentalPage({ portfolioFilter = "ALL" }: { portfolio
             setAiModel("Error");
         } finally {
             setAnalyzing(false);
+        }
+    };
+
+    const handleResearch = async (symbol: string) => {
+        setResearchingSymbol(symbol);
+        setIsResearchLoading(true);
+        setResearchData(null);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/ai/research-holding`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ symbol })
+            });
+            const data = await res.json();
+            setResearchData(data.analysis);
+        } catch (err) {
+            console.error("Research failed", err);
+            setResearchData("Failed to load AI research. Check API connection and GOOGLE_API_KEY.");
+        } finally {
+            setIsResearchLoading(false);
+        }
+    };
+
+    const handleDraft = async (field: 'Thesis' | 'Kill Switch') => {
+        if (!editingSymbol) return;
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/ai/draft-thesis`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ symbol: editingSymbol, field })
+            });
+            const data = await res.json();
+            if (data.draft) {
+                setEditForm(prev => ({ ...prev, [field]: data.draft }));
+            }
+        } catch (err) {
+            console.error("Drafting failed", err);
         }
     };
     const [editForm, setEditForm] = useState({
@@ -166,12 +207,13 @@ export default function QuantmentalPage({ portfolioFilter = "ALL" }: { portfolio
         setSortDirection(direction);
     };
 
-    const getRecommendationColor = (rec: string) => {
-        if (rec === 'Strong Buy') return 'text-emerald-700 font-bold';
-        if (rec === 'Buy') return 'text-green-700 font-bold';
-        if (rec === 'Hold') return 'text-amber-700 font-bold';
-        if (rec === 'Sell') return 'text-rose-700 font-bold';
-        return ''; // Handled by inline style
+    const getRecommendationBadge = (rec: string) => {
+        if (rec === 'Strong Buy') return 'bg-emerald-500/20 text-emerald-400 border-emerald-500';
+        if (rec === 'Buy') return 'bg-green-500/20 text-green-400 border-green-500';
+        if (rec === 'Hold') return 'bg-amber-500/20 text-amber-400 border-amber-500';
+        if (rec === 'Sell') return 'bg-rose-500/20 text-rose-400 border-rose-500';
+        if (rec === 'Underperform') return 'bg-orange-500/20 text-orange-400 border-orange-500';
+        return 'bg-gray-500/20 text-gray-400 border-gray-500';
     };
 
     const getRSIColor = (rsi: number | string) => {
@@ -261,15 +303,15 @@ export default function QuantmentalPage({ portfolioFilter = "ALL" }: { portfolio
                     <table className="w-full">
                         <thead className="bg-white/5 sticky top-0">
                             <tr>
-                                {['Symbol', 'Thesis', 'Catalyst', 'Kill Switch', 'Conviction', 'RSI', 'Tech Scorecard', 'Next Earnings', 'Ex-Div', 'Yield', 'Timeframe', 'PEG Ratio', 'Growth', 'Rec', 'Action'].map((header: string) => (
+                                {['Symbol', 'Thesis', 'Catalyst', 'Kill Switch', 'Conviction', 'RSI', 'Tech Scorecard', 'Next Earnings', 'Ex-Div', 'Yield', 'Timeframe', 'PEG Ratio', 'Growth', 'Rec', 'Actions'].map((header: string) => (
                                     <th
                                         key={header}
-                                        onClick={() => header !== 'Action' && handleSort(header)}
-                                        className={`p-4 font-semibold select-none ${header === 'Action' ? 'text-center cursor-default text-gray-400' : 'text-left cursor-pointer hover:bg-white/10 transition-colors'}`}
+                                        onClick={() => header !== 'Actions' && handleSort(header)}
+                                        className={`p-4 font-semibold select-none ${header === 'Actions' ? 'text-center cursor-default text-gray-400' : 'text-left cursor-pointer hover:bg-white/10 transition-colors'}`}
                                     >
-                                        <div className={`flex items-center gap-2 ${header === 'Action' ? 'justify-center' : ''}`}>
+                                        <div className={`flex items-center gap-2 ${header === 'Actions' ? 'justify-center' : ''}`}>
                                             {header}
-                                            {header !== 'Action' && <span className="text-gray-500 text-xs">↕</span>}
+                                            {header !== 'Actions' && <span className="text-gray-500 text-xs">↕</span>}
                                         </div>
                                     </th>
                                 ))}
@@ -285,11 +327,20 @@ export default function QuantmentalPage({ portfolioFilter = "ALL" }: { portfolio
 
                                         <td className="p-4 max-w-md">
                                             {isEditing ? (
-                                                <textarea
-                                                    className="w-full bg-white/5 border border-white/20 rounded p-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500 min-h-[60px]"
-                                                    value={editForm.Thesis}
-                                                    onChange={e => setEditForm({ ...editForm, Thesis: e.target.value })}
-                                                />
+                                                <div className="relative group">
+                                                    <textarea
+                                                        className="w-full bg-white/5 border border-white/20 rounded p-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500 min-h-[60px] pr-8"
+                                                        value={editForm.Thesis}
+                                                        onChange={e => setEditForm({ ...editForm, Thesis: e.target.value })}
+                                                    />
+                                                    <button 
+                                                        onClick={() => handleDraft('Thesis')}
+                                                        className="absolute top-2 right-2 text-purple-400 hover:text-purple-300 p-1 rounded-md hover:bg-white/10 transition-all opacity-0 group-hover:opacity-100"
+                                                        title="AI Draft Thesis"
+                                                    >
+                                                        <Wand2 className="w-3 h-3" />
+                                                    </button>
+                                                </div>
                                             ) : (
                                                 <div
                                                     className="text-sm font-bold leading-relaxed line-clamp-2 text-gray-900 dark:text-white/90"
@@ -316,11 +367,20 @@ export default function QuantmentalPage({ portfolioFilter = "ALL" }: { portfolio
 
                                         <td className="p-4 max-w-xs">
                                             {isEditing ? (
-                                                <input
-                                                    className="w-full bg-white/5 border border-white/20 rounded p-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                                    value={editForm["Kill Switch"]}
-                                                    onChange={e => setEditForm({ ...editForm, "Kill Switch": e.target.value })}
-                                                />
+                                                <div className="relative group">
+                                                    <input
+                                                        className="w-full bg-white/5 border border-white/20 rounded p-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500 pr-8"
+                                                        value={editForm["Kill Switch"]}
+                                                        onChange={e => setEditForm({ ...editForm, "Kill Switch": e.target.value })}
+                                                    />
+                                                    <button 
+                                                        onClick={() => handleDraft('Kill Switch')}
+                                                        className="absolute top-1/2 -translate-y-1/2 right-2 text-purple-400 hover:text-purple-300 p-1 rounded-md hover:bg-white/10 transition-all opacity-0 group-hover:opacity-100"
+                                                        title="AI Draft Kill Switch"
+                                                    >
+                                                        <Wand2 className="w-3 h-3" />
+                                                    </button>
+                                                </div>
                                             ) : (
                                                 <div className="text-sm text-gray-700 dark:text-gray-400 font-medium line-clamp-2" title={row["Kill Switch"]}>{row["Kill Switch"] || <span className="text-gray-400">--</span>}</div>
                                             )}
@@ -386,8 +446,10 @@ export default function QuantmentalPage({ portfolioFilter = "ALL" }: { portfolio
                                             {row["PEG Ratio"] === 'N/A' && <span style={{ color: '#999' }}>--</span>}
                                         </td>
                                         <td className="p-4 text-sm font-bold text-gray-900 dark:text-white">{row.Growth}</td>
-                                        <td className={`p-4 text-sm font-bold ${getRecommendationColor(row.Rec)}`} style={!getRecommendationColor(row.Rec) ? { color: 'inherit' } : {}}>
-                                            {row.Rec}
+                                        <td className="p-4">
+                                            <span className={`px-2 py-1 rounded-md text-[10px] font-bold border uppercase tracking-wider ${getRecommendationBadge(row.Rec)}`}>
+                                                {row.Rec}
+                                            </span>
                                         </td>
 
                                         <td className="p-4 text-center">
@@ -411,13 +473,22 @@ export default function QuantmentalPage({ portfolioFilter = "ALL" }: { portfolio
                                                     </button>
                                                 </div>
                                             ) : (
-                                                <button
-                                                    onClick={() => handleEdit(row)}
-                                                    className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-white/5 rounded transition-colors"
-                                                    title="Edit Thesis Data"
-                                                >
-                                                    <Edit2 className="w-4 h-4" />
-                                                </button>
+                                                <div className="flex items-center justify-center gap-1">
+                                                    <button
+                                                        onClick={() => handleResearch(row.Symbol)}
+                                                        className="p-1.5 text-purple-400 hover:text-purple-300 hover:bg-white/5 rounded transition-colors"
+                                                        title="AI Research Deep Dive"
+                                                    >
+                                                        <Search className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleEdit(row)}
+                                                        className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-white/5 rounded transition-colors"
+                                                        title="Edit Thesis Data"
+                                                    >
+                                                        <Edit2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
                                             )}
                                         </td>
                                     </tr>
@@ -442,6 +513,70 @@ export default function QuantmentalPage({ portfolioFilter = "ALL" }: { portfolio
                     </ul>
                 </div>
             </div>
+
+            {/* AI Research Modal */}
+            {researchingSymbol && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="glass-panel w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-3xl border border-purple-500/30 flex flex-col shadow-2xl">
+                        {/* Modal Header */}
+                        <div className="p-6 border-b border-white/10 flex items-center justify-between bg-gradient-to-r from-purple-900/20 to-indigo-900/20">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-purple-500/20 flex items-center justify-center border border-purple-500/40">
+                                    <BrainCircuit className="w-6 h-6 text-purple-400" />
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-bold text-foreground">AI Research Deep Dive</h2>
+                                    <p className="text-purple-400 font-mono text-sm tracking-widest">{researchingSymbol}</p>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={() => setResearchingSymbol(null)}
+                                className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-white"
+                            >
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        {/* Modal Content */}
+                        <div className="p-8 overflow-y-auto custom-scrollbar flex-1 bg-black/20">
+                            {isResearchLoading ? (
+                                <div className="flex flex-col items-center justify-center py-20 space-y-6">
+                                    <div className="relative">
+                                        <div className="w-16 h-16 border-4 border-purple-500/20 border-t-purple-500 rounded-full animate-spin"></div>
+                                        <Sparkles className="w-6 h-6 text-purple-400 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-pulse" />
+                                    </div>
+                                    <div className="text-center">
+                                        <h3 className="text-lg font-medium text-purple-300">Consulting Gemini Flash...</h3>
+                                        <p className="text-gray-500 text-sm mt-1">Analyzing fundamentals, technicals, and latest news</p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="prose prose-invert max-w-none prose-headings:text-purple-400 prose-strong:text-white prose-p:text-gray-300 leading-relaxed">
+                                    {researchData ? (
+                                        <div className="whitespace-pre-wrap">
+                                            {researchData}
+                                        </div>
+                                    ) : (
+                                        <div className="text-center py-10 text-gray-500">
+                                            No data returned from AI engine.
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-4 border-t border-white/10 bg-white/5 flex justify-end">
+                            <button
+                                onClick={() => setResearchingSymbol(null)}
+                                className="px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold transition-all"
+                            >
+                                Close Research
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

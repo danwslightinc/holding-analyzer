@@ -1019,7 +1019,7 @@ def analyze_with_ai(payload: dict = Body(...)):
                 # Use specified REST API format and model
                 url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent"
                 
-                payload = {
+                payload_gem = {
                     "contents": [{
                         "parts": [{"text": prompt}]
                     }]
@@ -1027,7 +1027,7 @@ def analyze_with_ai(payload: dict = Body(...)):
                 
                 req = urllib.request.Request(
                     url,
-                    data=json.dumps(payload).encode('utf-8'),
+                    data=json.dumps(payload_gem).encode('utf-8'),
                     headers={
                         'Content-Type': 'application/json',
                         'X-goog-api-key': gemini_key
@@ -1076,6 +1076,160 @@ def analyze_with_ai(payload: dict = Body(...)):
         import traceback
         traceback.print_exc()
         return {"analysis": f"Critical AI system error: {str(e)}"}
+
+@app.post("/api/ai/research-holding")
+def research_holding_with_ai(payload: dict = Body(...)):
+    """Deep dive research for a specific ticker using Gemini"""
+    try:
+        symbol = payload.get('symbol')
+        if not symbol:
+            raise HTTPException(status_code=400, detail="Symbol is required")
+            
+        # 1. Gather all possible context for this symbol
+        prices = get_current_prices([symbol])
+        fundamentals = get_fundamental_data([symbol])
+        technical = get_technical_data([symbol])
+        news = get_latest_news([symbol])
+        
+        # 2. Get existing thesis from DB
+        with Session(engine) as session:
+            it = session.exec(select(InvestmentThesis).where(InvestmentThesis.symbol == symbol)).first()
+            
+        # 3. Format the context
+        f = fundamentals.get(symbol, {})
+        t = technical.get(symbol, {})
+        n = news.get(symbol, {})
+        
+        context = {
+            "symbol": symbol,
+            "current_price": prices.get(symbol, 0.0),
+            "fundamentals": {
+                "sector": f.get('Sector'),
+                "industry": f.get('Industry'),
+                "market_cap": f.get('Market Cap'),
+                "trailing_pe": f.get('Trailing P/E'),
+                "forward_pe": f.get('Forward P/E'),
+                "peg_ratio": f.get('PEG Ratio'),
+                "revenue_growth": f.get('Rev Growth'),
+                "profit_margin": f.get('Profit Margin'),
+                "recommendation": f.get('Recommendation')
+            },
+            "technical": {
+                "rsi": t.get('RSI'),
+                "scorecard": t.get('Scorecard')
+            },
+            "news": n.get('headline'),
+            "existing_thesis": {
+                "thesis": it.thesis if it else "None",
+                "conviction": it.conviction if it else "None",
+                "kill_switch": it.kill_switch if it else "None"
+            }
+        }
+        
+        prompt = f"""
+        Objective: Perform a professional 'Quant-Mental' deep dive on {symbol}.
+        
+        Data Context:
+        {json.dumps(context, indent=2)}
+        
+        Instructions:
+        1. Summarize the current fundamental health and technical position.
+        2. Evaluate the existing investment thesis (if any) against recent news and metrics.
+        3. Identify 2-3 key catalysts or risks (Kill Switches) to watch.
+        4. Provide an 'AI Sentiment' score (1-10) and a brief justification.
+        
+        Formatting:
+        - Use clean Markdown with headers.
+        - Be concise but insightful.
+        - Avoid generic advice; be specific to {symbol}.
+        """
+
+        # 4. Call Gemini (same REST logic as above)
+        gemini_key = os.getenv("GOOGLE_API_KEY")
+        if gemini_key:
+            try:
+                import urllib.request
+                url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent"
+                payload_gem = {
+                    "contents": [{
+                        "parts": [{"text": prompt}]
+                    }]
+                }
+                req = urllib.request.Request(
+                    url,
+                    data=json.dumps(payload_gem).encode('utf-8'),
+                    headers={'Content-Type': 'application/json', 'X-goog-api-key': gemini_key},
+                    method='POST'
+                )
+                with urllib.request.urlopen(req, timeout=30) as response:
+                    res_data = json.loads(response.read().decode())
+                    if 'candidates' in res_data and len(res_data['candidates']) > 0:
+                        return {"analysis": res_data['candidates'][0]['content']['parts'][0]['text'], "model": "gemini-flash-latest"}
+            except Exception as e:
+                print(f"Gemini failed for research: {e}")
+
+        # Fallback to Ollama or Error
+        return {"analysis": "AI Research unavailable. Check GOOGLE_API_KEY.", "model": "Error"}
+            
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"analysis": f"Research failed: {str(e)}", "model": "Error"}
+
+@app.post("/api/ai/draft-thesis")
+def draft_thesis_with_ai(payload: dict = Body(...)):
+    """Draft an investment thesis or kill switch using AI"""
+    try:
+        symbol = payload.get('symbol')
+        field = payload.get('field', 'Thesis') # Thesis or Kill Switch
+        if not symbol:
+            raise HTTPException(status_code=400, detail="Symbol is required")
+            
+        # Gather context
+        fundamentals = get_fundamental_data([symbol])
+        news = get_latest_news([symbol])
+        
+        f = fundamentals.get(symbol, {})
+        n = news.get(symbol, {})
+        
+        prompt = f"""
+        Objective: Draft a concise, professional {field} for {symbol}.
+        
+        Company Context:
+        - Sector: {f.get('Sector')}
+        - Recommendation: {f.get('Recommendation')}
+        - Latest News: {n.get('headline')}
+        
+        Field to draft: {field}
+        
+        Instructions:
+        - If drafting 'Thesis': Focus on the core value proposition and why it's a good investment.
+        - If drafting 'Kill Switch': Focus on what specific events or metrics would invalidate the thesis.
+        - Keep it under 2 sentences.
+        - Be direct and analytical.
+        """
+
+        gemini_key = os.getenv("GOOGLE_API_KEY")
+        if gemini_key:
+            try:
+                import urllib.request
+                url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent"
+                payload_gem = {"contents": [{"parts": [{"text": prompt}]}]}
+                req = urllib.request.Request(
+                    url, data=json.dumps(payload_gem).encode('utf-8'),
+                    headers={'Content-Type': 'application/json', 'X-goog-api-key': gemini_key}, method='POST'
+                )
+                with urllib.request.urlopen(req, timeout=30) as response:
+                    res_data = json.loads(response.read().decode())
+                    if 'candidates' in res_data and len(res_data['candidates']) > 0:
+                        return {"draft": res_data['candidates'][0]['content']['parts'][0]['text'].strip(), "model": "gemini-flash-latest"}
+            except Exception as e:
+                print(f"Gemini failed for drafting: {e}")
+
+        return {"draft": f"Unable to generate {field} draft. Check API key.", "model": "Error"}
+            
+    except Exception as e:
+        return {"draft": f"Drafting failed: {str(e)}", "model": "Error"}
 
 @app.get("/api/realized-pnl")
 def get_realized_pnl(category: Optional[str] = None):
