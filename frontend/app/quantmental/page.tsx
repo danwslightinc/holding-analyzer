@@ -177,7 +177,7 @@ export default function QuantmentalPage({ portfolioFilter = "ALL" }: { portfolio
         
         console.log(`DEBUG: Found ${result.length} unique symbols for Quant-mental`);
         return result;
-    }, [portData]);
+    }, [portData, portfolioFilter]);
 
     const sortedData = useMemo(() => {
         if (!sortField) return data;

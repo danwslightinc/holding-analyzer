@@ -61,11 +61,128 @@ def sanitize_val(val):
     except:
         pass
     return val
+def perform_daily_ai_update():
+    """Perform a batch AI update for all holdings once per day"""
+    gemini_key = os.getenv("GOOGLE_API_KEY")
+    if not gemini_key:
+        print("INFO: Skipping daily AI update (GOOGLE_API_KEY missing)")
+        return
+
+    today = datetime.utcnow().strftime('%Y-%m-%d')
+    
+    with Session(engine) as session:
+        # Check if we already did this today
+        last_update = session.exec(select(UserSettings).where(UserSettings.key == "LAST_AI_UPDATE_DATE")).first()
+        if last_update and last_update.value == today:
+            print(f"INFO: Daily AI update already performed for {today}")
+            return
+
+        print(f"INFO: Starting daily AI batch update for {today}...")
+        
+        # 3. Call Gemini with retry logic
+        import urllib.request
+        import time
+        
+        max_retries = 3
+        retry_delay = 5 # seconds
+        
+        for attempt in range(max_retries):
+            try:
+                # 1. Get all unique symbols (inside loop in case data changed, though unlikely)
+                df, _ = load_portfolio_from_db(category="ALL")
+                if df.empty: return
+                symbols = df['Symbol'].unique().tolist()
+                
+                # 2. Gather context for all symbols
+                fundamentals = get_fundamental_data(symbols)
+                news = get_latest_news(symbols)
+                
+                holdings_context = []
+                for sym in symbols:
+                    f = fundamentals.get(sym, {})
+                    n = news.get(sym, {})
+                    holdings_context.append({
+                        "symbol": sym,
+                        "sector": f.get('Sector'),
+                        "recommendation": f.get('Recommendation'),
+                        "news": n.get('headline')
+                    })
+                
+                prompt = f"""
+                Objective: Provide a concise investment thesis and kill switch for each stock in the following list.
+                
+                Input Data:
+                {json.dumps(holdings_context, indent=2)}
+                
+                Instructions:
+                - Respond ONLY with a JSON object where keys are symbols and values are objects with "thesis" and "kill_switch".
+                - Keep each thesis and kill switch under 150 characters.
+                - Focus on core value and critical risks.
+                
+                Example Format:
+                {{
+                  "AAPL": {{ "thesis": "Dominant ecosystem...", "kill_switch": "Sustained revenue drop..." }}
+                }}
+                """
+
+                url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent"
+                payload_gem = {"contents": [{"parts": [{"text": prompt}]}]}
+                req = urllib.request.Request(
+                    url, data=json.dumps(payload_gem).encode('utf-8'),
+                    headers={'Content-Type': 'application/json', 'X-goog-api-key': gemini_key}, method='POST'
+                )
+                
+                with urllib.request.urlopen(req, timeout=60) as response:
+                    res_data = json.loads(response.read().decode())
+                    if 'candidates' in res_data and len(res_data['candidates']) > 0:
+                        raw_text = res_data['candidates'][0]['content']['parts'][0]['text']
+                        # Clean markdown if AI included it
+                        if "```json" in raw_text:
+                            raw_text = raw_text.split("```json")[1].split("```")[0].strip()
+                        elif "```" in raw_text:
+                            raw_text = raw_text.split("```")[1].split("```")[0].strip()
+                        
+                        batch_data = json.loads(raw_text)
+                        
+                        # 4. Update DB
+                        for sym, info in batch_data.items():
+                            it = session.exec(select(InvestmentThesis).where(InvestmentThesis.symbol == sym)).first()
+                            if not it:
+                                it = InvestmentThesis(symbol=sym)
+                                session.add(it)
+                            
+                            # Update if current values are placeholder/empty
+                            if not it.thesis or it.thesis.lower() in ["none", "", "--"]:
+                                it.thesis = info.get("thesis")
+                            if not it.kill_switch or it.kill_switch.lower() in ["none", "", "--"]:
+                                it.kill_switch = info.get("kill_switch")
+                            it.updated_at = datetime.utcnow()
+                        
+                        # Mark as done
+                        if not last_update:
+                            last_update = UserSettings(key="LAST_AI_UPDATE_DATE", value=today)
+                            session.add(last_update)
+                        else:
+                            last_update.value = today
+                        
+                        session.commit()
+                        print(f"INFO: Successfully updated {len(batch_data)} holdings with AI insights.")
+                        return # Success!
+            except Exception as e:
+                if "429" in str(e) and attempt < max_retries - 1:
+                    print(f"WARNING: Gemini 429 during daily update. Retrying in {retry_delay}s... (Attempt {attempt+1}/{max_retries})")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2 # Exponential backoff
+                else:
+                    print(f"ERROR: Daily AI update failed on attempt {attempt+1}: {e}")
+                    break
+
 @app.on_event("startup")
 def on_startup():
     try:
         create_db_and_tables()
         print("INFO: Database connection established and tables verified.")
+        perform_daily_ai_update()
     except Exception as e:
         print(f"CRITICAL ERROR: Could not connect to the database. {e}")
         print("Backend starting in limited capacity mode.")
@@ -1168,8 +1285,29 @@ def research_holding_with_ai(payload: dict = Body(...)):
             except Exception as e:
                 print(f"Gemini failed for research: {e}")
 
-        # Fallback to Ollama or Error
-        return {"analysis": "AI Research unavailable. Check GOOGLE_API_KEY.", "model": "Error"}
+        # Fallback to local Ollama
+        try:
+            import urllib.request
+            ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
+            ollama_model = os.getenv("OLLAMA_MODEL", "functiongemma:latest")
+            
+            data = {
+                "model": ollama_model,
+                "prompt": prompt,
+                "stream": False
+            }
+            
+            req = urllib.request.Request(
+                ollama_url, 
+                data=json.dumps(data).encode('utf-8'),
+                headers={'Content-Type': 'application/json'}
+            )
+            
+            with urllib.request.urlopen(req, timeout=30) as response:
+                res_data = json.loads(response.read().decode())
+                return {"analysis": res_data.get("response", "No response from local LLM."), "model": f"ollama:{ollama_model}"}
+        except Exception as ollama_e:
+            return {"analysis": f"AI Research unavailable. (Gemini: 429/Busy, Ollama: {str(ollama_e)})", "model": "Error"}
             
     except Exception as e:
         import traceback
@@ -1226,7 +1364,29 @@ def draft_thesis_with_ai(payload: dict = Body(...)):
             except Exception as e:
                 print(f"Gemini failed for drafting: {e}")
 
-        return {"draft": f"Unable to generate {field} draft. Check API key.", "model": "Error"}
+        # Fallback to Ollama
+        try:
+            import urllib.request
+            ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
+            ollama_model = os.getenv("OLLAMA_MODEL", "functiongemma:latest")
+            
+            data = {
+                "model": ollama_model,
+                "prompt": prompt,
+                "stream": False
+            }
+            
+            req = urllib.request.Request(
+                ollama_url, 
+                data=json.dumps(data).encode('utf-8'),
+                headers={'Content-Type': 'application/json'}
+            )
+            
+            with urllib.request.urlopen(req, timeout=30) as response:
+                res_data = json.loads(response.read().decode())
+                return {"draft": res_data.get("response", "No response from local LLM.").strip(), "model": f"ollama:{ollama_model}"}
+        except Exception as ollama_e:
+            return {"draft": f"Unable to generate {field} draft. (Gemini: 429/Busy, Ollama: {str(ollama_e)})", "model": "Error"}
             
     except Exception as e:
         return {"draft": f"Drafting failed: {str(e)}", "model": "Error"}
